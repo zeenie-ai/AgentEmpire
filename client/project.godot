@@ -1,0 +1,54 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Aurelhaven"
+config/description="A town of real AI agents in the isekai world of Aurelhaven."
+config/version="0.2.0"
+run/main_scene="res://game/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+ClientLog="*res://autoload/client_log.gd"
+Settings="*res://autoload/settings.gd"
+Economy="*res://autoload/economy.gd"
+Notify="*res://autoload/notify.gd"
+Audio="*res://autoload/audio.gd"
+Net="*res://autoload/net.gd"
+Realm="*res://autoload/realm.gd"
+Game="*res://autoload/game.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
+[gui]
+
+timers/tooltip_delay_sec=0.35
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method.web="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=1
+environment/defaults/default_clear_color=Color(0.94902, 0.72549, 0.54902, 1)
