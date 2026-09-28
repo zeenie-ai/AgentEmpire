@@ -1,0 +1,9 @@
+{
+  "name": "pool_burn",
+  "description": "Drains almost the whole Mana pool, then waits; lights out should pause it.",
+  "steps": [
+    { "op": "write_file", "path": "pool.txt", "content": "draining\n" },
+    { "op": "usage", "cost_mana": 99 },
+    { "op": "hang" }
+  ]
+}

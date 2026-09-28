@@ -1,0 +1,9 @@
+{
+  "name": "party_member",
+  "description": "A party member's sub-task.",
+  "steps": [
+    { "op": "write_file", "path": "member.txt", "content": "The member's part.\n" },
+    { "op": "usage", "cost_mana": 4 },
+    { "op": "end", "summary": "Wrote member.txt." }
+  ]
+}

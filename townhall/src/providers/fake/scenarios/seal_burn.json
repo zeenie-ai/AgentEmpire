@@ -1,0 +1,12 @@
+{
+  "name": "seal_burn",
+  "description": "Spends past a small Mana Seal so the task pauses for an extension.",
+  "steps": [
+    { "op": "write_file", "path": "burn.txt", "content": "burning\n" },
+    { "op": "usage", "cost_mana": 6 },
+    { "op": "usage", "cost_mana": 6 },
+    { "op": "emit", "text": "Continuing after the seal was extended." },
+    { "op": "usage", "cost_mana": 1 },
+    { "op": "end", "summary": "Finished after an extension." }
+  ]
+}

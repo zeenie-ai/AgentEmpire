@@ -42,6 +42,9 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 **`request_id`**
 - The client makes it up. It must be unique per connection and at most 128 characters.
 - For commands that change state, it doubles as an idempotency key for 10 minutes: resending the same `request_id` returns the original reply without doing the work twice.
+- Only successful replies are remembered, so a failed command can be retried with the same `request_id`.
+- Reusing a `request_id` with a different payload returns `CONFLICT`.
+- The cache lives in memory and resets when the Town Hall restarts. Ledger operations are also protected by their `op_id`, which is stored in the database and survives restarts.
 
 **`seq`**
 - A global counter that only goes up. The client stores the last `seq` it saw.
@@ -89,12 +92,15 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "id": "tsk_...", "agent_id": "agt_...", "party_id": null, "parent_task_id": null,
   "title": "...", "prompt": "...", "size": "S|M|L|XL", "acceptance": ["..."], "rite": "npm test",
   "state": "in_transit|queued|preparing|running|awaiting_approval|awaiting_review|accepting|accepted|rejected|paused|failed|cancelled",
-  "state_reason": null,     // paused: "budget"|"restart"|"stalled"|"mana_depleted"|"provider_limit"; failed: error code
+  "state_reason": null,     // paused: "budget"|"restart"|"stalled"|"mana_depleted"|"provider_limit"; failed: a protocol error code
+                            // Terminal states: accepted, rejected, cancelled. "failed" is not terminal:
+                            // resume_task retries it and cancel_task dismisses it.
   "attempt": 1, "seal_micros": 1500000, "reserved_micros": 0, "spent_micros": 0, "spent_is_estimate": true,
   "courier": { "mode": "human|wisp|express", "human_id": "h12" },
   "created_at": "...", "started_at": null, "finished_at": null,
   "result": null,           // {"summary":"...","diff_stat":{"files":3,"added":40,"removed":5},"rite":{"passed":true,"output_tail":"..."},"deliverable":true}
-  "rewards": null,          // {"rp":351,"xp":351,"resources":{...},"breakdown":{"base":180,"q":0.5,"e":0.15,"p":0.3,"d":1.0,"ceiling":1200}}
+  "rewards": null,          // {"rp":351,"xp":351,"resources":{...},"breakdown":{"base":180,"q":0.5,"e":0.15,"p":0.3,"d":1.0,"ceiling":1200,"zero_reason":null}}
+                            // zero_reason (set when rp is 0): "duplicate"|"no_deliverable"|"too_short"|"party_subtask"
   "version": 5
 }
 
@@ -142,17 +148,18 @@ The table shows each command's payload and the payload of its successful reply.
 | `home_built` | `{agent_id}` | `{}`. Construction finished in the simulation; the Town Hall finishes setting up the workspace. |
 | `update_agent` | `{agent_id, patch:{name?,model?,instructions?,approval_mode?,seals?}, expected_version}` | `{agent}` |
 | `retire_agent` | `{agent_id, when:"now"\|"after_current"}` | `{}` |
-| `attach_tool` | `{agent_id, type, tile, config?}` | `{tool_id, cost}`. For a Waygate, `config` is `{server_name, transport:"stdio"\|"http", command?, args?, env_refs?, url?, header_refs?, allowed_tools?}`, where `env_refs` and `header_refs` name environment variables and never hold secrets. |
+| `attach_tool` | `{agent_id, type, tile, config?}` | `{tool_id, cost}`. For a Waygate, `config` is `{server_name, transport:"stdio"\|"http", command?, args?, env_refs?, url?, header_refs?, allowed_tools?}`, where `env_refs` and `header_refs` name environment variables and never hold secrets. `header_refs` maps an HTTP header name to the environment variable that holds its value. |
 | `tool_built` | `{tool_id}` | `{}` |
 | `detach_tool` | `{tool_id}` | `{refund}` (the dismantle refund) |
 | `assign_task` | `{agent_id? \| party_id?, title, prompt, size, acceptance?, rite?, seal_mana?, courier:{mode:"human"\|"wisp"\|"express", human_id?}}` | `{task_id}`. The task starts in `in_transit`, unless the courier mode is `express`, in which case it starts `queued`. |
 | `task_delivered` | `{task_id}` | `{}`. The courier arrived. The server delivers automatically after `couriers.force_deliver_after_s`. |
 | `cancel_task` | `{task_id}` | `{}` |
-| `resume_task` | `{task_id, extend_seal_mana?}` | `{}` |
+| `resume_task` | `{task_id, extend_seal_mana?}` | `{}`. Also retries a failed task. |
+| `stop_and_review` | `{task_id}` | `{}`. Ends a task paused on its seal and moves the work done so far to `awaiting_review`. |
 | `nudge_task` | `{task_id, message}` | `{}`. Sends extra text to a running agent. |
 | `respond_approval` | `{approval_id, decision:"allow"\|"deny", scope:"once"\|"task"\|"agent", message?, updated_input?}` | `{}`. The first reply wins. |
 | `get_task_detail` | `{task_id, include:["activity","diff"]}` | `{task, activity:[Activity], diff?:{files:[{path,status,added,removed}], patch?}}` (`patch` capped at 512 KB) |
-| `accept_result` | `{task_id, integrate:"merge"\|"keep_branch"\|"export"}` | `{rewards, merge?:{commit?, blocked_reason?}}` |
+| `accept_result` | `{task_id, integrate:"merge"\|"keep_branch"\|"export"}` | `{rewards, merge?:{commit?, blocked_reason?}}`. If the merge or export is blocked (for example, the main checkout is dirty or has a conflict), `rewards` is `null`, `merge.blocked_reason` explains why, the task stays `accepting`, and a `merge_blocked` incident opens. The player fixes the cause and accepts again, or accepts with `keep_branch`. |
 | `send_back` | `{task_id, feedback}` | `{}` |
 | `abandon_task` | `{task_id}` | `{}`. No reward; the workspace is kept until it is discarded. |
 | `discard_workspace` | `{task_id, confirm:true}` | `{}` |
@@ -162,11 +169,11 @@ The table shows each command's payload and the payload of its successful reply.
 | `spend_resources` | `{op_id, reason, cost, ref?}` | `{treasury}`. For simulation purchases such as a townsperson, Cottage, Farm, Storehouse or Quartermaster trade. The server checks the balance, and `op_id` makes retries safe. |
 | `refund_resources` | `{op_id, spend_op_id, fraction}` | `{treasury}`. At most one refund per spend, and never more than the spend. |
 | `report_gather` | `{op_id, deposits:{food?,wood?}, storehouses}` | `{treasury}`. Batched. Food and Wood are capped at `storage.cap_by_age[age] + storehouses × storage.storehouse_bonus`. `storehouses` is the number of completed Storehouses, as counted by the client. Rewards may push a resource past the cap; gathering may not. |
-| `trade` | `{op_id, give:{resource,amount}, get:resource}` | `{treasury, rate}` (Quartermaster) |
+| `trade` | `{op_id, give:{resource,amount}, get:resource}` | `{treasury, rate}` (Quartermaster). `rate` is the town's price multiplier after this trade. Trades ignore storage caps. |
 | `advance_age` | `{}` | `{research:{target,started_at,duration_ms}}` |
 | `save_town` | `{base_rev, schema_version, snapshot}` | `{rev}`, or `CONFLICT` if `base_rev` is stale |
 | `load_town` | `{}` | `{rev, schema_version, snapshot}` or `null` |
-| `set_setting` | `{key, value}` | `{settings}`. Keys: `work_while_away`, `express_dispatch`, `lantern_hours:{start,end}`. |
+| `set_setting` | `{key, value}` | `{settings}`. Keys: `work_while_away`, `express_dispatch`, `lantern_hours:{start,end}` (whole local hours, 0–23). |
 | `get_ledger` | `{limit?}` | `{entries, treasury}` |
 
 ## Events
@@ -191,8 +198,8 @@ The table shows each command's payload and the payload of its successful reply.
 | `age_updated` | `{age}`. Covers both research starting and the age advancing. |
 | `providers_updated` | `{providers}` |
 | `town_saved` | `{rev}` |
-| `session_revoked` | `{}` |
-| `daemon_shutdown` | `{}` |
+| `session_revoked` | `{}`. Transient: not logged, so it does not advance `seq` and is never replayed. |
+| `daemon_shutdown` | `{}`. Transient: not logged, so it does not advance `seq` and is never replayed. |
 
 ## Rules both sides rely on
 

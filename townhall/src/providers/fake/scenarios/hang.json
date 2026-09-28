@@ -1,0 +1,8 @@
+{
+  "name": "hang",
+  "description": "Goes silent until interrupted (stall detection).",
+  "steps": [
+    { "op": "emit", "text": "Thinking very hard." },
+    { "op": "hang" }
+  ]
+}

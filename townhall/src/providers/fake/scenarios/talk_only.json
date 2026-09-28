@@ -1,0 +1,10 @@
+{
+  "name": "talk_only",
+  "description": "Talks, spends a little, changes nothing (no deliverable).",
+  "steps": [
+    { "op": "emit", "text": "Settling in for a long think." },
+    { "op": "sleep", "ms": 31000 },
+    { "op": "usage", "cost_mana": 3 },
+    { "op": "end", "summary": "I thought about it but changed nothing." }
+  ]
+}

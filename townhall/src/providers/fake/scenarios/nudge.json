@@ -1,0 +1,11 @@
+{
+  "name": "nudge",
+  "description": "Waits for a nudge from the player, then finishes.",
+  "steps": [
+    { "op": "emit", "text": "Waiting for a hint." },
+    { "op": "hang", "until": "nudge" },
+    { "op": "write_file", "path": "nudged.txt", "content": "nudged\n" },
+    { "op": "usage", "cost_mana": 1 },
+    { "op": "end", "summary": "Finished after a nudge." }
+  ]
+}

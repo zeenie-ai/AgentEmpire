@@ -1,0 +1,11 @@
+{
+  "name": "long",
+  "description": "Works for a while (a sleep on the injectable clock), then makes one edit.",
+  "steps": [
+    { "op": "emit", "text": "Settling in for a long think." },
+    { "op": "sleep", "ms": 31000 },
+    { "op": "write_file", "path": "long-work.md", "content": "The result of a long think.\n" },
+    { "op": "usage", "cost_mana": 5 },
+    { "op": "end", "summary": "Wrote long-work.md." }
+  ]
+}

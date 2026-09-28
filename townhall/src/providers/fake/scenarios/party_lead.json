@@ -1,0 +1,19 @@
+{
+  "name": "party_lead",
+  "description": "A party lead delegates one sub-task, waits for it, then finishes its own part.",
+  "steps": [
+    { "op": "emit", "text": "Splitting the work with the party." },
+    {
+      "op": "delegate",
+      "to": "member:0",
+      "title": "Write the helper",
+      "prompt": "[fake:party_member] Write the helper file",
+      "size": "S",
+      "budget_mana": 20,
+      "wait": true
+    },
+    { "op": "write_file", "path": "lead.txt", "content": "The lead's part.\n" },
+    { "op": "usage", "cost_mana": 10 },
+    { "op": "end", "summary": "Combined the party's work." }
+  ]
+}

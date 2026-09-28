@@ -1,0 +1,31 @@
+{
+  "name": "full_loop",
+  "description": "An edit, a shell-command approval, 60 Mana of usage in total, then done.",
+  "steps": [
+    { "op": "emit", "text": "Planning the change." },
+    { "op": "write_file", "path": "src/greeting.txt", "content": "Hello from Aurelhaven.\n" },
+    { "op": "usage", "cost_mana": 30, "input_tokens": 12000, "output_tokens": 800 },
+    {
+      "op": "approval",
+      "expect": {
+        "tool": "Bash",
+        "category": "command",
+        "input": { "command": "npm test" },
+        "reason": "Run the tests before finishing"
+      },
+      "onAllow": [
+        { "op": "tool_start", "tool": "Bash", "input": { "command": "npm test" }, "text": "Run: npm test" },
+        { "op": "tool_end", "tool": "Bash", "text": "Tests passed" }
+      ],
+      "onDeny": [{ "op": "emit", "text": "Skipping the tests." }]
+    },
+    { "op": "usage", "cost_mana": 30, "input_tokens": 9000, "output_tokens": 600 },
+    { "op": "end", "summary": "Added src/greeting.txt and ran the tests." }
+  ],
+  "followup": [
+    { "op": "emit", "text": "Reworking the greeting after feedback." },
+    { "op": "write_file", "path": "src/greeting.txt", "content": "Hello again from Aurelhaven.\n{feedback}\n" },
+    { "op": "usage", "cost_mana": 10 },
+    { "op": "end", "summary": "Reworked src/greeting.txt." }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "crash",
+  "description": "The agent process dies (a transient error that opens a rift).",
+  "steps": [
+    { "op": "emit", "text": "About to fall over." },
+    { "op": "fail", "code": "crash", "message": "the agent process exited", "transient": true }
+  ]
+}
