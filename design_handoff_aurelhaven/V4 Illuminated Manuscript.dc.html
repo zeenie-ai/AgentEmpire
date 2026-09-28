@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=UnifrakturMaguntia&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#3a2417;color:#2a1d14}a{color:#8f3b25}a:hover{color:#b5532f}</style>
+</helmet>
+<div style="max-width:1320px;margin:0 auto;padding:40px 24px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);background:#f3e8cf;box-shadow:0 40px 120px rgba(0,0,0,.5), inset 0 0 0 14px #f3e8cf, inset 0 0 0 16px #b08a4a">
+  <div style="padding:40px 56px 40px 48px;border-right:1px solid rgba(60,40,20,.2)">
+    <div style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.3em;color:#8f3b25">LIBER AURELHAVEN · THE CHRONICLE OF RINGS</div>
+    <sc-for list="{{ chapters }}" as="c" hint-placeholder-count="5">
+      <section id="{{ c.id }}" style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;gap:16px">
+        <div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.24em;color:#7a5536">CAPITULUM {{ c.num }} · {{ c.years }}</div>
+        <h2 style="margin:0;font:500 46px/1.05 'EB Garamond',serif">{{ c.title }}</h2>
+        <p style="margin:0;font:400 20px/1.65 'EB Garamond',serif;text-wrap:pretty"><span style="float:left;font:400 84px/.8 UnifrakturMaguntia,serif;color:#8f3b25;margin:8px 12px 0 0;padding:6px 8px;background:#e7d3a6;border:1px solid #b08a4a">{{ c.cap }}</span>{{ c.body }}</p>
+        <div style="font:italic 400 17px/1.4 'EB Garamond',serif;color:#8f3b25">{{ c.gloss }}</div>
+      </section>
+    </sc-for>
+  </div>
+  <div style="position:relative">
+    <div style="position:sticky;top:40px;height:calc(100vh - 80px);padding:20px 40px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+      <div style="flex:1;border-radius:50% 50% 4px 4px / 28% 28% 4px 4px;overflow:hidden;border:3px solid #b08a4a;outline:1px solid #8f3b25;outline-offset:6px;background:#cdbb9a">
+        <canvas ref="{{ canvasRef }}" style="width:100%;height:100%;display:block"></canvas>
+      </div>
+      <div style="text-align:center;font:italic 400 16px/1.3 'EB Garamond',serif;color:#5b4230">Plate {{ plate }}. The city as it stood in its {{ plateName }}.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const CH = [
+  { num: 'I', years: 'Y.0', title: 'Of the Founding Stone', cap: 'I', body: 'n the first year the Font opened and a stranger stepped out of it. He was dressed in the black wool of a far country. He laid one ring of stone, and the keep of Kingsward rose from it.', gloss: '— the Keep Ring, 1,200 souls' },
+  { num: 'II', years: 'Y.60', title: 'Of the Market Wall', cap: 'M', body: 'erchants came up the Auren with salt and glass. Guild-mages floated stones through the air and set them down as houses. The sky over the river was grey with building for sixty years.', gloss: '— the Merchant Ring, 14,000 souls' },
+  { num: 'III', years: 'Y.180', title: 'Of the Guild Ring', cap: 'T', body: 'he guilds bought towers with gold and sword-work. Each hung its banner from a tower of its own. The receptionists of the Adventurers’ Guild were already known for their patience.', gloss: '— the Guild Ring, 61,000 souls' },
+  { num: 'IV', years: 'Y.300', title: 'Of the Great Curtain', cap: 'A', body: 'fter the siege of the Demon Lord the realm raised the curtain wall: twenty-two towers and seven gates. The city has not grown beyond it since.', gloss: '— the Curtain Ring, 240,000 souls' },
+  { num: 'V', years: 'Y.412', title: 'Of the Lantern Hours', cap: 'N', body: 'ow, when the curfew bell rings, ten thousand lanterns are lit and the sky-isles drift down to watch. The chronicler can only record that it is beautiful.', gloss: '— the present age' },
+].map((c, i) => ({ ...c, id: 'ch' + i }));
+class Component extends DCLogic {
+  state = { s: 0 };
+  canvasRef = React.createRef();
+  componentDidMount() {
+    import('./city-scene.js').then(m => {
+      if (!this.canvasRef.current) return;
+      this.scene = m.mount(this.canvasRef.current, { islands: 4,
+        kf: [{ s: 0, r: 44, y: 26, a: 0.4 }, { s: 4.6, r: 34, y: 16, a: 2.6 }, { s: 7.5, r: 26, y: 7, a: 4.2 }, { s: 9, r: 26, y: 7, a: 4.4 }] });
+    });
+    this.onScroll = () => {
+      const t = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);
+      const s = t * 7.6; this.scene && this.scene.setScroll(s); this.setState({ s });
+    };
+    addEventListener('scroll', this.onScroll, { passive: true });
+  }
+  componentWillUnmount() { removeEventListener('scroll', this.onScroll); this.scene && this.scene.dispose(); }
+  renderVals() {
+    const i = Math.min(4, Math.floor(this.state.s / 1.55));
+    return { canvasRef: this.canvasRef, chapters: CH, plate: CH[i].num, plateName: ['founding', 'market age', 'guild age', 'curtain age', 'lantern hours'][i] };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,500;0,600;1,500&family=Spectral:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0d1230;color:#2a1d14;font-family:Spectral,Georgia,serif}a{color:#b5532f}a:hover{color:#d9a441}</style>
+</helmet>
+<canvas ref="{{ canvasRef }}" style="position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0"></canvas>
+<div style="position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at center, transparent 55%, rgba(20,10,5,.45) 100%)"></div>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 32px;color:#f7ecd8">
+  <div style="display:flex;align-items:baseline;gap:12px">
+    <span style="font:600 26px/1 Cormorant,serif;letter-spacing:.06em">AURELHAVEN</span>
+    <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.2em;opacity:.85">THE RINGED CODEX</span>
+  </div>
+  <nav style="display:flex;gap:22px;font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.14em;pointer-events:auto">
+    <sc-for list="{{ stops }}" as="st" hint-placeholder-count="6">
+      <a href="#{{ st.id }}" onClick="{{ st.go }}" style="color:#f7ecd8;text-decoration:none;opacity:{{ st.op }}">{{ st.short }}</a>
+    </sc-for>
+  </nav>
+</header>
+
+<main style="position:relative;z-index:2">
+  <section id="hero" style="height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 6vw 16vh;color:#fff8ea;background:linear-gradient(to top, rgba(40,18,8,.55), transparent 50%)">
+    <div style="font:500 12px/1 'JetBrains Mono',monospace;letter-spacing:.3em;margin-bottom:18px">YEAR 412 OF THE OTHERWORLD RECKONING</div>
+    <h1 style="margin:0;font:500 clamp(64px,11vw,176px)/.88 Cormorant,serif;letter-spacing:-.01em;text-shadow:0 4px 40px rgba(60,20,0,.5)">Aurelhaven</h1>
+    <p style="max-width:520px;margin:22px 0 0;font:400 19px/1.55 Spectral,serif;text-wrap:pretty">The capital of four walls. Every otherworlder arrives at the Summoning Font in its keep. Scroll down to watch the city build itself, one era at a time.</p>
+  </section>
+
+  <sc-for list="{{ eras }}" as="era" hint-placeholder-count="4">
+    <section id="{{ era.id }}" style="height:100vh;display:flex;align-items:center;padding:0 6vw">
+      <article style="max-width:420px;background:rgba(247,236,216,.94);padding:36px 36px 32px;border-radius:2px;box-shadow:0 30px 80px rgba(40,20,5,.35)">
+        <div style="display:flex;justify-content:space-between;font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#8a5a3a">
+          <span>ERA {{ era.num }}</span><span>{{ era.years }}</span>
+        </div>
+        <h2 style="margin:18px 0 12px;font:600 44px/1 Cormorant,serif;color:#2a1d14">{{ era.title }}</h2>
+        <p style="margin:0;font:400 17px/1.6 Spectral,serif;color:#3b2a1e;text-wrap:pretty">{{ era.body }}</p>
+        <div style="margin-top:22px;padding-top:16px;border-top:1px solid rgba(42,29,20,.18);display:flex;gap:28px;font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;color:#5b4230">
+          <div><div style="opacity:.7">WALL</div><div style="font-size:15px;color:#2a1d14">{{ era.wall }}</div></div>
+          <div><div style="opacity:.7">SOULS</div><div style="font-size:15px;color:#2a1d14">{{ era.pop }}</div></div>
+        </div>
+      </article>
+    </section>
+  </sc-for>
+
+  <section id="districts" style="height:210vh;position:relative">
+    <div style="position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:space-between;gap:32px;padding:80px 4vw 100px;box-sizing:border-box;pointer-events:none">
+      <div style="width:300px;display:flex;flex-direction:column;gap:6px;pointer-events:auto">
+        <div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.24em;color:#fff3dc;margin-bottom:10px;text-shadow:0 1px 8px rgba(0,0,0,.6)">DISTRICTS OF THE CROWN</div>
+        <sc-for list="{{ districts }}" as="d" hint-placeholder-count="6">
+          <button onClick="{{ d.pick }}" onMouseEnter="{{ d.enter }}" onMouseLeave="{{ d.leave }}" style="display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer;border:0;padding:12px 14px;border-radius:2px;background:{{ d.bg }};color:{{ d.fg }};font:600 20px/1.1 Cormorant,serif;transition:background .2s" style-hover="background:rgba(247,236,216,.98);color:#2a1d14">
+            <span style="font:500 10px/1 'JetBrains Mono',monospace;opacity:.7">{{ d.num }}</span>{{ d.name }}
+          </button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+        <aside style="width:360px;background:rgba(247,236,216,.96);padding:30px;border-radius:2px;box-shadow:0 30px 80px rgba(20,10,0,.4);pointer-events:auto">
+          <div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#8a5a3a">CODEX · {{ sel.num }} · RING {{ sel.ringName }}</div>
+          <h3 style="margin:14px 0 10px;font:600 38px/1 Cormorant,serif;color:#2a1d14">{{ sel.name }}</h3>
+          <p style="margin:0 0 18px;font:italic 500 18px/1.4 Cormorant,serif;color:#8f3b25">{{ sel.motto }}</p>
+          <p style="margin:0;font:400 16px/1.6 Spectral,serif;color:#3b2a1e;text-wrap:pretty">{{ sel.body }}</p>
+          <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.08em;color:#5b4230">
+            <div><div style="opacity:.7">FOUNDED</div><div style="font-size:14px;color:#2a1d14">{{ sel.founded }}</div></div>
+            <div><div style="opacity:.7">KNOWN FOR</div><div style="font-size:14px;color:#2a1d14">{{ sel.known }}</div></div>
+          </div>
+        </aside>
+      </sc-if>
+    </div>
+  </section>
+
+  <section id="night" style="height:130vh;display:flex;align-items:center;justify-content:center;text-align:center;color:#eef2ff;padding:0 6vw">
+    <div style="max-width:620px">
+      <div style="font:500 12px/1 'JetBrains Mono',monospace;letter-spacing:.3em;color:#a9f0d0">THE LANTERN HOURS</div>
+      <h2 style="margin:18px 0 16px;font:500 clamp(48px,7vw,104px)/.95 Cormorant,serif;text-shadow:0 0 40px rgba(120,220,255,.35)">When the walls light up</h2>
+      <p style="margin:0;font:400 18px/1.6 Spectral,serif;color:#dfe5ff;text-wrap:pretty">After the curfew bell the Lantern Market opens, the sky-islands drift lower, and the aurora over the northern gate turns the colour of mana.</p>
+    </div>
+  </section>
+</main>
+
+<div style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:0;padding:10px 18px;border-radius:999px;background:rgba(20,12,6,.55);backdrop-filter:blur(10px);color:#f7ecd8">
+  <sc-for list="{{ stops }}" as="st" hint-placeholder-count="6">
+    <button onClick="{{ st.go }}" title="{{ st.label }}" style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:64px;border:0;background:none;cursor:pointer;color:#f7ecd8;padding:2px 6px">
+      <span style="width:10px;height:10px;border-radius:50%;border:1.5px solid #d9a441;background:{{ st.dot }}"></span>
+      <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.12em;opacity:{{ st.op }}">{{ st.short }}</span>
+    </button>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const ERAS = [
+  { id: 'era1', num: 'I', years: 'Y.0 – 60', title: 'The Founding Stone', wall: 'Keep Ring', pop: '1,200', body: 'The first summoned hero put a keep around the Font and gave it a ring of stone. Everything else in the city grew out from that ring.' },
+  { id: 'era2', num: 'II', years: 'Y.60 – 180', title: 'The Market Wall', wall: 'Merchant Ring', pop: '14,000', body: 'Trade followed the river. Merchants paid for a second wall, and houses were raised by guild-mages who floated the stones into place.' },
+  { id: 'era3', num: 'III', years: 'Y.180 – 300', title: 'The Guild Ring', wall: 'Guild Ring', pop: '61,000', body: 'Adventurers, tanners and alchemists took the third ring. Each guild hall bought the right to fly its banner from one tower.' },
+  { id: 'era4', num: 'IV', years: 'Y.300 – 412', title: 'The Great Curtain', wall: 'Curtain Ring', pop: '240,000', body: 'After the Demon Lord’s siege the realm built the outer curtain: twenty-two towers and seven gates. The city has not grown past it since.' },
+];
+const DIST = [
+  { name: 'Kingsward', ringName: 'I', motto: '“Where the world was opened.”', founded: 'Year 0', known: 'Summoning Font', body: 'The keep and the Font. Newly arrived otherworlders are given a name, a status plate, and a hot meal before they reach the gatehouse.' },
+  { name: 'Lantern Market', ringName: 'II', motto: '“Open after the curfew bell.”', founded: 'Year 64', known: 'Night bazaar', body: 'A night market lit by ten thousand lanterns. Glass-spice from the south, dragon pepper, and a single stall that claims to sell ramen.' },
+  { name: 'Millbrook Quay', ringName: 'II', motto: '“The river pays the rent.”', founded: 'Year 91', known: 'Water mills', body: 'Waterwheels and barge docks where the river runs through the second wall. The Quay’s taverns are the best place to hear rumours.' },
+  { name: 'Guildhall Row', ringName: 'III', motto: '“Rank F to Rank S.”', founded: 'Year 188', known: 'Adventurers’ Guild', body: 'The quest boards, the rank examiners, and the Guild’s famously patient receptionists. Every road in the third ring leads here eventually.' },
+  { name: 'Chapel Rise', ringName: 'III', motto: '“Bells for every hour.”', founded: 'Year 230', known: 'Temple of the Seven', body: 'A hill of chapels and bell towers. Healers train here, and the Saintess gives her blessing from the high steps at midsummer.' },
+  { name: 'Wayfarers’ Gate', ringName: 'IV', motto: '“All roads, one gate.”', founded: 'Year 318', known: 'Caravanserai', body: 'The busiest of the seven gates. Caravans, inns, and stables sit in the curtain’s shadow, and toll-knights check papers at the arch.' },
+];
+const STOPS = [
+  { id: 'hero', short: 'DAWN', label: 'Dawn flyover', at: 0 },
+  { id: 'era1', short: 'I', label: 'Era I', at: 1 },
+  { id: 'era2', short: 'II', label: 'Era II', at: 2 },
+  { id: 'era3', short: 'III', label: 'Era III', at: 3 },
+  { id: 'era4', short: 'IV', label: 'Era IV', at: 4 },
+  { id: 'districts', short: 'MAP', label: 'District map', at: 5 },
+  { id: 'night', short: 'NIGHT', label: 'Lantern hours', at: 7.2 },
+];
+class Component extends DCLogic {
+  state = { s: 0, sel: 0, hover: -1 };
+  canvasRef = React.createRef();
+  componentDidMount() {
+    import('./city-scene.js').then(m => {
+      if (!this.canvasRef.current) return;
+      this.scene = m.mount(this.canvasRef.current);
+      this.scene.setScroll(this.state.s);
+      this.syncHl();
+    });
+    this.onScroll = () => {
+      if (this.raf) return;
+      this.raf = requestAnimationFrame(() => {
+        this.raf = 0;
+        const s = scrollY / innerHeight;
+        this.scene && this.scene.setScroll(s);
+        this.setState({ s }, () => this.syncHl());
+      });
+    };
+    addEventListener('scroll', this.onScroll, { passive: true });
+    this.onScroll();
+  }
+  componentWillUnmount() { removeEventListener('scroll', this.onScroll); this.scene && this.scene.dispose(); }
+  syncHl() {
+    if (!this.scene) return;
+    const inMap = this.state.s > 4.9 && this.state.s < 6.9;
+    this.scene.highlight(inMap ? (this.state.hover >= 0 ? this.state.hover : this.state.sel) : -1);
+  }
+  go(id) { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.offsetTop, behavior: 'smooth' }); }
+  renderVals() {
+    const { s, sel, hover } = this.state;
+    const idx = STOPS.reduce((acc, st, i) => (s >= st.at - 0.5 ? i : acc), 0);
+    const active = hover >= 0 ? hover : sel;
+    return {
+      canvasRef: this.canvasRef,
+      eras: ERAS,
+      stops: STOPS.map((st, i) => ({ ...st, op: i === idx ? 1 : 0.55, dot: i <= idx ? '#d9a441' : 'transparent', go: e => { e && e.preventDefault(); this.go(st.id); } })),
+      districts: DIST.map((d, i) => ({
+        ...d, num: String(i + 1).padStart(2, '0'),
+        bg: i === active ? 'rgba(247,236,216,.98)' : 'rgba(20,12,6,.55)',
+        fg: i === active ? '#2a1d14' : '#f7ecd8',
+        pick: () => this.setState({ sel: i }, () => this.syncHl()),
+        enter: () => this.setState({ hover: i }, () => this.syncHl()),
+        leave: () => this.setState({ hover: -1 }, () => this.syncHl()),
+      })),
+      hasSel: true,
+      sel: { ...DIST[active], num: String(active + 1).padStart(2, '0') },
+    };
+  }
+}
+</script>
+</body>
+</html>

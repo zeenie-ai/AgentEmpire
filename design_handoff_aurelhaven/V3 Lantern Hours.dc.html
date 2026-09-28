@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,500;1,500&family=Spectral:wght@400&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0d1230;color:#eef2ff}a{color:#a9f0d0}a:hover{color:#ffd27a}</style>
+</helmet>
+<canvas ref="{{ canvasRef }}" style="position:fixed;inset:0;width:100vw;height:100vh;display:block"></canvas>
+<div style="position:fixed;inset:0;pointer-events:none;background:linear-gradient(to bottom, rgba(8,10,30,.7), transparent 30%, transparent 55%, rgba(8,10,30,.9))"></div>
+<div style="position:fixed;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:48px 5vw 36px;pointer-events:none">
+  <div style="text-align:center">
+    <div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.34em;color:#a9f0d0">AURELHAVEN · AFTER THE CURFEW BELL</div>
+    <h1 style="margin:16px 0 0;font:italic 500 clamp(56px,9vw,140px)/.9 Cormorant,serif;text-shadow:0 0 60px rgba(140,220,255,.4)">The Lantern Hours</h1>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:22px;pointer-events:auto">
+    <div style="display:flex;align-items:center;gap:18px;max-width:560px;width:100%;margin:0 auto;padding:14px 22px;border-radius:999px;background:rgba(10,14,40,.6);backdrop-filter:blur(10px);border:1px solid rgba(169,240,208,.25)">
+      <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#a9f0d0">ERA {{ eraName }}</span>
+      <input type="range" min="0" max="4" step="0.01" value="{{ era }}" onInput="{{ onEra }}" style="flex:1;accent-color:#ffd27a"></input>
+      <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.14em;min-width:74px;text-align:right">{{ pop }}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+      <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
+        <div style="padding:18px 20px;background:rgba(14,18,48,.72);border:1px solid rgba(255,210,122,.22);border-radius:3px;backdrop-filter:blur(8px)" style-hover="border-color:#ffd27a;background:rgba(24,28,64,.85)">
+          <div style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#ffd27a">{{ c.hour }}</div>
+          <div style="margin:10px 0 6px;font:500 26px/1 Cormorant,serif">{{ c.name }}</div>
+          <div style="font:400 14px/1.5 Spectral,serif;color:#cfd6f5">{{ c.body }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+<div style="height:300vh"></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const CARDS = [
+  { hour: '9TH BELL', name: 'Lantern Market', body: 'Stalls open when the market wall lights up. Mana-candles are three copper each.' },
+  { hour: '10TH BELL', name: 'The Drowned Kettle', body: 'Bards, the adventurers who lost at dice, and one otherworlder writing down recipes.' },
+  { hour: '11TH BELL', name: 'Chapel Rise', body: 'Night vigil at the Temple of the Seven. The bells go quiet and the aurora gets brighter.' },
+  { hour: 'MIDNIGHT', name: 'Drifting Isles', body: 'The sky-islands come down low enough that you can hear the goats up there.' },
+];
+const POP = ['1,200', '14,000', '61,000', '240,000', '240,000'];
+class Component extends DCLogic {
+  state = { era: 4 };
+  canvasRef = React.createRef();
+  componentDidMount() {
+    import('./city-scene.js').then(m => {
+      if (!this.canvasRef.current) return;
+      this.scene = m.mount(this.canvasRef.current, { nightFixed: 1, era: this.state.era, islands: 8, lookY: 3,
+        kf: [{ s: 0, r: 34, y: 14, a: 1 }, { s: 1, r: 26, y: 7, a: 2.2 }, { s: 2, r: 20, y: 4, a: 3.4 }, { s: 3, r: 20, y: 4, a: 3.5 }] });
+    });
+    this.onScroll = () => this.scene && this.scene.setScroll(scrollY / innerHeight);
+    addEventListener('scroll', this.onScroll, { passive: true });
+  }
+  componentWillUnmount() { removeEventListener('scroll', this.onScroll); this.scene && this.scene.dispose(); }
+  renderVals() {
+    const e = this.state.era;
+    return {
+      canvasRef: this.canvasRef, era: e, cards: CARDS,
+      eraName: ['I', 'II', 'III', 'IV', 'IV'][Math.floor(e)],
+      pop: POP[Math.floor(e)] + ' souls',
+      onEra: ev => { const v = +ev.target.value; this.setState({ era: v }); this.scene && this.scene.setEra(v); },
+    };
+  }
+}
+</script>
+</body>
+</html>

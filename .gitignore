@@ -1,0 +1,21 @@
+# Local tools (Godot editor, export templates) and build output
+.tools/
+out/
+*.log
+
+# Node
+node_modules/
+townhall/dist/
+
+# Godot
+client/.godot/
+client/export/
+
+# Town Hall runtime data and secrets
+townhall/data/
+.env
+runtime.json
+
+# OS
+.DS_Store
+Thumbs.db

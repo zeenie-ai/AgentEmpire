@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:wght@400&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#1b140e;color:#f3e6c8;overflow:hidden}a{color:#e0b560}a:hover{color:#fff}</style>
+</helmet>
+<canvas ref="{{ canvasRef }}" style="position:fixed;inset:0;width:100vw;height:100vh;display:block"></canvas>
+<div style="position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:12px 24px;background:linear-gradient(#1b140e,rgba(27,20,14,.75));border-bottom:1px solid #6b5230">
+  <span style="font:700 18px/1 Cinzel,serif;letter-spacing:.14em;color:#e0b560">AURELHAVEN</span>
+  <div style="display:flex;gap:26px;font:500 12px/1 'JetBrains Mono',monospace;letter-spacing:.08em">
+    <sc-for list="{{ res }}" as="r" hint-placeholder-count="4">
+      <span style="display:flex;gap:8px"><span style="color:#b99a6a">{{ r.k }}</span>{{ r.v }}</span>
+    </sc-for>
+  </div>
+</div>
+<aside style="position:fixed;left:20px;top:72px;width:260px;padding:18px;background:rgba(27,20,14,.88);border:1px solid #6b5230;display:flex;flex-direction:column;gap:8px">
+  <div style="font:700 12px/1 Cinzel,serif;letter-spacing:.2em;color:#e0b560;margin-bottom:6px">ERA TREE</div>
+  <sc-for list="{{ eras }}" as="e" hint-placeholder-count="4">
+    <button onClick="{{ e.go }}" style="display:flex;gap:12px;align-items:center;text-align:left;cursor:pointer;padding:10px 12px;border:1px solid {{ e.border }};background:{{ e.bg }};color:#f3e6c8">
+      <span style="width:32px;height:32px;flex:none;display:grid;place-items:center;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);background:{{ e.hex }};color:#1b140e;font:700 13px/1 Cinzel,serif">{{ e.num }}</span>
+      <span style="display:flex;flex-direction:column;gap:4px"><span style="font:500 15px/1 Cinzel,serif">{{ e.title }}</span><span style="font:400 12px/1.3 Spectral,serif;color:#cdb892">{{ e.unlock }}</span></span>
+    </button>
+  </sc-for>
+</aside>
+<div style="position:fixed;right:20px;bottom:20px;width:320px;padding:20px;background:rgba(27,20,14,.9);border:1px solid #6b5230;display:flex;flex-direction:column;gap:12px">
+  <div style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#b99a6a">CURRENT ERA</div>
+  <div style="font:700 26px/1 Cinzel,serif">{{ cur.title }}</div>
+  <div style="font:400 15px/1.5 Spectral,serif;color:#e6d6b4">{{ cur.body }}</div>
+  <button onClick="{{ next }}" style="margin-top:4px;padding:14px;border:1px solid #e0b560;background:#8f3b25;color:#fff3dc;font:700 14px/1 Cinzel,serif;letter-spacing:.16em;cursor:pointer" style-hover="background:#a8472b">{{ nextLabel }}</button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const ERAS = [
+  { num: 'I', title: 'Founding', unlock: 'Keep · Summoning Font', body: 'One keep and the Font it guards. Otherworlders arrive here.', gold: 40, mana: 120, pop: '1.2k' },
+  { num: 'II', title: 'Mercantile', unlock: 'Market Wall · River Mills', body: 'The river trade pays for a second ring, and stone-floating guild-mages build the houses.', gold: 380, mana: 90, pop: '14k' },
+  { num: 'III', title: 'Guilds', unlock: 'Adventurers’ Guild · Temple', body: 'Guild towers go up in the third ring and quest boards fill the squares.', gold: 1240, mana: 160, pop: '61k' },
+  { num: 'IV', title: 'Curtain', unlock: 'Great Curtain · 7 Gates', body: 'Twenty-two towers finish the outer wall. The Demon Lord will not get in a second time.', gold: 4100, mana: 300, pop: '240k' },
+];
+class Component extends DCLogic {
+  state = { era: 1, target: 1 };
+  canvasRef = React.createRef();
+  componentDidMount() {
+    import('./city-scene.js').then(m => {
+      if (!this.canvasRef.current) return;
+      this.scene = m.mount(this.canvasRef.current, { hex: true, era: 0, nightFixed: 0, islands: 3, lookY: 0,
+        kf: [{ s: 0, r: 46, y: 44, a: 0.8 }, { s: 1, r: 46, y: 44, a: 0.8 }] });
+      this.anim(1);
+    });
+  }
+  componentWillUnmount() { cancelAnimationFrame(this.raf); this.scene && this.scene.dispose(); }
+  anim(to) {
+    cancelAnimationFrame(this.raf);
+    const from = this.cur ?? 0, t0 = performance.now(), d = 2200;
+    this.setState({ target: to });
+    const step = now => {
+      const k = Math.min(1, (now - t0) / d), v = from + (to - from) * (1 - Math.pow(1 - k, 3));
+      this.cur = v; this.scene && this.scene.setEra(v);
+      if (k < 1) this.raf = requestAnimationFrame(step); else this.setState({ era: to });
+    };
+    this.raf = requestAnimationFrame(step);
+  }
+  renderVals() {
+    const t = this.state.target, c = ERAS[Math.max(0, t - 1)];
+    return {
+      canvasRef: this.canvasRef,
+      res: [{ k: 'ERA', v: c.num }, { k: 'SOULS', v: c.pop }, { k: 'GOLD', v: c.gold }, { k: 'MANA', v: c.mana }],
+      eras: ERAS.map((e, i) => ({ ...e, go: () => this.anim(i + 1), bg: i + 1 === t ? 'rgba(143,59,37,.45)' : 'transparent', border: i + 1 === t ? '#e0b560' : 'rgba(107,82,48,.6)', hex: i + 1 <= t ? '#e0b560' : '#6b5230' })),
+      cur: c,
+      nextLabel: t < 4 ? 'ADVANCE TO ERA ' + ERAS[t].num : 'REPLAY FROM FOUNDING',
+      next: () => this.anim(t < 4 ? t + 1 : 1),
+    };
+  }
+}
+</script>
+</body>
+</html>

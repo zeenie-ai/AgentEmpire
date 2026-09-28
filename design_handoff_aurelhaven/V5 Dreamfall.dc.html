@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Spectral:ital,wght@0,400;1,400&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#2a1b4a;color:#fff}a{color:#ffe1f0}a:hover{color:#fff}</style>
+</helmet>
+<canvas ref="{{ canvasRef }}" style="position:fixed;inset:0;width:100vw;height:100vh;display:block"></canvas>
+<div style="position:fixed;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden">
+  <div style="font:400 clamp(120px,22vw,380px)/.8 Italiana,serif;letter-spacing:-.02em;color:#fff;mix-blend-mode:overlay;white-space:nowrap;transform:translateY({{ drift }}px)">Aurelhaven</div>
+</div>
+<main style="position:relative;z-index:2">
+  <sc-for list="{{ beats }}" as="b" hint-placeholder-count="5">
+    <section style="height:100vh;display:flex;align-items:{{ b.align }};justify-content:{{ b.justify }};padding:10vh 7vw;box-sizing:border-box">
+      <div style="max-width:380px;display:flex;flex-direction:column;gap:12px;text-shadow:0 2px 20px rgba(40,10,60,.55)">
+        <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.3em">{{ b.tag }}</span>
+        <span style="font:400 48px/1 Italiana,serif">{{ b.title }}</span>
+        <span style="font:italic 400 19px/1.5 Spectral,serif;text-wrap:pretty">{{ b.body }}</span>
+      </div>
+    </section>
+  </sc-for>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const BEATS = [
+  { tag: 'YOU WAKE UP LYING ON STONE', title: 'The stones are still falling', body: 'Above you, the city hasn’t landed yet. Houses turn slowly in the pink air.', align: 'flex-end', justify: 'flex-start' },
+  { tag: 'ERA I', title: 'The keep lands first', body: 'Then the Font, and then the first ring settles into the grass with a sound like a bell.', align: 'flex-start', justify: 'flex-end' },
+  { tag: 'ERA II · III', title: 'Streets come down like rain', body: 'Red roofs, blue slates. A tavern lands with its fire already lit.', align: 'flex-end', justify: 'flex-end' },
+  { tag: 'ERA IV', title: 'The curtain closes', body: 'Seven gates lock into place. The islands above decide to stay where they are.', align: 'flex-start', justify: 'flex-start' },
+  { tag: 'DUSK, FOREVER', title: 'Welcome, otherworlder', body: 'Your status plate is waiting in Kingsward. The receptionist has been expecting you.', align: 'center', justify: 'center' },
+];
+class Component extends DCLogic {
+  state = { s: 0 };
+  canvasRef = React.createRef();
+  componentDidMount() {
+    import('./city-scene.js').then(m => {
+      if (!this.canvasRef.current) return;
+      this.scene = m.mount(this.canvasRef.current, {
+        day: '#e8b9d0', night: '#2a1b4a', ground: '#9fb08a', roofs: ['#4f8f9c', '#8e6bb8', '#c77a9a', '#3f6f8a', '#e0a36b'], islands: 14, lookY: 8,
+        kf: [{ s: 0, r: 16, y: 1.5, a: 0.3 }, { s: 1.5, r: 26, y: 6, a: 1.4 }, { s: 3.5, r: 40, y: 20, a: 2.8 }, { s: 5, r: 48, y: 34, a: 4 }, { s: 6, r: 48, y: 34, a: 4.2 }],
+      });
+    });
+    this.onScroll = () => {
+      const s = scrollY / innerHeight;
+      if (this.scene) { this.scene.setScroll(s); this.scene.setEra(Math.max(0, Math.min(4, s * 1.05 - 0.2))); this.scene.setNight(Math.min(0.55, Math.max(0, (s - 3) * 0.4))); }
+      this.setState({ s });
+    };
+    addEventListener('scroll', this.onScroll, { passive: true });
+    setTimeout(this.onScroll, 300);
+  }
+  componentWillUnmount() { removeEventListener('scroll', this.onScroll); this.scene && this.scene.dispose(); }
+  renderVals() { return { canvasRef: this.canvasRef, beats: BEATS, drift: Math.round(this.state.s * -60) }; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "notes": "Single source of truth for every cost, rate and threshold. Loaded by the Town Hall (validation, rewards, Mana) and the Godot client (UI, simulation). Times are seconds unless the key says otherwise. Mana is 1 per $0.01.",
+
+  "tick_rate": 20,
+
+  "map": {
+    "size": 128,
+    "ring_radii": [11, 22, 34, 48],
+    "gates_per_ring": [4, 6, 8, 7],
+    "home_plot": 7,
+    "home_footprint": [3, 3]
+  },
+
+  "start": {
+    "resources": { "food": 200, "wood": 200, "stone": 150, "gold": 100 },
+    "townsfolk": 3,
+    "age": 1
+  },
+
+  "resources": ["food", "wood", "stone", "gold"],
+
+  "storage": {
+    "capped": ["food", "wood"],
+    "cap_by_age": [800, 2000, 4000, 8000],
+    "storehouse_bonus": 300
+  },
+
+  "gather": {
+    "carry_base": 10,
+    "carry_per_age": 5,
+    "walk_tiles_per_s": { "townsfolk": 1.2, "agent": 1.0 },
+    "search_radius_tiles": 20,
+    "same_kind_retry_radius_tiles": 8,
+    "nodes": {
+      "berry_bush": { "resource": "food", "rate_per_s": 0.40, "amount": 150, "regrow_s": 480 },
+      "tree":       { "resource": "wood", "rate_per_s": 0.40, "amount": 100, "regrow_s": 900 },
+      "farm":       { "resource": "food", "rate_per_s": 0.30, "amount": -1 }
+    }
+  },
+
+  "population": {
+    "keep": 10,
+    "cottage": 5,
+    "cap_by_age": [25, 50, 75, 100],
+    "agent_limit_by_age": [2, 4, 6, 8],
+    "townsfolk_pop": 1,
+    "agent_pop": 2
+  },
+
+  "training_queue": { "max": 5 },
+
+  "units": {
+    "townsfolk": { "cost": { "food": 50 }, "train_s": 20, "age": 1 }
+  },
+
+  "agent_cost_scaling_per_existing": 0.20,
+
+  "sizes": {
+    "S":  { "name": "Errand" },
+    "M":  { "name": "Quest" },
+    "L":  { "name": "Expedition" },
+    "XL": { "name": "Campaign" }
+  },
+
+  "roles": {
+    "artificer": {
+      "name": "Artificer", "plain": "Coding", "age": 1,
+      "cost": { "food": 120, "gold": 60 }, "train_s": 40,
+      "home": "workshop",
+      "required_tools": ["lectern", "quillworks"],
+      "recommended_tools": ["forge", "archive"],
+      "default_tools": ["lectern", "quillworks", "forge"],
+      "reward_split": { "gold": 0.35, "stone": 0.35, "wood": 0.15, "food": 0.15 }
+    },
+    "scholar": {
+      "name": "Scholar", "plain": "Research", "age": 1,
+      "cost": { "food": 100, "gold": 60 }, "train_s": 40,
+      "home": "observatory",
+      "required_tools": ["lectern", "rookery"],
+      "recommended_tools": ["archive", "quillworks"],
+      "default_tools": ["lectern", "rookery", "archive"],
+      "reward_split": { "gold": 0.45, "stone": 0.15, "wood": 0.15, "food": 0.25 }
+    },
+    "scribe": {
+      "name": "Scribe", "plain": "Writing and docs", "age": 1,
+      "cost": { "food": 100, "gold": 40 }, "train_s": 35,
+      "home": "scriptorium",
+      "required_tools": ["lectern", "quillworks"],
+      "recommended_tools": ["archive", "rookery"],
+      "default_tools": ["lectern", "quillworks"],
+      "reward_split": { "gold": 0.40, "stone": 0.20, "wood": 0.20, "food": 0.20 }
+    },
+    "warden": {
+      "name": "Warden", "plain": "Review and testing", "age": 2,
+      "cost": { "food": 120, "gold": 80 }, "train_s": 45,
+      "home": "watchhouse",
+      "required_tools": ["lectern", "forge"],
+      "recommended_tools": ["archive", "quillworks"],
+      "default_tools": ["lectern", "forge"],
+      "reward_split": { "gold": 0.30, "stone": 0.40, "wood": 0.15, "food": 0.15 }
+    },
+    "herald": {
+      "name": "Herald", "plain": "Ops and automation", "age": 3,
+      "cost": { "food": 150, "gold": 120 }, "train_s": 50,
+      "home": "beacon_tower",
+      "required_tools": ["lectern", "forge", "waygate"],
+      "recommended_tools": ["archive"],
+      "default_tools": ["lectern", "forge", "waygate"],
+      "reward_split": { "gold": 0.40, "stone": 0.30, "wood": 0.15, "food": 0.15 }
+    }
+  },
+
+  "buildings": {
+    "keep":         { "name": "Keep", "plain": "Town Center", "footprint": [4, 4], "built_by": "none", "pop": 10, "dropoff": ["food", "wood"] },
+    "cottage":      { "name": "Cottage", "plain": "House (+5 population)", "footprint": [2, 2], "built_by": "townsfolk", "cost": { "wood": 30 }, "build_s": 25, "pop": 5, "age": 1 },
+    "farm":         { "name": "Farm", "plain": "Endless food", "footprint": [3, 3], "built_by": "townsfolk", "cost": { "wood": 40 }, "build_s": 15, "age": 1 },
+    "storehouse":   { "name": "Storehouse", "plain": "Drop-off and storage", "footprint": [2, 2], "built_by": "townsfolk", "cost": { "wood": 100 }, "build_s": 35, "dropoff": ["food", "wood"], "age": 1 },
+    "workshop":     { "name": "Workshop", "plain": "Artificer home", "footprint": [3, 3], "built_by": "agent", "cost": { "wood": 100, "stone": 60 }, "build_s": 45, "role": "artificer" },
+    "observatory":  { "name": "Observatory", "plain": "Scholar home", "footprint": [3, 3], "built_by": "agent", "cost": { "wood": 80, "stone": 80 }, "build_s": 45, "role": "scholar" },
+    "scriptorium":  { "name": "Scriptorium", "plain": "Scribe home", "footprint": [3, 3], "built_by": "agent", "cost": { "wood": 100, "stone": 40 }, "build_s": 40, "role": "scribe" },
+    "watchhouse":   { "name": "Watchhouse", "plain": "Warden home", "footprint": [3, 3], "built_by": "agent", "cost": { "wood": 80, "stone": 100 }, "build_s": 50, "role": "warden" },
+    "beacon_tower": { "name": "Beacon Tower", "plain": "Herald home", "footprint": [3, 3], "built_by": "agent", "cost": { "wood": 100, "stone": 120 }, "build_s": 55, "role": "herald" }
+  },
+
+  "construction": {
+    "builder_time_formula": "build_s * 3 / (builders + 2)"
+  },
+
+  "tools": {
+    "lectern": {
+      "name": "Lectern", "plain": "Read files", "footprint": [1, 1],
+      "cost": { "wood": 25 }, "build_s": 12, "age": 1, "requires": [],
+      "claude": { "tools": ["Read", "Glob", "Grep"] },
+      "codex": { "sandbox": "read-only" }
+    },
+    "quillworks": {
+      "name": "Quillworks", "plain": "Write and edit files", "footprint": [1, 1],
+      "cost": { "wood": 50, "stone": 30 }, "build_s": 20, "age": 1, "requires": ["lectern"],
+      "claude": { "tools": ["Edit", "Write"] },
+      "codex": { "sandbox": "workspace-write" }
+    },
+    "forge": {
+      "name": "Forge", "plain": "Run shell commands", "footprint": [2, 1],
+      "cost": { "wood": 60, "stone": 60, "gold": 30 }, "build_s": 30, "age": 1, "requires": ["lectern"],
+      "claude": { "tools": ["Bash"] },
+      "codex": { "commands": true }
+    },
+    "rookery": {
+      "name": "Rookery", "plain": "Web search and fetch", "footprint": [1, 1],
+      "cost": { "wood": 40, "gold": 40 }, "build_s": 20, "age": 1, "requires": [],
+      "claude": { "tools": ["WebSearch", "WebFetch"] },
+      "codex": { "web_search": "live" }
+    },
+    "archive": {
+      "name": "Archive", "plain": "Instructions and skills", "footprint": [1, 1],
+      "cost": { "wood": 60, "stone": 20 }, "build_s": 20, "age": 1, "requires": [],
+      "claude": { "charter": true },
+      "codex": { "charter": true }
+    },
+    "waygate": {
+      "name": "Waygate", "plain": "MCP server", "footprint": [2, 2],
+      "cost": { "stone": 80, "gold": 100 }, "build_s": 40, "age": 2, "requires": [],
+      "claude": { "mcp": true },
+      "codex": { "mcp": true }
+    }
+  },
+
+  "tool_slots_by_age": [4, 5, 6, 8],
+  "home_task_queue_by_age": [1, 3, 5, 5],
+
+  "approval_modes": {
+    "ask_every_time": { "name": "Ask Every Time", "plain": "Every action asks first", "age": 1, "min_rank": "F" },
+    "trusted_edits":  { "name": "Trusted Edits", "plain": "File edits inside the work folder are automatic; everything else asks", "age": 1, "min_rank": "F", "default": true },
+    "plan_first":     { "name": "Plan First", "plain": "Read-only until you approve the plan (Claude only)", "age": 1, "min_rank": "F", "providers": ["claude"] },
+    "free_hand":      { "name": "Free Hand", "plain": "Nothing asks inside the sandbox; network off", "age": 4, "min_rank": "B" }
+  },
+
+  "ages": [
+    { "n": 1, "id": "founding", "name": "Founding", "wall": "Keep Ring", "cost": {}, "research_s": 0, "milestones": {} },
+    { "n": 2, "id": "market", "name": "Market", "wall": "Merchant Ring",
+      "cost": { "food": 400, "wood": 300, "stone": 150, "gold": 100 }, "research_s": 90,
+      "milestones": { "accepted": 3, "tools_built": 2 } },
+    { "n": 3, "id": "guild", "name": "Guild", "wall": "Guild Ring",
+      "cost": { "food": 800, "wood": 600, "stone": 400, "gold": 400 }, "research_s": 150,
+      "milestones": { "accepted": 12, "accepted_first_try": 6, "agent_rank": { "rank": "D", "count": 1 }, "rites_passed": 1 } },
+    { "n": 4, "id": "curtain", "name": "Curtain", "wall": "Great Curtain",
+      "cost": { "food": 1500, "wood": 1000, "stone": 1000, "gold": 1000 }, "research_s": 240,
+      "milestones": { "accepted": 40, "accepted_first_try": 20, "party_tasks": 3, "agent_rank": { "rank": "C", "count": 2 }, "under_baseline": 5 } }
+  ],
+
+  "bounty": {
+    "formula": "RP = min(BASE * (1 + Q + E + P) * D, CEIL)",
+    "base_by_size": { "S": 60, "M": 180, "L": 450, "XL": 1000 },
+    "first_try_bonus_by_attempt": [0.50, 0.20, 0.0],
+    "efficiency": { "weight": 0.6, "max_ratio": 0.5 },
+    "baseline_seed_mana": { "S": 20, "M": 80, "L": 250, "XL": 700 },
+    "baseline_window": 20,
+    "practice_bonus": { "archive": 0.10, "recommended_tools": 0.10, "rite_passed": 0.10 },
+    "daily_full_count": { "S": 12, "M": 8, "L": 4, "XL": 2 },
+    "diminished_multiplier": 0.5,
+    "ceiling": { "min": 60, "per_mana": 20 },
+    "duplicate_window_h": 24,
+    "min_run_s": 30,
+    "party_split": { "lead": 0.40, "members": 0.60 },
+    "xp_per_rp": 1
+  },
+
+  "mana": {
+    "usd_per_mana": 0.01,
+    "micros_per_mana": 10000,
+    "default_pool_usd": 5.0,
+    "default_period": "day",
+    "refill_hour_local": 0,
+    "seal_by_size": { "S": 40, "M": 150, "L": 450, "XL": 1200 },
+    "start_min_fraction_of_seal": 0.25,
+    "min_reservation_usd": 0.05,
+    "seal_warning_fraction": 0.80,
+    "extend_fraction": 0.50,
+    "lights_out_fraction": 0.02,
+    "stages": { "dim": 0.25, "warning": 0.10 },
+    "kill_after_interrupt_s": 10
+  },
+
+  "ranks": [
+    { "rank": "F", "xp": 0,     "accepted": 0 },
+    { "rank": "E", "xp": 150,   "accepted": 2,   "unlocks": ["party_lead"] },
+    { "rank": "D", "xp": 600,   "accepted": 6,   "first_try_rate": 0.50 },
+    { "rank": "C", "xp": 1800,  "accepted": 15,  "first_try_rate": 0.60, "rites_passed": 2, "unlocks": ["command_allowlists"] },
+    { "rank": "B", "xp": 4500,  "accepted": 35,  "first_try_rate": 0.65, "median_mana_at_or_under_baseline": true, "unlocks": ["free_hand"] },
+    { "rank": "A", "xp": 10000, "accepted": 70,  "first_try_rate": 0.70, "party_tasks": 5, "unlocks": ["night_watch"] },
+    { "rank": "S", "xp": 22000, "accepted": 120, "first_try_rate": 0.75, "age": 4 }
+  ],
+  "rank_first_try_window": 20,
+
+  "levels": { "xp_for_level": "50 * L * (L - 1)", "max": 30 },
+
+  "parties": {
+    "unlock_age": 2,
+    "lead_min_rank": "E",
+    "size_by_age": [0, 3, 5, 7],
+    "lead_providers": ["claude"],
+    "max_open_subtasks": 4,
+    "max_total_subtasks": 8,
+    "await_timeout_max_s": 600
+  },
+
+  "incidents": {
+    "stuck_minutes_by_size": { "S": 3, "M": 5, "L": 8, "XL": 10 },
+    "stall_pause_minutes": 15,
+    "repeat_tool_calls": 6,
+    "approval_louder_after_s": 120,
+    "rift_auto_retry_after_s": 30,
+    "preparing_timeout_s": 60,
+    "transient_retries": 2
+  },
+
+  "couriers": {
+    "wisp_after_s": 20,
+    "force_deliver_after_s": 90
+  },
+
+  "anti_deadlock": {
+    "wanderer": { "when_townsfolk_at_most": 0, "when_food_below": 50, "every_s": 30, "until_townsfolk": 2 },
+    "fonts_grace": { "when_agents": 0, "free": ["agent", "home", "required_tools"] }
+  },
+
+  "quartermaster": {
+    "age": 1,
+    "sell_basic": { "give": 100, "get": 25, "give_from": ["food", "wood"], "get_to": ["stone", "gold"] },
+    "sell_precious": { "give": 25, "get": 50, "give_from": ["stone", "gold"], "get_to": ["food", "wood"] },
+    "worsen_per_trade": 0.05,
+    "recover_per_minute": 0.01
+  },
+
+  "refunds": { "cancel": 1.0, "dismantle": 0.5 }
+}
