@@ -21,8 +21,8 @@ func setup(id: int) -> void:
 	_phase = float(id % 13) * 0.5
 	var core := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = 0.13
-	sphere.height = 0.26
+	sphere.radius = 0.2
+	sphere.height = 0.4
 	core.mesh = sphere
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -35,7 +35,7 @@ func setup(id: int) -> void:
 	add_child(core)
 	_halo = MeshInstance3D.new()
 	var quad := QuadMesh.new()
-	quad.size = Vector2(1.1, 1.1)
+	quad.size = Vector2(2.0, 2.0)
 	_halo.mesh = quad
 	var halo_mat := Fx.sprite_material(WorldTextures.soft_dot(), true).duplicate() as StandardMaterial3D
 	halo_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
@@ -45,8 +45,8 @@ func setup(id: int) -> void:
 	add_child(_halo)
 	_light = OmniLight3D.new()
 	_light.light_color = COLOR
-	_light.omni_range = 3.0
-	_light.light_energy = 1.6
+	_light.omni_range = 4.0
+	_light.light_energy = 2.4
 	_light.shadow_enabled = false
 	add_child(_light)
 	var trail := Fx.wisp_trail()
@@ -65,4 +65,4 @@ func update_visual(wisp: Dictionary, alpha: float, time: float) -> void:
 		position = Vector3(p.x, FLY_HEIGHT + sin(t * 2.4) * 0.12, p.y)
 	var pulse := 1.0 + 0.12 * sin(time * 7.0 + _phase)
 	_halo.scale = Vector3.ONE * pulse
-	_light.light_energy = 1.4 + 0.4 * sin(time * 7.0 + _phase)
+	_light.light_energy = 2.2 + 0.6 * sin(time * 7.0 + _phase)

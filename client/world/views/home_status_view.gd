@@ -2,8 +2,9 @@ class_name HomeStatusView
 extends Node3D
 ## What an agent's home shows the player, readable from across the town:
 ## - a name plate (the agent's name, role and rank), tinted by what the agent is doing;
-## - a golden hand bell swinging over the roof while an approval waits (blue once a Mana seal
-##   ran out), since approvals are what the player must answer;
+## - a signal post beside the entrance: its hand bell swings and glows and a banner is raised
+##   while an approval waits (blue once a Mana seal ran out), since approvals are what the
+##   player must answer;
 ## - a chest glowing at the door when a result waits for review;
 ## - smoke from the roof after a failed task, a red mark while the agent is blocked;
 ## - a warm pulse of light at the add-on the agent is working at;
@@ -11,7 +12,15 @@ extends Node3D
 ## It reads Realm a few times a second; the home's BuildingView knows nothing about it.
 
 const REFRESH_S := 0.25
-const PLATE_PIXEL := 0.0055
+const PLATE_PIXEL := 0.0085
+## The blocked mark floats above the name plate so no roof hides it.
+const MARKER_ABOVE := 1.75
+## The chest and the signal post flank the entrance path (home-centre space).
+const CHEST_AT := Vector3(1.05, 0.0, 2.05)
+const POST_AT := Vector3(-1.05, 0.0, 2.0)
+const POST_HEIGHT := 2.2
+const BANNER_YELLOW := Color("#e8b73a")
+const BANNER_BLUE := Color("#4f8fe0")
 const COLOR_IDLE := Color("#f3e6c8")
 const COLOR_WORKING := Color("#a9f0d0")
 const COLOR_WAITING := Color("#ffd27a")
@@ -25,9 +34,12 @@ var _roof: float = 2.0
 var _door: Vector3 = Vector3.ZERO
 var _name: Label3D
 var _sub: Label3D
+var _post: Node3D
 var _bell: Node3D
 var _bell_mat: StandardMaterial3D
 var _bell_light: OmniLight3D
+var _banner: MeshInstance3D
+var _banner_mat: StandardMaterial3D
 var _chest: Node3D
 var _chest_light: OmniLight3D
 var _smoke: GeometryInstance3D
@@ -61,7 +73,7 @@ func setup(b: SimBuilding, height: float, door: Vector3) -> void:
 
 func _build_plate() -> void:
 	_name = _label(64, UiFonts.cinzel(700, 1))
-	_name.position = Vector3(0, _roof + 0.95, 0)
+	_name.position = Vector3(0, _roof + 1.05, 0)
 	_sub = _label(40, UiFonts.mono(500, 1))
 	_sub.position = Vector3(0, _roof + 0.62, 0)
 	_sub.modulate = Color(1, 1, 1, 0.85)
@@ -84,9 +96,45 @@ func _label(size: int, font: Font) -> Label3D:
 
 
 func _build_bell() -> void:
+	_post = Node3D.new()
+	_post.name = "SignalPost"
+	_post.position = POST_AT
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color("#6b4426")
+	wood.roughness = 0.85
+	var pole := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.045
+	cyl.bottom_radius = 0.06
+	cyl.height = POST_HEIGHT
+	cyl.radial_segments = 10
+	pole.mesh = cyl
+	pole.material_override = wood
+	pole.position.y = POST_HEIGHT * 0.5
+	_post.add_child(pole)
+	_post.add_child(_box(Vector3(0.62, 0.06, 0.07), Vector3(0.26, POST_HEIGHT - 0.08, 0), wood))
+	add_child(_post)
+	_banner = MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.46, 0.72)
+	_banner.mesh = quad
+	_banner_mat = StandardMaterial3D.new()
+	_banner_mat.albedo_color = BANNER_YELLOW
+	_banner_mat.roughness = 0.9
+	_banner_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_banner.material_override = _banner_mat
+	_banner.position = Vector3(-0.27, POST_HEIGHT - 0.42, 0.0)
+	_banner.visible = false
+	_post.add_child(_banner)
 	_bell = Node3D.new()
 	_bell.name = "Bell"
-	_bell_mat = ArtMaterials.gold().duplicate() as StandardMaterial3D
+	_bell_mat = StandardMaterial3D.new()
+	_bell_mat.albedo_color = UiTokens.GOLD_DEEP
+	_bell_mat.metallic = 0.75
+	_bell_mat.roughness = 0.32
+	_bell_mat.emission_enabled = true
+	_bell_mat.emission = UiTokens.GOLD_BRIGHT
+	_bell_mat.emission_energy_multiplier = 0.0
 	var body := MeshInstance3D.new()
 	var cone := CylinderMesh.new()
 	cone.top_radius = 0.07
@@ -127,12 +175,14 @@ func _build_bell() -> void:
 	_bell_light.omni_range = 2.6
 	_bell_light.light_energy = 1.4
 	_bell_light.shadow_enabled = false
+	_bell_light.position.y = -0.2
+	_bell_light.visible = false
 	_bell.add_child(_bell_light)
-	_bell.position = Vector3(0, _roof + 0.35, 0)
-	_bell.visible = false
-	for gi in _bell.find_children("*", "GeometryInstance3D", true, false):
-		(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_bell)
+	_bell.position = Vector3(0.48, POST_HEIGHT - 0.12, 0.0)
+	_bell.scale = Vector3.ONE * 1.25
+	for gi in _post.find_children("*", "GeometryInstance3D", true, false):
+		(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_post.add_child(_bell)
 
 
 func _build_chest() -> void:
@@ -168,7 +218,9 @@ func _build_chest() -> void:
 	_chest_light.shadow_enabled = false
 	_chest_light.position = Vector3(0, 0.4, 0)
 	_chest.add_child(_chest_light)
-	_chest.position = Vector3(_door.x + 0.55, 0.0, _door.z + 0.55)
+	_chest.position = CHEST_AT
+	_chest.scale = Vector3.ONE * 1.35
+	_chest.rotation.y = -0.35
 	_chest.visible = false
 	add_child(_chest)
 
@@ -187,7 +239,7 @@ func _build_mark() -> void:
 	_mark = _label(120, UiFonts.cinzel(700, 1))
 	_mark.text = "!"
 	_mark.modulate = COLOR_BAD
-	_mark.position = Vector3(0.55, _roof + 0.35, 0)
+	_mark.position = Vector3(0, _roof + MARKER_ABOVE, 0)
 	_mark.visible = false
 
 
@@ -250,10 +302,15 @@ func refresh() -> void:
 	_name.modulate = color
 	_flags = {"approval": not approvals.is_empty(), "seal": seal_out, "review": review, "failed": failed,
 		"blocked": activity == "blocked", "working": activity == "working"}
-	_bell.visible = bool(_flags["approval"])
-	_bell_mat.emission = COLOR_SEAL if seal_out else Palette.GOLD_BRIGHT
-	_bell_mat.albedo_color = Color("#9cc9ff") if seal_out else Palette.GOLD_BRIGHT
+	var ringing := bool(_flags["approval"])
+	_banner.visible = ringing
+	_banner_mat.albedo_color = BANNER_BLUE if seal_out else BANNER_YELLOW
+	_bell_light.visible = ringing
 	_bell_light.light_color = COLOR_SEAL if seal_out else COLOR_WAITING
+	_bell_mat.emission = COLOR_SEAL if seal_out else UiTokens.GOLD_BRIGHT
+	_bell_mat.emission_energy_multiplier = 0.45 if ringing else 0.0
+	if not ringing:
+		_bell.rotation.z = 0.0
 	_chest.visible = review
 	_mark.visible = bool(_flags["blocked"]) and not bool(_flags["approval"])
 	if failed and _smoke == null:
@@ -275,14 +332,15 @@ func update_visual(time: float, delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = REFRESH_S
 		refresh()
-	if _bell.visible:
-		_bell.rotation.z = sin(time * 6.5) * 0.32
-		_bell.position.y = _roof + 0.35 + sin(time * 2.2) * 0.06
-		_bell_light.light_energy = 1.1 + 0.5 * absf(sin(time * 6.5))
+	if _banner.visible:
+		_bell.rotation.z = sin(time * 6.5) * 0.45
+		_bell_light.light_energy = 1.1 + 0.6 * absf(sin(time * 6.5))
+		_banner.rotation.y = sin(time * 1.7 + float(building_id)) * 0.18
+		_banner.rotation.z = sin(time * 2.3) * 0.04
 	if _chest.visible:
 		_chest_light.light_energy = 1.0 + 0.35 * sin(time * 3.0)
 	if _mark.visible:
-		_mark.position.y = _roof + 0.4 + sin(time * 3.5) * 0.05
+		_mark.position.y = _roof + MARKER_ABOVE + sin(time * 3.5) * 0.06
 	var working := bool(_flags.get("working", false)) and _work_pos != null
 	_work_light.visible = working
 	if working:

@@ -206,3 +206,16 @@ func test_explicit_deposit_then_resume() -> void:
 	assert_gte(w.ledger.amount("wood"), wood + carried)
 	assert_eq(u.job, SimConst.JOB_GATHER, "went back to the tree")
 	assert_eq(u.target_id, tree.id)
+
+
+func test_a_gatherer_leaves_a_full_store_for_what_the_town_lacks() -> void:
+	var w := SimFixture.empty_world({"food": 795, "wood": 10, "stone": 0, "gold": 0})
+	var k := w.keep().rect()
+	var bush := w.add_node("berry_bush", Vector2i(k.end.x, k.position.y + 2))
+	var tree := w.add_node("tree", Vector2i(k.end.x + 3, k.position.y + 2))
+	var u := w.add_unit("townsfolk", Pathing.center_of(Vector2i(k.end.x, k.position.y + 1)))
+	w.commands.push(GameCommands.gather([u.id], bush.id))
+	w.step(SimFixture.ticks(w, 60.0))
+	assert_eq(w.ledger.amount("food"), w.ledger.storage_cap("food", 0), "food filled up")
+	assert_eq(u.gather_kind, "tree", "then went for wood instead of wasting berries")
+	assert_eq(u.target_id, tree.id)

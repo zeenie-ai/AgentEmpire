@@ -194,6 +194,8 @@ func _process(delta: float) -> void:
 	if _hover_timer <= 0.0:
 		_hover_timer = HOVER_EVERY_S
 		_update_hover()
+	if mode == Mode.PLACE_PLOT and (w.agent_home(place_agent_id) != null or Realm.agent(place_agent_id).is_empty()):
+		cancel_mode()
 	if mode == Mode.PLACE or mode == Mode.PLACE_PLOT:
 		_recheck_timer -= delta
 		if _recheck_timer <= 0.0:

@@ -68,9 +68,12 @@ func show_toast(text: String, kind: String) -> void:
 	get_tree().create_timer(LIFE_S).timeout.connect(_dismiss.bind(panel))
 
 
-func _dismiss(panel: Control) -> void:
-	if not is_instance_valid(panel) or not _toasts.has(panel):
+## Untyped on purpose: a toast pushed out early is freed before its timer fires, and a typed
+## parameter would reject the freed object before the validity check could run.
+func _dismiss(toast: Variant) -> void:
+	if not is_instance_valid(toast) or not _toasts.has(toast):
 		return
+	var panel := toast as Control
 	_toasts.erase(panel)
 	var tw := panel.create_tween().set_parallel(true)
 	tw.tween_property(panel, "modulate:a", 0.0, OUT_S)

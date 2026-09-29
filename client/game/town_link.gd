@@ -122,6 +122,7 @@ func open_online_town(map_seed: int) -> bool:
 	l.set_server_treasury(Realm.treasury)
 	l.set_online(Net.is_online())
 	Game.start_world(w)
+	online_changed.emit(true)
 	_save_timer = SAVE_SOON_S if town_rev == 0 else SAVE_EVERY_S
 	return true
 
@@ -229,7 +230,10 @@ func _on_world_started(w: SimWorld) -> void:
 
 
 func _on_world_stopped() -> void:
+	var was := online_town
 	online_town = false
+	if was:
+		online_changed.emit(false)
 	_plot_announced.clear()
 	_tool_pending.clear()
 	_tool_retry_at.clear()
@@ -446,7 +450,8 @@ func _on_approval_requested(ap: Dictionary) -> void:
 
 
 func _on_incident_opened(i: Dictionary) -> void:
-	if not online_town:
+	# Waiting approvals already have their own toast (and the bell over the home).
+	if not online_town or J.gs(i, "kind") == "hand_bell":
 		return
 	var kind := J.gs(i, "severity", "info")
 	Notify.push(J.gs(i, "message", "Something happened."), "error" if kind == "urgent" else ("warn" if kind == "warn" else "info"),
