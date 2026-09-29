@@ -181,6 +181,7 @@ export class AgentService {
       blocked_reason: r.blocked_reason,
       home: tile ? { tile, built: r.home_built === 1 } : null,
       tool_ids: this.ctx.tools.idsForAgent(r.id),
+      starting_tools: fromJson<ToolType[]>(r.starting_tools_json, []),
       current_task_id: this.currentTaskId(r.id),
       queue: this.queue(r.id),
       xp: r.xp,

@@ -60,6 +60,7 @@ export interface RuntimeInfo {
   port: number;
   token: string;
   url: string;
+  data_dir: string;
 }
 
 function pidAlive(pid: number): boolean {
@@ -189,7 +190,16 @@ export class Daemon {
     });
     port = (server.address() as AddressInfo).port;
     const url = `http://127.0.0.1:${port}/#t=${token}`;
-    writeRuntime(runtimeFile, { pid: process.pid, port, token, url });
+    const runtime: RuntimeInfo = { pid: process.pid, port, token, url, data_dir: config.dataDir };
+    writeRuntime(runtimeFile, runtime);
+    if (config.discoveryFile) {
+      try {
+        mkdirSync(path.dirname(config.discoveryFile), { recursive: true });
+        writeRuntime(config.discoveryFile, runtime);
+      } catch (err) {
+        log.warn({ file: config.discoveryFile, err: String(err) }, "could not write the discovery file");
+      }
+    }
     log.info({ port, dataDir: config.dataDir, provider: config.providerMode }, "Town Hall listening");
 
     const daemon = new Daemon(ctx, port, token, url, runtimeFile, server, wss, connections);
@@ -218,11 +228,14 @@ export class Daemon {
     // Let in-flight async work (git, finalisation) settle before closing the database.
     await new Promise((r) => setTimeout(r, 50));
     ctx.db.close();
-    try {
-      const current = JSON.parse(readFileSync(this.runtimeFile, "utf8")) as Partial<RuntimeInfo>;
-      if (current.pid === process.pid && current.port === this.port) unlinkSync(this.runtimeFile);
-    } catch {
-      // already gone
+    for (const file of [this.runtimeFile, ctx.config.discoveryFile]) {
+      if (!file) continue;
+      try {
+        const current = JSON.parse(readFileSync(file, "utf8")) as Partial<RuntimeInfo>;
+        if (current.pid === process.pid && current.port === this.port) unlinkSync(file);
+      } catch {
+        // already gone
+      }
     }
   }
 }

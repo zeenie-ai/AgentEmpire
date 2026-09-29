@@ -6,13 +6,17 @@ extends Node
 ## - Ctrl+1..9 assigns a control group, 1..9 recalls it, a double tap centres the camera.
 ## - Right-click resolves through RightClickRules (move, gather, build, deposit, rally).
 ## - The command card (card_0..card_14 = Q..B), "." cycles idle townsfolk, H selects the Keep.
-## - Building placement shows a validated ghost with the reason when a spot is invalid.
-## Everything that changes the game goes out as a GameCommands command via Game.issue().
+## - Building placement shows a validated ghost with the reason when a spot is invalid; an
+##   agent's plot (PLACE_PLOT) is placed the same way and goes to the Town Hall first.
+## - Agents: their card offers tasks, review, approvals, add-ons; townsfolk right-clicked onto
+##   an agent's home carry its scroll; Space jumps to the approval that has waited longest.
+## Everything that changes the game goes out as a GameCommands command via Game.issue(), or
+## through TownLink when the Town Hall must agree first.
 
 ## Emitted when the placement/rally hint changes (text "" hides it).
 signal hint_changed(text: String, ok: bool)
 
-enum Mode { SELECT, PLACE, RALLY }
+enum Mode { SELECT, PLACE, RALLY, PLACE_PLOT }
 
 const DRAG_PX := 6.0
 const GROUP_DOUBLE_TAP_S := 0.4
@@ -28,6 +32,11 @@ var mode: Mode = Mode.SELECT
 var place_type: String = ""
 var place_cell: Vector2i = Pathing.NO_CELL
 var place_check: Dictionary = {}
+## PLACE_PLOT: the agent whose plot is being chosen.
+var place_agent_id: String = ""
+
+var _plot_pending: bool = false
+var _bell_cursor: int = 0
 
 var _pressing: bool = false
 var _dragging: bool = false
@@ -64,7 +73,7 @@ func _on_world_started(w: SimWorld) -> void:
 # --- events ---------------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if world() == null:
+	if world() == null or (hud != null and hud.has_window()):
 		return
 	var mb := event as InputEventMouseButton
 	if mb != null:
@@ -85,6 +94,10 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 			if e.pressed:
 				if mode == Mode.PLACE:
 					_try_place(e.shift_pressed)
+					get_viewport().set_input_as_handled()
+					return
+				if mode == Mode.PLACE_PLOT:
+					_try_place_plot()
 					get_viewport().set_input_as_handled()
 					return
 				if mode == Mode.RALLY:
@@ -121,6 +134,8 @@ func _mouse_motion(e: InputEventMouseMotion) -> void:
 		hud.set_box(Rect2(_press_pos, e.position - _press_pos).abs())
 	if mode == Mode.PLACE:
 		_update_ghost(e.position)
+	elif mode == Mode.PLACE_PLOT:
+		_update_plot_ghost(e.position)
 
 
 func _key(e: InputEventKey) -> void:
@@ -145,6 +160,10 @@ func _key(e: InputEventKey) -> void:
 	elif e.is_action("pause"):
 		Game.paused = not Game.paused
 		Notify.push("Paused." if Game.paused else "Resumed.", "info", "pause", 0)
+	elif e.is_action("next_bell"):
+		jump_to_next_bell()
+	elif e.is_action("mana"):
+		hud.open_budget()
 	elif e.is_action("delete"):
 		var b := selection.single_building(w)
 		if b != null and not b.complete:
@@ -175,12 +194,17 @@ func _process(delta: float) -> void:
 	if _hover_timer <= 0.0:
 		_hover_timer = HOVER_EVERY_S
 		_update_hover()
-	if mode == Mode.PLACE:
+	if mode == Mode.PLACE_PLOT and (w.agent_home(place_agent_id) != null or Realm.agent(place_agent_id).is_empty()):
+		cancel_mode()
+	if mode == Mode.PLACE or mode == Mode.PLACE_PLOT:
 		_recheck_timer -= delta
 		if _recheck_timer <= 0.0:
 			_recheck_timer = RECHECK_EVERY_S
 			if place_cell != Pathing.NO_CELL:
-				_set_check(Placement.check(w, place_type, place_cell))
+				if mode == Mode.PLACE:
+					_set_check(Placement.check(w, place_type, place_cell))
+				else:
+					_set_plot_check(Placement.check_plot(w, place_type, place_cell))
 
 
 # --- selection ------------------------------------------------------------------------------
@@ -311,12 +335,70 @@ func _order(target: Dictionary) -> void:
 	var w := world()
 	var ctx := RightClickRules.context_for(w, selection.ids, target)
 	var action := RightClickRules.resolve(ctx)
+	if action == RightClickRules.ACTION_DELIVER:
+		_deliver(target)
+		return
 	var cmd := RightClickRules.command_for(w, selection.ids, target, action)
 	if cmd.is_empty():
 		return
 	Game.issue(cmd)
 	var cell: Vector2i = target["cell"]
 	view.ping(cell, action)
+
+
+## Townsfolk right-clicked onto an agent's home carry its waiting scroll, or the next one.
+func _deliver(target: Dictionary) -> void:
+	var w := world()
+	var b: SimBuilding = w.buildings.get(int(target.get("id", 0)))
+	if b == null or b.owner_agent_id == "":
+		return
+	var units := selection.units(w)
+	var cell: Vector2i = target["cell"]
+	view.ping(cell, RightClickRules.ACTION_BUILD)
+	if Game.link.manual_courier(units, b.owner_agent_id):
+		Notify.push("Carrying the scroll to %s." % J.gs(Realm.agent(b.owner_agent_id), "name", "the agent"), "info", "deliver", 800)
+	else:
+		Notify.push("No scroll waits for %s. This townsperson will carry the next task you write." % J.gs(Realm.agent(b.owner_agent_id), "name", "the agent"), "info", "deliver", 800)
+		hud.open_task_composer(b.owner_agent_id)
+
+
+## The agent the selection is about: a selected agent figure, or a selected home or add-on.
+func selected_agent_id() -> String:
+	var w := world()
+	if selection.is_empty():
+		return ""
+	var u: SimUnit = w.units.get(selection.ids[0])
+	if u != null:
+		return u.agent_id
+	var b: SimBuilding = w.buildings.get(selection.ids[0])
+	return b.owner_agent_id if b != null else ""
+
+
+## Space: centres on the home of the agent whose approval has waited longest, then the next.
+func jump_to_next_bell() -> void:
+	var pending := Realm.pending_approvals()
+	if pending.is_empty():
+		Notify.push("No approvals are waiting.", "info", "no_bells", 1200)
+		return
+	_bell_cursor = _bell_cursor % pending.size()
+	var agent_id := J.gs(pending[_bell_cursor], "agent_id")
+	_bell_cursor += 1
+	focus_agent(agent_id)
+	hud.focus_approvals(agent_id)
+
+
+## Selects an agent's home (or its figure while it has none) and centres the camera on it.
+func focus_agent(agent_id: String) -> void:
+	var w := world()
+	var home := w.agent_home(agent_id)
+	if home != null:
+		selection.set_ids([home.id])
+		camera.focus(Vector3(home.center().x, 0.0, home.center().y))
+		return
+	var u := w.agent_unit(agent_id)
+	if u != null:
+		selection.set_ids([u.id])
+		camera.focus(view.unit_visual_position(u.id))
 
 
 func execute_slot(i: int) -> void:
@@ -348,7 +430,36 @@ func activate(slot: Dictionary) -> void:
 	elif id.begins_with("train:") and b != null:
 		Game.issue(GameCommands.train(b.id, id.substr(6)))
 	elif id == "summon":
-		Notify.push("Summoning agents needs the Town Hall. It arrives in the next phase.", "info", "summon", 1500)
+		if not bool(slot.get("enabled", false)):
+			Notify.push(String(slot.get("tooltip", "")).get_slice("\n", 1), "info", "summon", 1500)
+		else:
+			hud.open_summon()
+	elif id == "task":
+		if bool(slot.get("enabled", false)):
+			hud.open_task_composer(selected_agent_id())
+		else:
+			Notify.push(String(slot.get("tooltip", "")).get_slice("\n", 2), "info", "task", 1500)
+	elif id == "review":
+		if bool(slot.get("enabled", false)):
+			hud.open_review_for_agent(selected_agent_id())
+	elif id == "approvals":
+		hud.focus_approvals(selected_agent_id())
+	elif id == "place_home":
+		begin_plot_placement(selected_agent_id())
+	elif id.begins_with("add_tool:"):
+		_add_tool(selected_agent_id(), id.substr(9), slot)
+	elif id.begins_with("resume:"):
+		_notify_result(Game.link.resume_task(id.substr(7)), "Resuming.")
+	elif id.begins_with("cancel_task:"):
+		_notify_result(Game.link.cancel_task(id.substr(12)), "Task cancelled.")
+	elif id == "cancel_summon":
+		Game.link.cancel_summon(selected_agent_id())
+	elif id == "retire":
+		hud.confirm("Retire %s?" % J.gs(Realm.agent(selected_agent_id()), "name", "this agent"),
+			"They finish their current task first. Their home and add-ons leave with them.",
+			_retire.bind(selected_agent_id()))
+	elif id.begins_with("detach:"):
+		_notify_result(Game.link.detach_tool(id.substr(7)), "Dismantled.")
 	elif id == "rally" and b != null:
 		mode = Mode.RALLY
 		hint_changed.emit("Click to set the rally point. Right-click cancels.", true)
@@ -360,6 +471,32 @@ func activate(slot: Dictionary) -> void:
 		Game.issue(GameCommands.cancel_site(b.id))
 	elif id == "dismantle" and b != null:
 		Game.issue(GameCommands.dismantle(b.id))
+
+
+func _add_tool(agent_id: String, type: String, slot: Dictionary) -> void:
+	if not bool(slot.get("enabled", false)):
+		var why := String(slot.get("tooltip", "")).get_slice("\n", 2)
+		var missing := world().ledger.missing(world().econ.building_cost(type))
+		Notify.push(why if why != "" else "Need %s more." % Placement.format_cost(missing), "warn", "add_tool", 800)
+		return
+	var req := Game.link.attach_tool(agent_id, type)
+	if req != null:
+		_notify_result(req, "%s will build the %s." % [J.gs(Realm.agent(agent_id), "name", "The agent"), world().econ.building_name(type)])
+
+
+func _retire(agent_id: String) -> void:
+	_notify_result(Game.link.retire_agent(agent_id), "%s will retire after their current task." % J.gs(Realm.agent(agent_id), "name", "The agent"))
+
+
+## Toasts a request's outcome when it finishes.
+func _notify_result(req: NetRequest, ok_text: String) -> void:
+	if req == null:
+		return
+	await req.done
+	if req.ok:
+		Notify.push(ok_text, "good", "", 0)
+	else:
+		Notify.push(req.error_message(), "warn", "", 0)
 
 
 func _return_goods() -> void:
@@ -400,9 +537,74 @@ func begin_placement(type: String) -> void:
 	_update_ghost(get_viewport().get_mouse_position())
 
 
+## Chooses a plot for an agent's home: a 7x7 ghost with the home in its middle.
+func begin_plot_placement(agent_id: String) -> void:
+	var w := world()
+	if agent_id == "" or w.agent_home(agent_id) != null:
+		return
+	if not Game.link.is_live():
+		Notify.push("The Town Hall is not connected.", "warn", "plot", 1500)
+		return
+	mode = Mode.PLACE_PLOT
+	place_agent_id = agent_id
+	place_type = Game.link.home_type(agent_id)
+	place_cell = Pathing.NO_CELL
+	view.ghost.show_plot(place_type)
+	_update_plot_ghost(get_viewport().get_mouse_position())
+
+
+func _update_plot_ghost(screen: Vector2) -> void:
+	var w := world()
+	var g: Variant = camera.screen_to_ground(screen)
+	if g == null:
+		view.ghost.visible = false
+		return
+	var gp: Vector3 = g
+	var cell := HomeLayout.home_cell_at(Vector2i(floori(gp.x), floori(gp.z)))
+	if cell != place_cell:
+		place_cell = cell
+		_set_plot_check(Placement.check_plot(w, place_type, cell))
+	view.ghost.visible = true
+	view.ghost.place_at(place_cell, Vector2i(HomeLayout.HOME, HomeLayout.HOME), bool(place_check.get("ok", false)))
+
+
+func _set_plot_check(check: Dictionary) -> void:
+	place_check = check
+	var ok := bool(check.get("ok", false))
+	var who := J.gs(Realm.agent(place_agent_id), "name", "The agent")
+	var bname := world().econ.building_name(place_type)
+	hint_changed.emit("%s's %s: click to choose this plot. Right-click cancels." % [who, bname] if ok else "%s: %s" % [bname, String(check.get("reason", ""))], ok)
+	if view.ghost.visible and place_cell != Pathing.NO_CELL:
+		view.ghost.place_at(place_cell, Vector2i(HomeLayout.HOME, HomeLayout.HOME), ok)
+
+
+func _try_place_plot() -> void:
+	var w := world()
+	if place_cell == Pathing.NO_CELL or _plot_pending:
+		return
+	_set_plot_check(Placement.check_plot(w, place_type, place_cell))
+	if not bool(place_check.get("ok", false)):
+		Notify.push(String(place_check.get("reason", "Can't build there.")), "warn", "placement", 600)
+		return
+	var agent_id := place_agent_id
+	var cell := place_cell
+	_plot_pending = true
+	var req := Game.link.place_home(agent_id, cell)
+	await req.done
+	_plot_pending = false
+	if not req.ok:
+		Notify.push(req.error_message(), "warn", "plot", 0)
+		return
+	view.ping(cell + Vector2i.ONE, "build")
+	Notify.push("%s heads to the plot to build." % J.gs(Realm.agent(agent_id), "name", "The agent"), "good", "plot", 0)
+	if mode == Mode.PLACE_PLOT and place_agent_id == agent_id:
+		cancel_mode()
+
+
 func cancel_mode() -> void:
 	mode = Mode.SELECT
 	place_type = ""
+	place_agent_id = ""
 	place_cell = Pathing.NO_CELL
 	if view != null:
 		view.ghost.clear()

@@ -1,0 +1,30 @@
+{
+  "name": "e2e_reward",
+  "description": "The client end-to-end check: a read, an edit, one shell approval, and a run long enough (bounty.min_run_s) to earn a reward.",
+  "steps": [
+    { "op": "emit", "text": "Planning the change." },
+    { "op": "tool_start", "tool": "Read", "input": { "file_path": "README.md" }, "text": "Read README.md" },
+    { "op": "tool_end", "tool": "Read", "text": "Read README.md" },
+    { "op": "tool_start", "tool": "Write", "input": { "file_path": "src/greeting.txt" }, "text": "Write src/greeting.txt" },
+    { "op": "write_file", "path": "src/greeting.txt", "content": "Hello from Aurelhaven.\n" },
+    { "op": "tool_end", "tool": "Write", "text": "Wrote src/greeting.txt" },
+    { "op": "usage", "cost_mana": 20, "input_tokens": 9000, "output_tokens": 500 },
+    {
+      "op": "approval",
+      "expect": {
+        "tool": "Bash",
+        "category": "command",
+        "input": { "command": "npm test" },
+        "reason": "Run the tests before finishing"
+      },
+      "onAllow": [
+        { "op": "tool_start", "tool": "Bash", "input": { "command": "npm test" }, "text": "Run: npm test" },
+        { "op": "sleep", "ms": 31000 },
+        { "op": "tool_end", "tool": "Bash", "text": "Tests passed" }
+      ],
+      "onDeny": [{ "op": "emit", "text": "Skipping the tests." }]
+    },
+    { "op": "usage", "cost_mana": 10, "input_tokens": 4000, "output_tokens": 300 },
+    { "op": "end", "summary": "Added src/greeting.txt and ran the tests." }
+  ]
+}

@@ -2,7 +2,10 @@ class_name TopBar
 extends PanelContainer
 ## Age of Empires-style resource bar (layout after the handoff's V6 Hex Realm): Food, Wood,
 ## Stone and Gold with income per minute in the tooltips, population x/y (flashing at the cap),
-## the idle-townsfolk counter, the age badge and the Mana orb (offline until Phase 3).
+## the idle-townsfolk counter, the Town Hall chip, the age badge and the Mana orb.
+
+## The Mana orb was clicked.
+signal budget_requested()
 
 const REFRESH_S := 0.25
 
@@ -16,6 +19,8 @@ var _idle_button: Button
 var _idle_label: Label
 var _age: AgeBadge
 var _mana: ManaOrb
+var _hall: Button
+var _hall_label: Label
 var _timer: float = 0.0
 var _time: float = 0.0
 var _pop_capped: bool = false
@@ -66,12 +71,81 @@ func _ready() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(spacer)
+	_hall = Button.new()
+	_hall.theme_type_variation = "FlatButton"
+	_hall.focus_mode = Control.FOCUS_NONE
+	_hall.custom_minimum_size = Vector2(150, 34)
+	_hall.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_hall_label = Label.new()
+	_hall_label.theme_type_variation = "MutedLabel"
+	_hall_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hall_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hall_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hall.add_child(_hall_label)
+	_hall_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hall.pressed.connect(_on_hall_pressed)
+	row.add_child(_hall)
 	_age = AgeBadge.new()
 	row.add_child(_age)
 	_mana = ManaOrb.new()
+	_mana.pressed.connect(func() -> void: budget_requested.emit())
 	row.add_child(_mana)
 	Economy.treasury_changed.connect(func(_t: Dictionary, _r: String, _d: Dictionary) -> void: _refresh())
+	Realm.mana_changed.connect(func(_m: Dictionary) -> void: _refresh_mana())
+	Net.connection_changed.connect(func(_on: bool) -> void: _refresh_mana())
+	Net.status_changed.connect(func(_s: String) -> void: _refresh_hall())
+	Game.link.online_changed.connect(func(_on: bool) -> void: _refresh_hall())
+	Game.link.town_available.connect(_refresh_hall)
 	_refresh()
+	_refresh_mana()
+	_refresh_hall()
+
+
+func _refresh_mana() -> void:
+	_mana.set_mana(Realm.mana_level(), Realm.mana if Net.is_online() else {})
+
+
+## The Town Hall chip: whether the town is the Town Hall's, and what a click does.
+func _refresh_hall() -> void:
+	var text := "TOWN HALL OFFLINE"
+	var color := UiTokens.HUD_MUTED
+	var tip := "No Town Hall is running. Agents need it: start it with `npm start` in townhall/.
+The town plays offline meanwhile."
+	match Net.status:
+		Net.STATUS_ONLINE:
+			if Game.is_online_town():
+				text = "TOWN HALL"
+				color = UiTokens.MINT
+				tip = "Connected to the Town Hall at port %d. This town and its agents live there." % int(Net.endpoint.get("port", 0))
+			else:
+				text = "OPEN TOWN HALL TOWN"
+				color = UiTokens.GOLD_BRIGHT
+				tip = "The Town Hall is running. Click to leave this offline town and open the Town Hall's town."
+		Net.STATUS_CONNECTING:
+			text = "CONNECTING..."
+			tip = Net.last_problem if Net.last_problem != "" else "Connecting to the Town Hall."
+		Net.STATUS_BUSY:
+			text = "TAKE OVER"
+			color = UiTokens.WARN
+			tip = "Another Aurelhaven window is connected to the Town Hall. Click to take over."
+		Net.STATUS_REJECTED:
+			text = "TOWN HALL REFUSED"
+			color = UiTokens.BAD
+			tip = Net.last_problem
+	_hall_label.text = text
+	_hall_label.add_theme_color_override("font_color", color)
+	_hall.tooltip_text = tip
+
+
+func _on_hall_pressed() -> void:
+	match Net.status:
+		Net.STATUS_BUSY:
+			Net.take_over()
+		Net.STATUS_ONLINE:
+			if not Game.is_online_town():
+				Game.switch_to_town_hall(int(Settings.get_value("game/seed", 4127)))
+		_:
+			Net.reconnect_now()
 
 
 func _chip(key: String, icon: String) -> Control:
@@ -147,4 +221,3 @@ func _refresh() -> void:
 	_idle_label.text = "Idle %d" % idle
 	_idle_label.add_theme_color_override("font_color", UiTokens.GOLD_BRIGHT if idle > 0 else UiTokens.HUD_MUTED)
 	_age.set_age(w.age, w.econ.age_name(w.age))
-	_mana.set_level(Realm.mana_level())

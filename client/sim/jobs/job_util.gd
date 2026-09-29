@@ -6,6 +6,7 @@ extends RefCounted
 
 ## Switches a unit to a new job, releasing claims (farms) and any path of the old one.
 static func begin(w: SimWorld, u: SimUnit, job: String, phase: String) -> void:
+	drop_scroll(w, u)
 	release_claims(w, u)
 	w.stop_moving(u)
 	u.job = job
@@ -26,7 +27,16 @@ static func release_claims(w: SimWorld, u: SimUnit) -> void:
 		b.farmer_id = 0
 
 
+## A courier leaving its job with the scroll still in hand drops it; TownLink sends a wisp.
+static func drop_scroll(w: SimWorld, u: SimUnit) -> void:
+	if u.job != SimConst.JOB_COURIER or u.payload.is_empty():
+		return
+	w.emit_notice("courier_dropped", {"unit": u.id, "payload": u.payload.duplicate(true)})
+	u.payload = {}
+
+
 static func go_idle(w: SimWorld, u: SimUnit, hold: bool) -> void:
+	drop_scroll(w, u)
 	release_claims(w, u)
 	w.stop_moving(u)
 	u.job = SimConst.JOB_IDLE

@@ -1,15 +1,21 @@
 class_name SimUnit
 extends RefCounted
-## A walking unit. Townsfolk in Phase 2; agent units (kind "agent", with agent_id set to the
-## Town Hall id) reuse the same record in Phase 3.
+## A walking unit: a townsperson, or an agent (kind "agent", agent_id set to the Town Hall id).
 
 var id: int = 0
 ## "townsfolk" or, from Phase 3, "agent".
 var kind: String = "townsfolk"
 ## Town Hall agent id for agent units; empty for townsfolk.
 var agent_id: String = ""
-## Agent units: the building id of their home once placed (Phase 3).
+## Agent units: the building id of their home once placed.
 var home_id: int = 0
+## Agent units: the role ("artificer", "scholar", ...), which picks the figure and the home.
+var role: String = ""
+## Agent units: what the Town Hall says the agent is doing ("idle", "working",
+## "awaiting_approval", "blocked"), set by set_agent_state.
+var activity: String = "idle"
+## Agent units: the add-on type the agent is using right now ("lectern", "forge", ...) or "".
+var work_tool: String = ""
 
 ## Position in tiles (x, y); tile (x, y) spans [x, x+1) x [y, y+1).
 var pos: Vector2 = Vector2.ZERO
@@ -48,7 +54,7 @@ var path_retries: int = 0
 var stuck_ticks: int = 0
 ## Targets that turned out to be unreachable during the current job.
 var bad_targets: Array[int] = []
-## Courier payload (Phase 3).
+## Courier payload: {"task_id": String, "agent_id": String}.
 var payload: Dictionary = {}
 
 
@@ -79,6 +85,7 @@ func to_dict() -> Dictionary:
 		p.append([c.x, c.y])
 	return {
 		"id": id, "kind": kind, "agent_id": agent_id, "home_id": home_id,
+		"role": role, "activity": activity, "work_tool": work_tool,
 		"pos": [pos.x, pos.y], "prev": [prev_pos.x, prev_pos.y], "facing": facing,
 		"job": job, "phase": phase, "hold": hold, "idle_ticks": idle_ticks,
 		"target_id": target_id, "gather_kind": gather_kind, "drop_id": drop_id,
@@ -97,6 +104,9 @@ static func from_dict(d: Dictionary) -> SimUnit:
 	u.kind = String(d.get("kind", "townsfolk"))
 	u.agent_id = String(d.get("agent_id", ""))
 	u.home_id = int(d.get("home_id", 0))
+	u.role = String(d.get("role", ""))
+	u.activity = String(d.get("activity", "idle"))
+	u.work_tool = String(d.get("work_tool", ""))
 	var p: Array = d.get("pos", [0, 0])
 	u.pos = Vector2(float(p[0]), float(p[1]))
 	var pp: Array = d.get("prev", p)

@@ -35,6 +35,9 @@ var _zoom_anchor_screen: Vector2 = Vector2.ZERO
 var _zoom_anchor_world: Vector3 = Vector3.ZERO
 var _zooming: bool = false
 var _focus_tween: Tween
+## Edge scrolling waits for a real mouse movement over the window: before one, and after the
+## pointer leaves or focus is lost, the reported position (often 0, 0) is not where it is.
+var _mouse_in: bool = false
 
 
 func _ready() -> void:
@@ -154,7 +157,7 @@ func _pan_from_keys_and_edges(delta: float) -> void:
 	if not Input.is_key_pressed(KEY_CTRL):
 		v.x = Input.get_action_strength("cam_right") - Input.get_action_strength("cam_left")
 		v.y = Input.get_action_strength("cam_down") - Input.get_action_strength("cam_up")
-	if edge_scroll and not _drag_pan and not _drag_rotate and DisplayServer.window_is_focused():
+	if edge_scroll and _mouse_in and not _drag_pan and not _drag_rotate and DisplayServer.window_is_focused():
 		var vp := get_viewport()
 		var mp := vp.get_mouse_position()
 		var size := vp.get_visible_rect().size
@@ -173,6 +176,17 @@ func _pan_from_keys_and_edges(delta: float) -> void:
 	var speed := (8.0 + distance * 0.9) * pan_speed
 	pivot += (screen_right() * v.x - screen_forward() * v.y) * speed * delta
 	_clamp_pivot()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_mouse_in = true
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_WM_MOUSE_EXIT, NOTIFICATION_WM_WINDOW_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_OUT:
+			_mouse_in = false
 
 
 func _unhandled_input(event: InputEvent) -> void:

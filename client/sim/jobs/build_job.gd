@@ -9,9 +9,10 @@ const TO_SITE := "to_site"
 const BUILDING := "building"
 
 
+## Agent homes and add-ons are built by their own agent only.
 static func start(w: SimWorld, u: SimUnit, site_id: int) -> bool:
 	var b: SimBuilding = w.buildings.get(site_id)
-	if b == null or b.complete:
+	if b == null or b.complete or b.owner_agent_id != u.agent_id:
 		return false
 	JobUtil.begin(w, u, SimConst.JOB_BUILD, TO_SITE)
 	u.target_id = site_id
@@ -63,6 +64,10 @@ static func tick(w: SimWorld, u: SimUnit) -> void:
 
 
 static func _after(w: SimWorld, u: SimUnit, b: SimBuilding) -> void:
+	if u.kind == "agent":
+		# The next add-on, or home life (IdleJob asks AgentJob right away).
+		JobUtil.go_idle(w, u, false)
+		return
 	if b.walkable and w.econ.building_is_field(b.type) and w.farm_is_free(b, u.id):
 		if GatherJob.start(w, u, b.id):
 			return

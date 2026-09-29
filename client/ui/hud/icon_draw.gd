@@ -109,6 +109,29 @@ static func draw(ci: CanvasItem, icon: String, rect: Rect2, dim: bool = false) -
 			ci.draw_line(c + Vector2(-0.55, 0.7) * s, c + Vector2(0.3, -0.2) * s, _c(Palette.WOOD_LIGHT, k), maxf(s * 0.16, 1.5))
 			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0.05, -0.55) * s, c + Vector2(0.45, -0.85) * s,
 				c + Vector2(0.8, -0.45) * s, c + Vector2(0.45, -0.15) * s]), _c(Palette.ROCK.lightened(0.2), k))
+		"task", "scroll":
+			_scroll(ci, c, s, k)
+		"review":
+			_scroll(ci, c + Vector2(-0.15, 0.1) * s, s * 0.85, k)
+			var w := maxf(s * 0.2, 2.0)
+			ci.draw_line(c + Vector2(0.05, 0.1) * s, c + Vector2(0.3, 0.4) * s, _c(UiTokens.MINT, k), w)
+			ci.draw_line(c + Vector2(0.3, 0.4) * s, c + Vector2(0.85, -0.35) * s, _c(UiTokens.MINT, k), w)
+		"bell", "approvals":
+			var bell := PackedVector2Array([c + Vector2(-0.62, 0.45) * s, c + Vector2(-0.4, 0.3) * s, c + Vector2(-0.32, -0.3) * s,
+				c + Vector2(0, -0.62) * s, c + Vector2(0.32, -0.3) * s, c + Vector2(0.4, 0.3) * s, c + Vector2(0.62, 0.45) * s])
+			ci.draw_colored_polygon(bell, _c(UiTokens.GOLD_BRIGHT, k))
+			ci.draw_circle(c + Vector2(0, 0.6) * s, s * 0.14, _c(UiTokens.GOLD, k))
+			ci.draw_circle(c + Vector2(0, -0.72) * s, s * 0.1, _c(UiTokens.GOLD, k))
+		"plot":
+			ci.draw_rect(Rect2(c + Vector2(-0.8, -0.35) * s, Vector2(1.6, 1.1) * s), _c(Palette.LEAF.darkened(0.2), k), false, maxf(s * 0.1, 1.2))
+			ci.draw_line(c + Vector2(-0.1, 0.6) * s, c + Vector2(-0.1, -0.85) * s, _c(Palette.WOOD_LIGHT, k), maxf(s * 0.12, 1.5))
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-0.05, -0.85) * s, c + Vector2(0.7, -0.6) * s, c + Vector2(-0.05, -0.35) * s]), _c(UiTokens.MINT, k))
+		"resume":
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-0.45, -0.65) * s, c + Vector2(0.65, 0.0) * s, c + Vector2(-0.45, 0.65) * s]), _c(UiTokens.MINT, k))
+		"retire":
+			ci.draw_rect(Rect2(c + Vector2(-0.5, -0.75) * s, Vector2(0.75, 1.5) * s), _c(Palette.WOOD_DARK, k))
+			ci.draw_line(c + Vector2(0.0, 0.0) * s, c + Vector2(0.85, 0.0) * s, _c(UiTokens.GOLD_BRIGHT, k), maxf(s * 0.16, 1.5))
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0.55, -0.3) * s, c + Vector2(0.95, 0.0) * s, c + Vector2(0.55, 0.3) * s]), _c(UiTokens.GOLD_BRIGHT, k))
 		_:
 			ci.draw_circle(c, s * 0.5, _c(UiTokens.HUD_MUTED, k))
 
@@ -122,6 +145,15 @@ static func _berries(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
 	for p: Vector2 in [Vector2(-0.35, 0.15), Vector2(0.3, 0.25), Vector2(-0.02, -0.25), Vector2(-0.05, 0.55)]:
 		ci.draw_circle(c + p * s, s * 0.34, _c(Palette.BERRY, k))
 		ci.draw_circle(c + p * s + Vector2(-0.1, -0.1) * s, s * 0.08, _c(Color(1, 1, 1, 0.6), k))
+
+
+## A rolled parchment scroll: a task.
+static func _scroll(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
+	ci.draw_rect(Rect2(c + Vector2(-0.55, -0.5) * s, Vector2(1.1, 1.0) * s), _c(UiTokens.PARCHMENT, k))
+	for y in [-0.2, 0.05, 0.3]:
+		ci.draw_line(c + Vector2(-0.35, y) * s, c + Vector2(0.35, y) * s, _c(UiTokens.SEPIA, k), maxf(s * 0.06, 1.0))
+	for y in [-0.55, 0.55]:
+		ci.draw_rect(Rect2(c + Vector2(-0.7, y - 0.12) * s, Vector2(1.4, 0.24) * s), _c(Palette.WOOD_LIGHT, k))
 
 
 static func _log(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:

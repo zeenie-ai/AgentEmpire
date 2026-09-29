@@ -7,6 +7,11 @@ extends RefCounted
 
 static func tick(w: SimWorld, u: SimUnit) -> void:
 	u.idle_ticks += 1
+	if u.kind == "agent":
+		# Agents look for their next site or go home right away, then every retry interval.
+		if u.idle_ticks == 1 or u.idle_ticks % SimConst.RETRY_EVERY_TICKS == 0:
+			AgentJob.decide(w, u)
+		return
 	if u.hold or u.kind != "townsfolk":
 		return
 	var delay := int(SimConst.AUTO_GATHER_DELAY_S * float(w.tick_rate))
