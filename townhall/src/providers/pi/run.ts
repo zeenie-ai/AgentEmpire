@@ -329,6 +329,11 @@ export class PiRun implements RunHandle {
 
   private onResponse(r: Record<string, unknown>): void {
     const id = asString(r.id);
+    if (id === "th-abort") {
+      // pi answers abort once the session is idle, even when nothing was running.
+      for (const w of this.settleWaiters.splice(0)) w();
+      return;
+    }
     if (id === "th-state" && r.success === true && isPlainObject(r.data)) {
       const sessionFile = asString(r.data.sessionFile);
       const sessionId = asString(r.data.sessionId) ?? this.state.sessionId;

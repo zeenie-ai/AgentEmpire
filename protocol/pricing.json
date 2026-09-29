@@ -3,8 +3,9 @@
   "updated": "2026-09-28",
   "unit": "USD per 1M tokens",
   "notes": [
-    "Claude runs normally report total_cost_usd from the Agent SDK, which is itself an estimate. This table is only the fallback for results that carry no cost.",
+    "Claude runs report total_cost_usd in Claude Code's stream-json result messages, which is itself an estimate. This table is only the fallback for results that carry no cost, and the source of Claude cost hints in list_models.",
     "Codex reports tokens only (thread/tokenUsage/updated), so Codex Mana always comes from this table.",
+    "pi prices every assistant message itself (usage.cost.total, from its own model catalog), so pi models are not listed here.",
     "Codex cost = (inputTokens - cachedInputTokens - cacheWriteInputTokens) * input + cachedInputTokens * cache_read + cacheWriteInputTokens * cache_write + outputTokens * output. reasoningOutputTokens is already included in outputTokens.",
     "Subscription users (Claude Max, ChatGPT plans) see these figures as API-equivalent estimates, marked with an approximately sign in the UI.",
     "Sources: OpenAI API pricing page (developers.openai.com/api/docs/pricing, fetched 2026-09-28). Claude model table from the claude-api reference (cached 2026-06-24). Where a Claude cache price was not listed, cache_write uses the standard 1.25x input rate and cache_read 0.1x input; those entries are marked estimated."
