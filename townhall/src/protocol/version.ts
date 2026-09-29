@@ -1,5 +1,5 @@
 export const PROTOCOL_MAJOR = 1;
-export const PROTOCOL_MINOR = 1;
+export const PROTOCOL_MINOR = 2;
 export const ENVELOPE_VERSION = 1;
 export const DAEMON_VERSION = "0.1.0";
 

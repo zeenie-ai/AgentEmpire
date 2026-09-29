@@ -4,7 +4,7 @@
 extends RefCounted
 
 const PROTOCOL_MAJOR := 1
-const PROTOCOL_MINOR := 1
+const PROTOCOL_MINOR := 2
 const ENVELOPE_VERSION := 1
 const MAX_FRAME_BYTES := 1048576
 const HELLO_TIMEOUT_MS := 5000
@@ -195,7 +195,8 @@ class Role:
 class Provider:
 	const CLAUDE := "claude"
 	const CODEX := "codex"
-	const ALL := ["claude", "codex"]
+	const PI := "pi"
+	const ALL := ["claude", "codex", "pi"]
 
 # Agent.approval_mode
 class ApprovalMode:

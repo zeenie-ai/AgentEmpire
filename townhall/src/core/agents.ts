@@ -8,12 +8,12 @@ import type {
   ApprovalMode,
   Billing,
   BlockedReason,
-  Provider,
   Role,
   Seals,
   Tile,
   ToolType,
 } from "../protocol/objects.js";
+import { Provider } from "../protocol/objects.js";
 import { displayPath, validateWorkFolder } from "../security/path-guard.js";
 import type { Ctx } from "./context.js";
 import { scaleCost, toResources, zeroResources, type Resources } from "./economy.js";
@@ -247,6 +247,13 @@ export class AgentService {
     }
   }
 
+  /** pi serves many model providers, so a pi agent's model names both: "<pi provider>/<model id>". */
+  private checkModel(provider: Provider, model: string): void {
+    if (provider === "pi" && !/^[A-Za-z0-9._-]+\/\S+$/.test(model.trim())) {
+      throw fail.badRequest('a pi model is written "<pi provider>/<model id>", for example "openrouter/deepseek/deepseek-chat"');
+    }
+  }
+
   private defaultApprovalMode(): ApprovalMode {
     const entry = Object.entries(this.ctx.econ.data.approval_modes).find(([, v]) => v.default === true);
     return (entry?.[0] ?? "trusted_edits") as ApprovalMode;
@@ -275,6 +282,7 @@ export class AgentService {
     if (role.age > age) throw fail.age(`${role.name} can be summoned from Age ${role.age}`);
     const mode = spec.approval_mode ?? this.defaultApprovalMode();
     this.checkApprovalMode(mode, spec.provider, econ.rankOrder[0]!);
+    this.checkModel(spec.provider, spec.model);
     if (this.nonRetiredCount() >= econ.agentLimit(age)) {
       throw fail.limit(`Age ${age} allows at most ${econ.agentLimit(age)} agents`);
     }
@@ -396,6 +404,7 @@ export class AgentService {
       if (r.version !== expectedVersion) throw fail.conflict(`agent version is ${r.version}, not ${expectedVersion}`);
       if (r.retired_at) throw fail.invalidState("the agent is retired");
       if (patch.approval_mode) this.checkApprovalMode(patch.approval_mode, r.provider, r.rank);
+      if (patch.model !== undefined) this.checkModel(r.provider, patch.model);
       const seals = patch.seals ? { ...this.seals(r), ...patch.seals } : this.seals(r);
       this.ctx.db.run(
         "UPDATE agents SET name = ?, model = ?, instructions = ?, approval_mode = ?, seals_json = ? WHERE id = ?",
@@ -514,8 +523,8 @@ export class AgentService {
     });
   }
 
-  applyBillingDefaults(billing: { claude: Billing; codex: Billing }): void {
-    for (const provider of ["claude", "codex"] as const) {
+  applyBillingDefaults(billing: Record<Provider, Billing>): void {
+    for (const provider of Provider.options) {
       const rows = this.ctx.db.all<{ id: string }>(
         "SELECT id FROM agents WHERE provider = ? AND retired_at IS NULL AND billing != ?",
         [provider, billing[provider]],

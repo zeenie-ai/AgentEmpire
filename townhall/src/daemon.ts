@@ -33,6 +33,7 @@ import { ClaudeAdapter } from "./providers/claude/adapter.js";
 import { CodexAdapter } from "./providers/codex/adapter.js";
 import { FakeProvider } from "./providers/fake/adapter.js";
 import { ScenarioLibrary } from "./providers/fake/scenarios.js";
+import { PiAdapter } from "./providers/pi/adapter.js";
 import { ProviderRegistry } from "./providers/registry.js";
 import type { ProviderAdapter } from "./providers/types.js";
 import type { Provider } from "./protocol/objects.js";
@@ -152,9 +153,13 @@ export class Daemon {
           defaultScenario: config.fakeDefaultScenario,
           microsPerMana: econ.data.mana.micros_per_mana,
         };
-        adapters = { claude: new FakeProvider("claude", fakeOpts), codex: new FakeProvider("codex", fakeOpts) };
+        adapters = {
+          claude: new FakeProvider("claude", fakeOpts),
+          codex: new FakeProvider("codex", fakeOpts),
+          pi: new FakeProvider("pi", fakeOpts),
+        };
       } else {
-        adapters = { claude: new ClaudeAdapter(), codex: new CodexAdapter() };
+        adapters = { claude: new ClaudeAdapter(), codex: new CodexAdapter(), pi: new PiAdapter() };
       }
     }
     ctx.providers = new ProviderRegistry(adapters, bus);

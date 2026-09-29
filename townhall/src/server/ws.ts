@@ -17,7 +17,12 @@ import type { Broadcaster, EventSink } from "./broadcaster.js";
 import type { Router } from "./router.js";
 
 const HEARTBEAT_MS = 30_000;
-export const FEATURES = ["fake_provider", "replay", "idempotency", "parties", "stop_and_review"];
+const COMMON_FEATURES = ["replay", "idempotency", "parties", "stop_and_review"];
+
+/** Feature flags for hello_result; "fake_provider" only when the agents are scripted. */
+export function features(providerMode: "fake" | "real"): string[] {
+  return providerMode === "fake" ? ["fake_provider", ...COMMON_FEATURES] : ["real_providers", ...COMMON_FEATURES];
+}
 
 let nextConnectionId = 1;
 
@@ -181,8 +186,14 @@ export class ConnectionManager {
       replyOk("hello", requestId, {
         protocol: { major: PROTOCOL_MAJOR, minor: PROTOCOL_MINOR },
         daemon_version: DAEMON_VERSION,
-        sdk_versions: {},
-        features: FEATURES,
+        // The installed harness versions (claude, codex, pi) from the latest provider probe.
+        sdk_versions: Object.fromEntries(
+          this.ctx.providers
+            .cached()
+            .filter((p) => p.installed && p.version)
+            .map((p) => [p.id, p.version!]),
+        ),
+        features: features(this.ctx.config.providerMode),
         seq: this.ctx.bus.currentSeq(),
         catchup,
       }),

@@ -5,11 +5,19 @@ import type { TimerHandle } from "./clock.js";
 import type { Ctx } from "./context.js";
 import { incidentKey } from "./incidents.js";
 
+export type ProviderBilling = Record<Provider, Billing>;
+
 export interface BudgetConfig {
   period: ManaPeriod;
   refill_hour_local: number;
   pool_micros: number;
-  billing: { claude: Billing; codex: Billing };
+  billing: ProviderBilling;
+}
+
+type ByProvider = Record<Provider, number>;
+
+function zeroByProvider(): ByProvider {
+  return { claude: 0, codex: 0, pi: 0 };
 }
 
 interface PeriodRow {
@@ -77,10 +85,15 @@ export function levelFor(capMicros: number, spentMicros: number, stages: { dim: 
   return "normal";
 }
 
-function detectBilling(env: Record<string, string | undefined>): { claude: Billing; codex: Billing } {
+/**
+ * Default billing per provider. pi prices every assistant message from its own model catalog,
+ * so it defaults to API-key billing; the player can mark it as a subscription in set_budget.
+ */
+function detectBilling(env: Record<string, string | undefined>): ProviderBilling {
   return {
     claude: env.ANTHROPIC_API_KEY ? "api_key" : "subscription",
     codex: env.OPENAI_API_KEY || env.CODEX_API_KEY ? "api_key" : "subscription",
+    pi: "api_key",
   };
 }
 
@@ -111,12 +124,15 @@ export class ManaService {
   }
 
   config(): BudgetConfig {
-    return this.ctx.settings.getState<BudgetConfig>("budget", {
+    const detected = detectBilling(process.env);
+    const cfg = this.ctx.settings.getState<BudgetConfig>("budget", {
       period: this.m.default_period,
       refill_hour_local: this.m.refill_hour_local,
       pool_micros: this.ctx.econ.usdToMicros(this.m.default_pool_usd),
-      billing: detectBilling(process.env),
+      billing: detected,
     });
+    // Budgets saved before pi existed (protocol 1.1) have no pi entry.
+    return { ...cfg, billing: { ...detected, ...cfg.billing } };
   }
 
   defaultBilling(provider: Provider): Billing {
@@ -144,7 +160,7 @@ export class ManaService {
         carriedIn,
         cap,
         leftover,
-        toJson({ claude: 0, codex: 0 }),
+        toJson(zeroByProvider()),
       ],
     );
     return this.latest()!;
@@ -173,15 +189,14 @@ export class ManaService {
   state(): Mana {
     const p = this.current();
     const reserved = this.reservedTotal();
-    const byProvider = fromJson(p.by_provider_json, { claude: 0, codex: 0 });
+    const byProvider = { ...zeroByProvider(), ...fromJson<Partial<ByProvider>>(p.by_provider_json, {}) };
     const subscriptionAgents =
       this.ctx.db.get<{ n: number }>(
         "SELECT COUNT(*) AS n FROM agents WHERE retired_at IS NULL AND billing = 'subscription'",
       )?.n ?? 0;
     const anyAgents = this.ctx.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM agents WHERE retired_at IS NULL")?.n ?? 0;
     const cfg = this.config();
-    const estimates =
-      anyAgents > 0 ? subscriptionAgents > 0 : cfg.billing.claude === "subscription" || cfg.billing.codex === "subscription";
+    const estimates = anyAgents > 0 ? subscriptionAgents > 0 : Object.values(cfg.billing).includes("subscription");
     return {
       period: p.kind,
       period_start: p.period_start,
@@ -191,7 +206,7 @@ export class ManaService {
       reserved_micros: reserved,
       remaining_micros: Math.max(0, p.cap_micros - p.spent_micros - reserved),
       level: levelFor(p.cap_micros, p.spent_micros, this.m.stages, this.m.lights_out_fraction),
-      by_provider: { claude: byProvider.claude ?? 0, codex: byProvider.codex ?? 0 },
+      by_provider: { claude: byProvider.claude, codex: byProvider.codex, pi: byProvider.pi },
       estimates,
       provider_windows: [],
     };
@@ -336,8 +351,8 @@ export class ManaService {
       const fromFree = Math.min(rest, free);
       spent += fromFree;
       const overdraft = p.overdraft_micros + (rest - fromFree);
-      const byProvider = fromJson(p.by_provider_json, { claude: 0, codex: 0 });
-      byProvider[provider] = (byProvider[provider] ?? 0) + micros;
+      const byProvider = { ...zeroByProvider(), ...fromJson<Partial<ByProvider>>(p.by_provider_json, {}) };
+      byProvider[provider] += micros;
       this.ctx.db.run(
         "UPDATE budget_periods SET spent_micros = ?, overdraft_micros = ?, by_provider_json = ? WHERE id = ?",
         [spent, overdraft, toJson(byProvider), p.id],
@@ -376,12 +391,14 @@ export class ManaService {
     period: ManaPeriod;
     refill_hour_local?: number | undefined;
     pool_usd: number;
-    billing: { claude: Billing; codex: Billing };
+    billing: { claude: Billing; codex: Billing; pi?: Billing | undefined };
     confirm_raise?: boolean | undefined;
   }): Mana {
     this.maybeRollover();
     this.ctx.db.tx(() => {
       const cfg = this.config();
+      // A 1.1 client sends no pi entry: keep the current one.
+      const billing: ProviderBilling = { claude: input.billing.claude, codex: input.billing.codex, pi: input.billing.pi ?? cfg.billing.pi };
       const p = this.current();
       const newPool = this.ctx.econ.usdToMicros(input.pool_usd);
       const refill = input.refill_hour_local ?? cfg.refill_hour_local;
@@ -393,7 +410,7 @@ export class ManaService {
       if (raising && midPeriod && input.confirm_raise !== true) {
         throw fail.conflict("raising the Mana pool in the middle of a period requires confirm_raise");
       }
-      const next: BudgetConfig = { period: input.period, refill_hour_local: refill, pool_micros: newPool, billing: input.billing };
+      const next: BudgetConfig = { period: input.period, refill_hour_local: refill, pool_micros: newPool, billing };
       this.ctx.settings.setState("budget", next);
       const cap = Math.max(p.spent_micros, Math.max(0, newPool - p.carried_in_micros));
       this.ctx.db.run(
@@ -401,7 +418,7 @@ export class ManaService {
         [input.period, refill, new Date(newEnd).toISOString(), newPool, cap, p.id],
       );
       this.trimReservations();
-      this.ctx.agents.applyBillingDefaults(input.billing);
+      this.ctx.agents.applyBillingDefaults(billing);
       this.markDirty();
     });
     this.armTimer();

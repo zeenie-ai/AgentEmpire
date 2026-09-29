@@ -2,7 +2,8 @@ import { z } from "zod";
 
 // ---------- enums ----------
 
-export const Provider = z.enum(["claude", "codex"]);
+/** The agent harness: Claude Code, the Codex CLI, or pi (any other model provider; 1.2). */
+export const Provider = z.enum(["claude", "codex", "pi"]);
 export const Role = z.enum(["artificer", "scholar", "scribe", "warden", "herald"]);
 export const ApprovalMode = z.enum(["ask_every_time", "trusted_edits", "plan_first", "free_hand"]);
 export const WorkspaceMode = z.enum(["git_worktree", "plain_folder"]);
@@ -282,7 +283,7 @@ export const Mana = z.object({
   reserved_micros: nonNegInt,
   remaining_micros: nonNegInt,
   level: ManaLevel,
-  by_provider: z.object({ claude: nonNegInt, codex: nonNegInt }),
+  by_provider: z.object({ claude: nonNegInt, codex: nonNegInt, pi: nonNegInt }),
   estimates: z.boolean(),
   provider_windows: z.array(ProviderWindow),
 });

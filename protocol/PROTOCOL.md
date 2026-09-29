@@ -1,6 +1,12 @@
-# Town Hall protocol, version 1.1
+# Town Hall protocol, version 1.2
 
 This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change.
+
+**Changes in 1.2** (all backward compatible; a 1.1 client keeps working):
+- A third provider, `pi`, runs agents on any other model provider through the pi coding agent. It appears in `Agent.provider`, `check_providers`, `list_models`, `Mana.by_provider` and `set_budget` billing.
+- A pi agent's `model` is `"<pi provider>/<model id>"`, for example `"openrouter/deepseek/deepseek-chat"`. `create_agent` and `update_agent` refuse other forms with `BAD_REQUEST`.
+- `set_budget` accepts an optional `billing.pi`.
+- `hello_result.sdk_versions` now lists the installed harness versions, and `features` names the provider mode.
 
 ## Connection
 
@@ -65,7 +71,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 ```jsonc
 // Agent
 {
-  "id": "agt_...", "name": "Mira", "provider": "claude|codex", "model": "claude-opus-5-5",
+  "id": "agt_...", "name": "Mira", "provider": "claude|codex|pi", "model": "claude-opus-5-5",   // pi: added in 1.2, model "<pi provider>/<model id>"
   "role": "artificer|scholar|scribe|warden|herald", "instructions": "...",
   "approval_mode": "ask_every_time|trusted_edits|plan_first|free_hand",
   "workspace": { "path": "D:/work/app", "mode": "git_worktree|plain_folder", "repo_root": "D:/work/app" },
@@ -122,7 +128,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 { "period": "day|week|month", "period_start": "...", "period_end": "...",
   "cap_micros": 5000000, "spent_micros": 0, "reserved_micros": 0, "remaining_micros": 5000000,
   "level": "normal|dim|warning|depleted",
-  "by_provider": { "claude": 0, "codex": 0 }, "estimates": true,
+  "by_provider": { "claude": 0, "codex": 0, "pi": 0 }, "estimates": true,   // pi: added in 1.2
   "provider_windows": [ { "provider": "codex", "used_percent": 12.5, "resets_at": "..." } ] }
 
 // Party
@@ -138,11 +144,11 @@ The table shows each command's payload and the payload of its successful reply.
 
 | Command | Payload | Result |
 |---|---|---|
-| `hello` | `{token, protocol:{major:1,minor:0}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. |
+| `hello` | `{token, protocol:{major:1,minor:0}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2). |
 | `ping` | `{}` | `{}` |
 | `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers}` (`tasks` = open tasks plus the 50 most recent) |
-| `check_providers` | `{}` | `{providers:[{id, installed, version?, logged_in, billing_hint:"api_key"\|"subscription"\|"unknown", message?}]}` |
-| `list_models` | `{provider}` | `{models:[{id,label,default,cost_hint?}]}` |
+| `check_providers` | `{}` | `{providers:[{id, installed, version?, logged_in, billing_hint:"api_key"\|"subscription"\|"unknown", message?}]}`. One entry per provider: `claude`, `codex` and `pi` (1.2). |
+| `list_models` | `{provider}` | `{models:[{id,label,default,cost_hint?}]}`. pi model ids are `"<pi provider>/<model id>"` and list only models whose provider has credentials. |
 | `browse_folder` | `{path?}` | `{path, parent, entries:[{name,path,is_git_repo}], roots}` (directories only, inside allowed roots) |
 | `create_agent` | `{spec:{name, provider, model, role, instructions, approval_mode, workspace:{path}, seals?, billing?, starting_tools:[type]}}` | `{agent_id, cost, free:bool, training:{duration_ms}}`. Charges the agent's cost, or nothing under Font's Grace, and checks the age and agent limits. |
 | `agent_trained` | `{agent_id}` | `{}`. The client's training timer finished and the unit has left the Keep. |
@@ -167,7 +173,7 @@ The table shows each command's payload and the payload of its successful reply.
 | `discard_workspace` | `{task_id, confirm:true}` | `{}` |
 | `form_party` | `{lead_agent_id, member_ids}` | `{party_id}` |
 | `disband_party` | `{party_id}` | `{}` |
-| `set_budget` | `{period, refill_hour_local?, pool_usd, billing:{claude,codex}, confirm_raise?}` | `{mana}`. Raising the pool in the middle of a period requires `confirm_raise:true`. |
+| `set_budget` | `{period, refill_hour_local?, pool_usd, billing:{claude,codex,pi?}, confirm_raise?}` | `{mana}`. Raising the pool in the middle of a period requires `confirm_raise:true`. `billing.pi` was added in 1.2; when it is left out, the current pi billing is kept. |
 | `spend_resources` | `{op_id, reason, cost, ref?}` | `{treasury}`. For simulation purchases such as a townsperson, Cottage, Farm, Storehouse or Quartermaster trade. The server checks the balance, and `op_id` makes retries safe. |
 | `refund_resources` | `{op_id, spend_op_id, fraction}` | `{treasury}`. At most one refund per spend, and never more than the spend. |
 | `report_gather` | `{op_id, deposits:{food?,wood?}, storehouses}` | `{treasury}`. Batched. Food and Wood are capped at `storage.cap_by_age[age] + storehouses × storage.storehouse_bonus`. `storehouses` is the number of completed Storehouses, as counted by the client. Rewards may push a resource past the cap; gathering may not. |

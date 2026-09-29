@@ -132,37 +132,43 @@
       "name": "Lectern", "plain": "Read files", "footprint": [1, 1],
       "cost": { "wood": 25 }, "build_s": 12, "age": 1, "requires": [],
       "claude": { "tools": ["Read", "Glob", "Grep"] },
-      "codex": { "sandbox": "read-only" }
+      "codex": { "sandbox": "read-only" },
+      "pi": { "tools": ["read", "grep", "find", "ls"] }
     },
     "quillworks": {
       "name": "Quillworks", "plain": "Write and edit files", "footprint": [1, 1],
       "cost": { "wood": 50, "stone": 30 }, "build_s": 20, "age": 1, "requires": ["lectern"],
       "claude": { "tools": ["Edit", "Write"] },
-      "codex": { "sandbox": "workspace-write" }
+      "codex": { "sandbox": "workspace-write" },
+      "pi": { "tools": ["edit", "write"] }
     },
     "forge": {
       "name": "Forge", "plain": "Run shell commands", "footprint": [2, 1],
       "cost": { "wood": 60, "stone": 60, "gold": 30 }, "build_s": 30, "age": 1, "requires": ["lectern"],
       "claude": { "tools": ["Bash"] },
-      "codex": { "commands": true }
+      "codex": { "commands": true },
+      "pi": { "tools": ["bash"] }
     },
     "rookery": {
       "name": "Rookery", "plain": "Web search and fetch", "footprint": [1, 1],
       "cost": { "wood": 40, "gold": 40 }, "build_s": 20, "age": 1, "requires": [],
       "claude": { "tools": ["WebSearch", "WebFetch"] },
-      "codex": { "web_search": "live" }
+      "codex": { "web_search": "live" },
+      "pi": { "tools": [], "available": false, "note": "pi has no built-in web search or fetch tool, so a Rookery gives a pi agent nothing" }
     },
     "archive": {
       "name": "Archive", "plain": "Instructions and skills", "footprint": [1, 1],
       "cost": { "wood": 60, "stone": 20 }, "build_s": 20, "age": 1, "requires": [],
       "claude": { "charter": true },
-      "codex": { "charter": true }
+      "codex": { "charter": true },
+      "pi": { "charter": true }
     },
     "waygate": {
       "name": "Waygate", "plain": "MCP server", "footprint": [2, 2],
       "cost": { "stone": 80, "gold": 100 }, "build_s": 40, "age": 2, "requires": [],
       "claude": { "mcp": true },
-      "codex": { "mcp": true }
+      "codex": { "mcp": true },
+      "pi": { "mcp": true, "note": "registered with pi.registerMcpServer, which pi 0.87 does not have yet; until then a pi agent skips its Waygates with a warning" }
     }
   },
 
