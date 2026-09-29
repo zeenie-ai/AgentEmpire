@@ -8,7 +8,7 @@
 
 Run it with Blender (the fresh-clone path, after `node scripts/fetch-assets.mjs`):
 
-    blender --background --factory-startup --python art_src/blender/build_all.py
+    blender --background --factory-startup --python-exit-code 1 --python art_src/blender/build_all.py
 
 or with any Python 3.10+, pointing at Blender:
 

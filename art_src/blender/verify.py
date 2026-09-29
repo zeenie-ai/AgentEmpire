@@ -16,6 +16,7 @@ import struct
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ beside the scripts
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bpy  # noqa: E402
@@ -221,10 +222,11 @@ def main() -> None:
     extra = sorted(set(p.stem for p in C.OUT_MODELS.glob("*.glb")) - set(report["models"]))
     if extra:
         report["unexpected_models"] = extra
-    sizes = {}
-    for sub in ("models", "characters", "icons"):
-        d = C.REPO / "client" / "art" / sub
-        sizes[sub] = sum(p.stat().st_size for p in d.iterdir() if p.is_file() and not p.name.endswith(".import"))
+    # only the files this pipeline writes (Godot adds .import files and extracted textures beside them)
+    ours = {"models": list(C.OUT_MODELS.glob("*.glb")) + [C.OUT_ANCHORS, C.OUT_MODELS / (C.ATLAS_NAME + ".png")],
+            "characters": list(C.OUT_CHARACTERS.glob("*.glb")),
+            "icons": list(C.OUT_ICONS.glob("*.png"))}
+    sizes = {k: sum(p.stat().st_size for p in v if p.exists()) for k, v in ours.items()}
     report["bytes"] = sizes
     C.write_json_atomic(report, C.OUT_SHEETS / "verify_report.json")
     failures = [(cat, k, r["errors"]) for cat in ("models", "characters", "icons") for k, r in report[cat].items() if not r["ok"]]

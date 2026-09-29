@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c51rkel07c1bp"
-path="res://.godot/imported/agent_scribe_agent_scribe_texture.png-a5bba8e9c040ee4f30a82ba97ef58200.ctex"
+uid="uid://bhaqn6nim6lyb"
+path="res://.godot/imported/hexagons_medieval.png-485b438d1650f70097772e6a6131f7b9.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "d713ebf7b044d56acff0c176a99823ed"
 }
 
 [deps]
 
-source_file="res://art/characters/agent_scribe_agent_scribe_texture.png"
-dest_files=["res://.godot/imported/agent_scribe_agent_scribe_texture.png-a5bba8e9c040ee4f30a82ba97ef58200.ctex"]
+source_file="res://art/models/hexagons_medieval.png"
+dest_files=["res://.godot/imported/hexagons_medieval.png-485b438d1650f70097772e6a6131f7b9.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

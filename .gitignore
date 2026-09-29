@@ -3,6 +3,10 @@
 out/
 *.log
 
+# Python (Blender pipeline scripts)
+__pycache__/
+*.pyc
+
 # Node
 node_modules/
 townhall/dist/

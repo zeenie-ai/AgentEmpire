@@ -15,6 +15,7 @@ import random
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ beside the scripts
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bmesh  # noqa: E402
@@ -87,6 +88,19 @@ def ground_center(ob) -> None:
     ob.data.transform(Matrix.Translation((-(mn.x + mx.x) / 2, -(mn.y + mx.y) / 2, -mn.z)))
 
 
+def canonical_order(bm) -> None:
+    """Sort vertices and faces by position: some bmesh operators (extrude, hole filling) emit
+    geometry in memory order, which would make rebuilt GLBs differ byte-for-byte between runs."""
+    bm.verts.index_update()
+    bm.faces.index_update()
+    verts = sorted(bm.verts, key=lambda v: (round(v.co.x, 5), round(v.co.y, 5), round(v.co.z, 5), v.index))
+    vrank = {v: i for i, v in enumerate(verts)}
+    bm.verts.sort(key=lambda v: vrank[v])  # BMElemSeq.sort needs a numeric key
+    faces = sorted(bm.faces, key=lambda f: tuple(round(c, 5) for c in f.calc_center_median()) + (len(f.verts), f.index))
+    frank = {f: i for i, f in enumerate(faces)}
+    bm.faces.sort(key=lambda f: frank[f])
+
+
 def cap_cut(bm, edges, uv_layer, uv) -> None:
     """Fill the open boundary left by a bisect with triangles and give them one atlas colour."""
     boundary = [e for e in edges if isinstance(e, bmesh.types.BMEdge) and e.is_valid and e.is_boundary]
@@ -123,6 +137,7 @@ def trim_box(ob, x0=None, x1=None, y0=None, y1=None, cap_swatch=None, cap_t=0.5)
             cap_cut(bm, res["geom_cut"], uv_layer, C.atlas_uv(cap_swatch, cap_t))
     for f in bm.faces:
         f.smooth = False
+    canonical_order(bm)
     bm.to_mesh(ob.data)
     bm.free()
     clear_custom_normals(ob)
@@ -355,6 +370,7 @@ def soil_plot(ob, thickness: float, stubble_above: float) -> None:
         for loop in f.loops:
             loop[uv_layer].uv = uv
     bm.normal_update()
+    canonical_order(bm)
     bm.to_mesh(ob.data)
     bm.free()
     clear_custom_normals(ob)
@@ -371,6 +387,7 @@ def fill_holes(ob, max_sides: int = 0) -> None:
         f.smooth = False
         for loop in f.loops:
             loop[uv_layer].uv = C.atlas_uv("stone", 0.8)
+    canonical_order(bm)
     bm.to_mesh(ob.data)
     bm.free()
     clear_custom_normals(ob)

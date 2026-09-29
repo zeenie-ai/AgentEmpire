@@ -14,6 +14,7 @@ import math
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ beside the scripts
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bpy  # noqa: E402
