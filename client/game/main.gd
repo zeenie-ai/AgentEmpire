@@ -34,7 +34,7 @@ func _ready() -> void:
 	if Game.world != null:
 		_on_world_started(Game.world)
 	elif autostart:
-		Game.new_town(int(Settings.get_value("game/seed", 4127)))
+		Game.boot(int(Settings.get_value("game/seed", 4127)))
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--capture="):
 			_capture_and_quit(a.substr(10))

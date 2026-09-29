@@ -4,7 +4,8 @@ extends RefCounted
 ## state names. Economy numbers (costs, rates, radii, caps) come from EconomyData only.
 
 ## Version of SimWorld.to_dict(); bump when the snapshot layout changes (save_town uses it).
-const SCHEMA_VERSION := 1
+## 2: agents (unit role and state, home plots, add-on tool ids) and Font Wisps.
+const SCHEMA_VERSION := 2
 
 # Unit jobs.
 const JOB_IDLE := "idle"
@@ -12,8 +13,10 @@ const JOB_MOVE := "move"
 const JOB_GATHER := "gather"
 const JOB_BUILD := "build"
 const JOB_DEPOSIT := "deposit"
-## Phase 3: townsfolk carrying task scrolls, approvals and results. Only a stub for now.
+## Townsfolk carrying a task scroll from the Keep to an agent's home.
 const JOB_COURIER := "courier"
+## An agent at home: working at its add-ons, waiting at the door, or pottering about its plot.
+const JOB_AGENT := "agent"
 
 # Path request states.
 const PATH_NONE := 0
@@ -55,3 +58,12 @@ const MAX_BAD_TARGETS := 8
 const FORMATION_SEARCH_CELLS := 800
 ## Ticks without progress on a path before a unit asks for a new one.
 const STUCK_TICKS := 16
+
+## Font Wisps (spirit couriers) fly straight to the home at this speed, in tiles per second.
+const WISP_SPEED := 5.0
+## A wisp this close to the home's centre has arrived.
+const WISP_ARRIVE := 1.6
+## An agent at home with nothing to do moves to another spot of its plot this often, in ticks.
+const AGENT_WANDER_TICKS := 240
+## A courier this close to the Keep has the scroll already and walks straight to the home.
+const COURIER_PICKUP_RANGE := 3.0

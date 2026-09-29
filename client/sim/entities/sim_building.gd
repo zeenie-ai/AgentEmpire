@@ -1,7 +1,8 @@
 class_name SimBuilding
 extends RefCounted
-## A building or construction site. The type keys into economy.json "buildings". Phase 3 agent
-## homes and tool add-ons use the same record with owner_agent_id set.
+## A building or construction site. The type keys into economy.json "buildings" (or "tools"
+## for add-ons). Agent homes and tool add-ons have owner_agent_id set; only their agent builds
+## them, and the Town Hall charged for them, so they are never refunded here.
 
 var id: int = 0
 var type: String = ""
@@ -13,12 +14,17 @@ var complete: bool = false
 var work: int = 0
 ## Ledger op that paid for it; cancel and dismantle refund against it.
 var spend_op: String = ""
-## Phase 3: Town Hall agent id for agent homes and tool add-ons.
+## Town Hall agent id for agent homes and tool add-ons.
 var owner_agent_id: String = ""
+## Tool add-ons: the Town Hall tool id.
+var tool_id: String = ""
+## Agent homes: the whole plot (home plus the add-on ring), reserved for this agent.
+var plot: Rect2i = Rect2i()
 ## Fields (farms) can be walked over and are worked from inside.
 var walkable: bool = false
 
 ## Training queue: [{"unit": String, "op": String, "ticks": int, "needed": int}], head first.
+## Agents in training ("unit": "agent") also have "agent_id" and "role", and an empty op.
 var queue: Array[Dictionary] = []
 ## True while the head of the queue waits for population room.
 var training_blocked: bool = false
@@ -56,12 +62,13 @@ func head_progress() -> float:
 func to_dict() -> Dictionary:
 	var q := []
 	for item in queue:
-		q.append({"unit": String(item.get("unit", "")), "op": String(item.get("op", "")),
-			"ticks": int(item.get("ticks", 0)), "needed": int(item.get("needed", 1))})
+		q.append(_queue_item(item))
 	return {
 		"id": id, "type": type, "cell": [cell.x, cell.y], "size": [size.x, size.y],
 		"complete": complete, "work": work, "spend_op": spend_op,
-		"owner_agent_id": owner_agent_id, "walkable": walkable, "queue": q,
+		"owner_agent_id": owner_agent_id, "tool_id": tool_id,
+		"plot": [plot.position.x, plot.position.y, plot.size.x, plot.size.y],
+		"walkable": walkable, "queue": q,
 		"training_blocked": training_blocked, "rally": rally.duplicate(true),
 		"gather_focus": gather_focus, "farmer_id": farmer_id,
 	}
@@ -79,11 +86,13 @@ static func from_dict(d: Dictionary) -> SimBuilding:
 	b.work = int(d.get("work", 0))
 	b.spend_op = String(d.get("spend_op", ""))
 	b.owner_agent_id = String(d.get("owner_agent_id", ""))
+	b.tool_id = String(d.get("tool_id", ""))
+	var pl: Array = d.get("plot", [0, 0, 0, 0])
+	b.plot = Rect2i(int(pl[0]), int(pl[1]), int(pl[2]), int(pl[3])) if pl.size() >= 4 else Rect2i()
 	b.walkable = bool(d.get("walkable", false))
 	b.queue.clear()
 	for item: Dictionary in d.get("queue", []):
-		b.queue.append({"unit": String(item.get("unit", "")), "op": String(item.get("op", "")),
-			"ticks": int(item.get("ticks", 0)), "needed": int(item.get("needed", 1))})
+		b.queue.append(_queue_item(item))
 	b.training_blocked = bool(d.get("training_blocked", false))
 	var r: Dictionary = d.get("rally", {})
 	b.rally = {}
@@ -92,3 +101,14 @@ static func from_dict(d: Dictionary) -> SimBuilding:
 	b.gather_focus = String(d.get("gather_focus", "auto"))
 	b.farmer_id = int(d.get("farmer_id", 0))
 	return b
+
+
+## A training queue entry with its types restored (townsfolk carry the ledger op that paid for
+## them; agents carry their Town Hall id and role instead).
+static func _queue_item(item: Dictionary) -> Dictionary:
+	var out := {"unit": String(item.get("unit", "")), "op": String(item.get("op", "")),
+		"ticks": int(item.get("ticks", 0)), "needed": int(item.get("needed", 1))}
+	if item.has("agent_id"):
+		out["agent_id"] = String(item["agent_id"])
+		out["role"] = String(item.get("role", ""))
+	return out

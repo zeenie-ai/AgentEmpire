@@ -210,9 +210,29 @@ func building_types() -> Array[String]:
 	return out
 
 
+## A building type's definition. Tool add-ons ("lectern", "forge", ...) are buildings too:
+## their "tools" entry is returned with built_by "agent", so footprints, build times and names
+## work the same way for them.
 func building_def(type: String) -> Dictionary:
 	var v: Variant = section("buildings").get(type, {})
-	return v if typeof(v) == TYPE_DICTIONARY else {}
+	if typeof(v) == TYPE_DICTIONARY:
+		return v
+	var t := tool_def(type)
+	if t.is_empty():
+		return {}
+	var d := t.duplicate()
+	d["built_by"] = "agent"
+	return d
+
+
+func is_tool(type: String) -> bool:
+	return not tool_def(type).is_empty()
+
+
+## Agent homes: the buildings a role lives in.
+func is_home(type: String) -> bool:
+	var v: Variant = section("buildings").get(type)
+	return typeof(v) == TYPE_DICTIONARY and String((v as Dictionary).get("role", "")) != ""
 
 
 func has_building(type: String) -> bool:
@@ -315,6 +335,168 @@ func training_queue_max() -> int:
 
 func refund_fraction(kind: String) -> float:
 	return float(section("refunds").get(kind, 0.0))
+
+
+# --- agents: roles, homes, tool add-ons -------------------------------------------------------
+
+func role_names() -> Array[String]:
+	var out: Array[String] = []
+	for k: Variant in section("roles").keys():
+		out.append(String(k))
+	return out
+
+
+func role_def(role: String) -> Dictionary:
+	var v: Variant = section("roles").get(role, {})
+	return v if typeof(v) == TYPE_DICTIONARY else {}
+
+
+func role_name(role: String) -> String:
+	return String(role_def(role).get("name", role.capitalize()))
+
+
+func role_plain(role: String) -> String:
+	return String(role_def(role).get("plain", ""))
+
+
+func role_age(role: String) -> int:
+	return int(role_def(role).get("age", 1))
+
+
+## The home building type of a role ("workshop" for an Artificer).
+func role_home(role: String) -> String:
+	return String(role_def(role).get("home", ""))
+
+
+func role_train_s(role: String) -> float:
+	return float(role_def(role).get("train_s", 0.0))
+
+
+## The role's base summoning cost, before the per-existing-agent increase.
+func role_cost(role: String) -> Dictionary:
+	return _int_dict(role_def(role).get("cost", {}))
+
+
+## What summoning costs when `existing` agents are already in town (the Town Hall rounds the
+## same way: each resource scaled by 1 + scaling * existing, rounded to the nearest unit).
+func agent_cost(role: String, existing: int) -> Dictionary:
+	var f := 1.0 + float(raw.get("agent_cost_scaling_per_existing", 0.0)) * float(maxi(existing, 0))
+	var out := {}
+	var base := role_cost(role)
+	for res: String in base:
+		out[res] = int(round(float(base[res]) * f))
+	return out
+
+
+func role_tools(role: String, which: String) -> Array[String]:
+	var out: Array[String] = []
+	for t: Variant in role_def(role).get(which + "_tools", []):
+		out.append(String(t))
+	return out
+
+
+## The role whose home is `type`, or "".
+func home_role(type: String) -> String:
+	return String(building_def(type).get("role", "")) if is_home(type) else ""
+
+
+func tool_types() -> Array[String]:
+	var out: Array[String] = []
+	for k: Variant in section("tools").keys():
+		out.append(String(k))
+	return out
+
+
+func tool_def(type: String) -> Dictionary:
+	var v: Variant = section("tools").get(type, {})
+	return v if typeof(v) == TYPE_DICTIONARY else {}
+
+
+func tool_requires(type: String) -> Array[String]:
+	var out: Array[String] = []
+	for t: Variant in tool_def(type).get("requires", []):
+		out.append(String(t))
+	return out
+
+
+func tool_slots(age: int) -> int:
+	return _by_age("tool_slots_by_age", age)
+
+
+func home_task_queue(age: int) -> int:
+	return _by_age("home_task_queue_by_age", age)
+
+
+func agent_limit(age: int) -> int:
+	var limits: Array = section("population").get("agent_limit_by_age", [])
+	if limits.is_empty():
+		return 0
+	return int(limits[clampi(age - 1, 0, limits.size() - 1)])
+
+
+func home_plot_size() -> int:
+	return int(section("map").get("home_plot", 7))
+
+
+# --- tasks, Mana, couriers -----------------------------------------------------------------
+
+func task_sizes() -> Array[String]:
+	var out: Array[String] = []
+	for k: Variant in section("sizes").keys():
+		out.append(String(k))
+	return out
+
+
+func size_name(size: String) -> String:
+	return String(section("sizes").get(size, {}).get("name", size))
+
+
+## Default Mana seal for a task size.
+func seal_mana(size: String) -> int:
+	return int(section("mana").get("seal_by_size", {}).get(size, 0))
+
+
+func bounty_base(size: String) -> int:
+	return int(section("bounty").get("base_by_size", {}).get(size, 0))
+
+
+func micros_per_mana() -> int:
+	return maxi(int(section("mana").get("micros_per_mana", 10000)), 1)
+
+
+func wisp_after_s() -> float:
+	return float(section("couriers").get("wisp_after_s", 20.0))
+
+
+func force_deliver_after_s() -> float:
+	return float(section("couriers").get("force_deliver_after_s", 90.0))
+
+
+func approval_modes() -> Array[String]:
+	var out: Array[String] = []
+	for k: Variant in section("approval_modes").keys():
+		out.append(String(k))
+	return out
+
+
+func approval_mode_def(mode: String) -> Dictionary:
+	var v: Variant = section("approval_modes").get(mode, {})
+	return v if typeof(v) == TYPE_DICTIONARY else {}
+
+
+func default_approval_mode() -> String:
+	for m in approval_modes():
+		if bool(approval_mode_def(m).get("default", false)):
+			return m
+	return "trusted_edits"
+
+
+func _by_age(key: String, age: int) -> int:
+	var v: Variant = raw.get(key, [])
+	if typeof(v) != TYPE_ARRAY or (v as Array).is_empty():
+		return 0
+	var arr: Array = v
+	return int(arr[clampi(age - 1, 0, arr.size() - 1)])
 
 
 # --- helpers -------------------------------------------------------------------------------

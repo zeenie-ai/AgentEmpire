@@ -2,14 +2,14 @@ class_name GameCommands
 extends RefCounted
 ## Serializable game commands: the only way game state changes.
 ##
-## The input layer (and, from Phase 3, the Town Hall bridge) pushes plain JSON-safe
-## dictionaries built with the constructors below. SimWorld applies them in order at the start
-## of its next tick (CommandApplier) and records each one in `history` with that tick. This log
-## is what makes replays and shared team towns possible later. Numbers may come back from JSON
-## as floats; the applier converts them with int().
+## The input layer and the Town Hall bridge (TownLink) push plain JSON-safe dictionaries built
+## with the constructors below. SimWorld applies them in order at the start of its next tick
+## (CommandApplier) and records each one in `history` with that tick. This log is what makes
+## replays and shared team towns possible later. Numbers may come back from JSON as floats; the
+## applier converts them with int().
 ##
-## Reserved for Phase 3 (agents): "spawn_agent" (agent trained at the Keep), "place_home",
-## "place_tool", "courier" (walk a scroll to a home) and "set_agent_state".
+## Agent commands mirror what the Town Hall already decided (and charged for): an agent queued
+## at the Keep, its home and add-ons placed, its state, the couriers that carry its scrolls.
 
 ## Emitted when a command is queued (before it is applied).
 signal pushed(cmd: Dictionary)
@@ -30,6 +30,30 @@ const SET_RALLY := "set_rally"
 const SET_GATHER_FOCUS := "set_gather_focus"
 ## Tools only (perf stress, screenshots); ignored unless SimWorld.allow_debug_commands.
 const DEBUG_SPAWN := "debug_spawn"
+
+# Agents (TownLink, after the Town Hall agreed).
+## An agent starts training at the Keep.
+const QUEUE_AGENT := "queue_agent"
+## An agent's figure appears without training (catching up with the Town Hall).
+const SPAWN_AGENT := "spawn_agent"
+## An agent and everything it built leave the town (retired, or its summoning was cancelled).
+const DROP_AGENT := "drop_agent"
+const PLACE_HOME := "place_home"
+const PLACE_TOOL := "place_tool"
+const REMOVE_TOOL := "remove_tool"
+## Finishes a site at once (the Town Hall already counts it as built).
+const COMPLETE_BUILDING := "complete_building"
+## What the agent is doing, for its figure: activity and the add-on in use.
+const SET_AGENT_STATE := "set_agent_state"
+## A townsperson carries a task scroll from the Keep to an agent's home.
+const COURIER := "courier"
+## A Font Wisp carries a task scroll (after a delay, when no townsperson could).
+const WISP := "wisp"
+## Stops every courier and wisp carrying the task (it was delivered or cancelled).
+const CANCEL_COURIER := "cancel_courier"
+## The Town Hall refused a spend the ledger mirror had accepted: undo what it paid for.
+const REVOKE_SPEND := "revoke_spend"
+const SET_AGE := "set_age"
 
 const HISTORY_LIMIT := 4096
 
@@ -139,6 +163,60 @@ static func set_gather_focus(building_id: int, focus: String) -> Dictionary:
 
 static func debug_spawn(count: int, cell: Vector2i, hold: bool = false) -> Dictionary:
 	return {"type": DEBUG_SPAWN, "count": count, "x": cell.x, "y": cell.y, "kind": "townsfolk", "hold": hold}
+
+
+static func queue_agent(building_id: int, agent_id: String, role: String, ticks: int) -> Dictionary:
+	return {"type": QUEUE_AGENT, "building": building_id, "agent_id": agent_id, "role": role, "ticks": ticks}
+
+
+static func spawn_agent(agent_id: String, role: String, cell: Vector2i) -> Dictionary:
+	return {"type": SPAWN_AGENT, "agent_id": agent_id, "role": role, "x": cell.x, "y": cell.y}
+
+
+static func drop_agent(agent_id: String) -> Dictionary:
+	return {"type": DROP_AGENT, "agent_id": agent_id}
+
+
+## `cell` is the top-left cell of the home (the plot is HomeLayout.plot_rect(cell)).
+static func place_home(agent_id: String, home_type: String, cell: Vector2i, complete: bool = false) -> Dictionary:
+	return {"type": PLACE_HOME, "agent_id": agent_id, "building": home_type, "x": cell.x, "y": cell.y, "complete": complete}
+
+
+static func place_tool(agent_id: String, tool_id: String, tool_type: String, cell: Vector2i, complete: bool = false) -> Dictionary:
+	return {"type": PLACE_TOOL, "agent_id": agent_id, "tool_id": tool_id, "building": tool_type,
+		"x": cell.x, "y": cell.y, "complete": complete}
+
+
+static func remove_tool(tool_id: String) -> Dictionary:
+	return {"type": REMOVE_TOOL, "tool_id": tool_id}
+
+
+static func complete_building(building_id: int) -> Dictionary:
+	return {"type": COMPLETE_BUILDING, "building": building_id}
+
+
+static func set_agent_state(agent_id: String, activity: String, tool: String) -> Dictionary:
+	return {"type": SET_AGENT_STATE, "agent_id": agent_id, "activity": activity, "tool": tool}
+
+
+static func courier(unit_id: int, building_id: int, task_id: String, agent_id: String) -> Dictionary:
+	return {"type": COURIER, "unit": unit_id, "building": building_id, "task_id": task_id, "agent_id": agent_id}
+
+
+static func wisp(building_id: int, task_id: String, agent_id: String, delay_ticks: int) -> Dictionary:
+	return {"type": WISP, "building": building_id, "task_id": task_id, "agent_id": agent_id, "delay": delay_ticks}
+
+
+static func cancel_courier(task_id: String) -> Dictionary:
+	return {"type": CANCEL_COURIER, "task_id": task_id}
+
+
+static func revoke_spend(op_id: String) -> Dictionary:
+	return {"type": REVOKE_SPEND, "op": op_id}
+
+
+static func set_age(age: int) -> Dictionary:
+	return {"type": SET_AGE, "age": age}
 
 
 static func _ids(unit_ids: Array) -> Array:
