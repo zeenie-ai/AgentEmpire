@@ -6,6 +6,8 @@ import { loadConfig, type Config } from "../../src/config.js";
 import { TestClock } from "../../src/core/clock.js";
 import { Daemon } from "../../src/daemon.js";
 import { silentLogger } from "../../src/log.js";
+import type { Provider } from "../../src/protocol/objects.js";
+import type { ProviderAdapter } from "../../src/providers/types.js";
 
 export interface Reply {
   v: 1;
@@ -163,6 +165,8 @@ export interface TownOptions {
   root?: string;
   clock?: TestClock;
   config?: Partial<Config>;
+  /** Real (or custom) provider adapters instead of the scripted ones; built once the paths are known. */
+  adapters?: (paths: { root: string; dataDir: string; work: string }) => Record<Provider, ProviderAdapter>;
 }
 
 export class TestTown {
@@ -191,7 +195,8 @@ export class TestTown {
         ...opts.config,
       },
     );
-    const daemon = await Daemon.start({ config, clock, log: silentLogger() });
+    const adapters = opts.adapters?.({ root, dataDir: config.dataDir, work });
+    const daemon = await Daemon.start({ config, clock, log: silentLogger(), ...(adapters ? { adapters } : {}) });
     return new TestTown(daemon, root, work, clock, config);
   }
 
