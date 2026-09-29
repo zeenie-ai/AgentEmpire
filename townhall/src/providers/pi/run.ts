@@ -173,7 +173,10 @@ export class PiRun implements RunHandle {
   }
 
   private args(promptFile: string): string[] {
-    const args = ["--mode", "rpc", "--no-approve", "--session-dir", this.state.sessionDir, "--session-id", this.state.sessionId];
+    const args = ["--mode", "rpc", "--no-approve", "--session-dir", this.state.sessionDir];
+    // Resume opens the checkpointed session file; a first attempt creates the task's session by id.
+    if (this.state.sessionFile && existsSync(this.state.sessionFile)) args.push("--session", this.state.sessionFile);
+    else args.push("--session-id", this.state.sessionId);
     const model = splitPiModel(this.req.model);
     if (model.provider) args.push("--provider", model.provider);
     if (model.id) args.push("--model", model.id);

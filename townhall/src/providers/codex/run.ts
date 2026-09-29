@@ -54,6 +54,14 @@ function textInput(text: string): unknown[] {
   return [{ type: "text", text, text_elements: [] }];
 }
 
+/** A TurnError as text: its message plus the codexErrorInfo kind, for example "(usageLimitExceeded)". */
+function describeError(error: Record<string, unknown>): string {
+  const info = error.codexErrorInfo;
+  const kind = typeof info === "string" ? info : isPlainObject(info) ? Object.keys(info)[0] : null;
+  const message = asString(error.message) ?? "the turn failed";
+  return kind ? `${message} (${kind})` : message;
+}
+
 type Decision = "accept" | "decline" | "cancel";
 
 function decisionOf(answer: ApprovalAnswer): Decision {
@@ -277,7 +285,8 @@ export class CodexRun implements RunHandle {
     if (this.completed && !this.turnError) {
       return { kind: "completed", summary: this.lastAgentText.trim() || "The agent finished." };
     }
-    const detail = [this.turnError, this.lastError, proc.stderrTail()].filter((s) => s && s.trim()).join(" | ");
+    const errors = [...new Set([this.turnError, this.lastError].filter((s): s is string => !!s && s.trim() !== ""))];
+    const detail = errors.length > 0 ? errors.join(" | ") : proc.stderrTail();
     const cls = classifyFailure(detail);
     const message = detail ? cleanText(detail, this.opts.deps.redactor, 600) : `Codex exited with code ${exit.code ?? "unknown"}`;
     return { kind: "failed", error: { code: cls.code, message, transient: cls.transient } };
@@ -315,7 +324,7 @@ export class CodexRun implements RunHandle {
           if (p.willRetry === true) {
             this.emit({ kind: "activity", activity: "system", text: `Codex is retrying: ${String(error.message ?? "error")}` });
           } else {
-            this.lastError = [asString(error.message), JSON.stringify(error.codexErrorInfo ?? "")].filter(Boolean).join(" ");
+            this.lastError = describeError(error);
           }
           break;
         }
@@ -446,7 +455,7 @@ export class CodexRun implements RunHandle {
     const status = asString(turn.status);
     if (status === "failed") {
       const error = isPlainObject(turn.error) ? turn.error : {};
-      this.turnError = [asString(error.message) ?? "the turn failed", JSON.stringify(error.codexErrorInfo ?? "")].filter(Boolean).join(" ");
+      this.turnError = describeError(error);
       this.finish();
       return;
     }
