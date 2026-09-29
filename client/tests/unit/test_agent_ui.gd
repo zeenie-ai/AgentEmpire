@@ -505,6 +505,19 @@ func test_agent_panel_shows_status() -> void:
 	assert_almost_eq(float(AgentUi.level_progress(420, 3)["ratio"]), 0.4, 0.001, "from level 3 (300 XP) to 4 (600 XP)")
 
 
+func test_agent_panel_fits_720x190_with_a_long_name() -> void:
+	var s := AgentUiDemo.state()
+	var mira: Dictionary = (s["agents"] as Array)[0]
+	mira["name"] = "Bartholomew Aurelian of the Western Gate"
+	Realm.apply_state(s)
+	var p := AgentPanel.new().setup("agt_mira", link)
+	_host(AgentTheme.HUD).add_child(p)
+	await wait_process_frames(2)
+	var m := p.get_combined_minimum_size()
+	assert_true(m.x <= 700.0, "fits the width: %s" % m)
+	assert_true(m.y <= 170.0, "fits the height: %s" % m)
+
+
 func test_budget_dialog_saves_and_confirms_a_raise() -> void:
 	var d := _open(BudgetDialog.new()) as BudgetDialog
 	await wait_process_frames(1)

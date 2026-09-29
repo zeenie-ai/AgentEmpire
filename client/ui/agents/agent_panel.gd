@@ -20,6 +20,8 @@ signal approvals_requested(agent_id: String)
 
 const Protocol = preload("res://net/protocol.gd")
 const TICK_S := 0.5
+## The widest the name may grow before it ends in an ellipsis.
+const NAME_MAX_PX := 250.0
 
 var agent_id: String = ""
 var link: Object = null
@@ -58,6 +60,9 @@ func _init() -> void:
 	_name = AgentUi.label("", "TitleLabel", top)
 	_name.add_theme_font_size_override("font_size", 18)
 	_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_name.clip_text = true
+	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_name.mouse_filter = Control.MOUSE_FILTER_PASS
 	_rank = RankBadge.new(22)
 	top.add_child(_rank)
 	_level = AgentUi.label("", "Mono", top)
@@ -183,6 +188,10 @@ func refresh() -> void:
 		_name.text = "UNKNOWN AGENT"
 		return
 	_name.text = J.gs(a, "name").to_upper()
+	_name.tooltip_text = J.gs(a, "name")
+	# Short names show whole; long ones (up to 40 letters) end in an ellipsis.
+	var w := UiFonts.cinzel(700, 2).get_string_size(_name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+	_name.custom_minimum_size.x = minf(ceilf(w) + 4.0, NAME_MAX_PX)
 	_rank.rank = J.gs(a, "rank", "F")
 	var level := J.gi(a, "level", 1)
 	var xp := J.gi(a, "xp")
