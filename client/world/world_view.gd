@@ -3,11 +3,16 @@ extends Node3D
 ## The 3D town. Binds to a SimWorld and follows its signals: entity_spawned / entity_removed /
 ## entity_changed create, free and refresh views. Every frame, units are interpolated between
 ## ticks (Game.interp_alpha) and construction sites rise with their progress.
+## Graphics quality (Settings "graphics/quality") is applied here to the environment, the grass
+## and the selection rings (decals on Forward+, a MultiMesh elsewhere).
 
 const UNIT_RING := 0.42
 const RING_UNIT := Color(0.663, 0.941, 0.816, 0.95)
 const RING_BUILDING := Color(0.878, 0.71, 0.376, 0.95)
 const RING_HOVER := Color(1.0, 1.0, 1.0, 0.45)
+const MOTES_EXTENT := Vector3(24.0, 3.5, 18.0)
+const MOTE_DAY := Color(1.0, 0.86, 0.55)
+const MOTE_NIGHT := Color(0.62, 0.9, 1.0)
 
 var world: SimWorld
 var selection: Selection
@@ -18,10 +23,12 @@ var environment_view: SkyEnvironment
 var ground: GroundView
 var resources: ResourceFieldView
 var stakes: SurveyStakes
-var rings: SelectionRings
+## SelectionRings or DecalRings: both take set_rings(entries).
+var rings: Node3D
 var ghost: PlacementGhost
 var rally: RallyFlag
 var floating: FloatingText
+var motes: GeometryInstance3D
 
 var unit_views: Dictionary = {}
 var building_views: Dictionary = {}
@@ -29,6 +36,7 @@ var building_views: Dictionary = {}
 var _units_root: Node3D
 var _buildings_root: Node3D
 var _time: float = 0.0
+var _motes_material: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -50,9 +58,6 @@ func _ready() -> void:
 	_units_root = Node3D.new()
 	_units_root.name = "Units"
 	add_child(_units_root)
-	rings = SelectionRings.new()
-	rings.name = "SelectionRings"
-	add_child(rings)
 	ghost = PlacementGhost.new()
 	ghost.name = "PlacementGhost"
 	ghost.visible = false
@@ -63,6 +68,38 @@ func _ready() -> void:
 	floating = FloatingText.new()
 	floating.name = "FloatingText"
 	add_child(floating)
+	motes = Fx.motes(MOTES_EXTENT)
+	motes.name = "Motes"
+	_motes_material = (Fx.sprite_material(WorldTextures.soft_dot(), true).duplicate() as StandardMaterial3D)
+	motes.material_override = _motes_material
+	add_child(motes)
+	_make_rings(GraphicsQuality.current())
+	var settings := get_node_or_null("/root/Settings")
+	if settings != null:
+		settings.changed.connect(_on_setting_changed)
+
+
+func _on_setting_changed(key: String, _value: Variant) -> void:
+	if key == GraphicsQuality.SETTING:
+		apply_quality(GraphicsQuality.current())
+
+
+## Applies a graphics preset to everything in the world.
+func apply_quality(q: Dictionary) -> void:
+	environment_view.apply_quality(q)
+	ground.apply_quality(q)
+	_make_rings(q)
+
+
+func _make_rings(q: Dictionary) -> void:
+	var want_decals := GraphicsQuality.use_decals(q)
+	if rings != null:
+		if (rings is DecalRings) == want_decals:
+			return
+		rings.queue_free()
+	rings = DecalRings.new() if want_decals else SelectionRings.new()
+	rings.name = "SelectionRings"
+	add_child(rings)
 
 
 func bind(w: SimWorld) -> void:
@@ -118,6 +155,7 @@ func _on_spawned(id: int, category: String) -> void:
 			_add_unit(world.units[id])
 		SimWorld.CAT_BUILDING:
 			_add_building(world.buildings[id])
+			ground.building_added(world.buildings[id])
 		SimWorld.CAT_NODE:
 			resources.refresh(id)
 
@@ -140,7 +178,13 @@ func _on_changed(id: int, category: String) -> void:
 	match category:
 		SimWorld.CAT_BUILDING:
 			if building_views.has(id) and world.buildings.has(id):
-				(building_views[id] as BuildingView).refresh(world.buildings[id])
+				var bv := building_views[id] as BuildingView
+				var was_complete := bv.complete
+				bv.refresh(world.buildings[id])
+				if bv.complete and not was_complete:
+					for v: UnitView in unit_views.values():
+						if v.last_build_target == id:
+							v.cheer()
 		SimWorld.CAT_NODE:
 			resources.refresh(id)
 
@@ -172,6 +216,21 @@ func _process(delta: float) -> void:
 		if b != null:
 			(building_views[id] as BuildingView).update_visual(b, _time, delta)
 	_update_rings(alpha)
+	_update_motes()
+
+
+## Pollen drifts in a box around the point the camera looks at.
+func _update_motes() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or motes == null:
+		return
+	var fwd := -cam.global_transform.basis.z
+	if fwd.y < -0.05:
+		var t := cam.global_position.y / -fwd.y
+		var focus := cam.global_position + fwd * t
+		motes.global_position = Vector3(focus.x, MOTES_EXTENT.y + 0.3, focus.z)
+	var n := ArtMaterials.night_amount()
+	_motes_material.albedo_color = MOTE_DAY.lerp(MOTE_NIGHT, n) * Color(1, 1, 1, lerpf(0.55, 0.9, n))
 
 
 ## Order feedback: a ring that shrinks and fades where the order went.
@@ -212,7 +271,7 @@ func _update_rings(alpha: float) -> void:
 				keep_rally = Vector2i(int(b.rally["x"]), int(b.rally["y"]))
 	if hover_id != 0 and (selection == null or not selection.has(hover_id)):
 		_ring_for(hover_id, alpha, entries, RING_HOVER, RING_HOVER)
-	rings.set_rings(entries)
+	rings.call("set_rings", entries)
 	if keep_rally != Pathing.NO_CELL:
 		rally.show_at(keep_rally)
 	else:

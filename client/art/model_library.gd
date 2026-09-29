@@ -1,63 +1,356 @@
 class_name ModelLibrary
 extends RefCounted
-## The boundary between game code and art. Views ask for models and meshes by key; today every
-## key is built procedurally from primitives in the handoff palette. To use a real model
-## (a Kenney kit piece, a Blender GLB from art_src/), add its scene to OVERRIDES: no view
-## changes are needed.
+## The boundary between game code and art. Views ask for models and meshes by key
+## ("building/cottage", "node/tree_conifer", "unit/townsfolk", "carry/wood", "stage/a", ...).
+## Each key maps to an art-manifest id (AssetCatalog). When the processed GLB exists under
+## res://art it is used, otherwise the procedural model in the handoff palette is built, so the
+## game runs with any subset of the art present (or none).
 ##
-## Conventions for every model: origin at the centre of its footprint on the ground (y = 0),
-## +Y up, 1 unit = 1 tile, front facing +Z. Building models carry meta "height" (for the
-## construction rise) and may contain a node named "Font" (the Keep's spinning ring).
-
-## key -> scene path, e.g. "building/cottage": "res://art/models/cottage.glb".
-const OVERRIDES := {}
+## Conventions (art_src/manifest.json): origin at the centre of the footprint on the ground
+## (y = 0), +Y up, 1 unit = 1 tile, front facing +Z. Static GLBs hold one mesh node named
+## "Mesh", which mesh() hands to MultiMesh views. Building models carry meta "height"
+## (construction rise, picking), "door", "top" and "chimney" points (anchors.json when present)
+## and may hold a "Font" node (the Keep's spinning ring).
 
 const HEIGHTS := {"keep": 6.3, "cottage": 1.85, "farm": 0.4, "storehouse": 1.85}
+## Procedural door and chimney points (model space).
+const PROC_DOORS := {"keep": Vector3(0, 0.3, 1.45), "cottage": Vector3(-0.28, 0.3, 0.75), "storehouse": Vector3(0, 0.3, 0.75)}
+const PROC_CHIMNEYS := {"cottage": Vector3(0.45, 1.93, -0.3), "keep": Vector3(0.55, 3.2, -0.55)}
+## Kit atlas cells (u0, v0, u1, v1) that glow at night as windows, per building id. The KayKit
+## medieval atlas is 8 x 4 swatches; houses glaze their windows with swatch (6, 1).
+const WINDOW_CELLS := {
+	"cottage": Vector4(0.75, 0.25, 0.875, 0.5),
+	"storehouse": Vector4(0.75, 0.25, 0.875, 0.5),
+	"keep": Vector4(0.375, 0.0, 0.5, 0.25),
+}
+## Kit shader profile for characters: a touch of rim light and softer shading for readability.
+const CHARACTER_PROFILE := {"rim": 0.28, "wrap": 0.35, "saturation": 1.12}
+## Foliage: softer light through the leaves and a calmer green that sits with the meadow.
+const FOLIAGE_PROFILE := {"saturation": 0.84, "wrap": 0.4}
+
+## Look-dev hook (tools only, never set by the game): an object with
+## variant_count(id: String) -> int, make(id: String, variant: int) -> Node3D and
+## make_character(kind: String, variant: int) -> Node3D, used when no file exists.
+static var preview: Object = null
 
 static var _meshes: Dictionary = {}
+static var _scenes: Dictionary = {}
+## Building heights by type, and chimney points by art stem ("chimney:<stem>").
+static var _heights: Dictionary = {}
 
 
-## A fresh model node for `key`: "building/<type>", "unit/<kind>".
+static func clear_cache() -> void:
+	_meshes.clear()
+	_scenes.clear()
+	_heights.clear()
+	AssetCatalog.clear_cache()
+
+
+## True when `key` is drawn from art files (or the look-dev preview) rather than procedurally.
+static func has_art(key: String) -> bool:
+	return variant_count_art(key) > 0
+
+
+## Number of art variants for `key` (0 when it is procedural).
+static func variant_count_art(key: String) -> int:
+	var n := AssetCatalog.model_paths(key).size()
+	if n == 0 and preview != null:
+		n = int(preview.call("variant_count", AssetCatalog.id_for(key)))
+	return n
+
+
+## Number of variants mesh(key, i) offers (at least 1).
+static func variant_count(key: String) -> int:
+	return maxi(variant_count_art(key), 1)
+
+
+## A fresh model node for `key`: "building/<type>", "unit/<kind>", or any prop key.
 static func instance(key: String, variant: int = 0) -> Node3D:
-	if OVERRIDES.has(key):
-		var scene := load(String(OVERRIDES[key])) as PackedScene
-		if scene != null:
-			return scene.instantiate() as Node3D
-	var root := Node3D.new()
-	root.name = key.get_slice("/", 1).capitalize().replace(" ", "")
 	var parts := key.split("/")
 	match parts[0]:
 		"building":
-			var type := parts[1] if parts.size() > 1 else ""
-			root.set_meta("height", building_height(type))
-			_add(root, "Body", mesh("building/" + type))
-			if type == "keep":
-				var font := MeshInstance3D.new()
-				font.name = "Font"
-				var torus := TorusMesh.new()
-				torus.inner_radius = 0.58
-				torus.outer_radius = 0.7
-				torus.rings = 32
-				torus.ring_segments = 8
-				font.mesh = torus
-				font.material_override = ArtMaterials.gold()
-				font.position = Vector3(0, 7.2, 0)
-				font.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				root.add_child(font)
+			return _building(parts[1] if parts.size() > 1 else "", variant)
 		"unit":
-			var body := Node3D.new()
-			body.name = "Body"
-			root.add_child(body)
-			_add(body, "Mesh", mesh("unit/townsfolk/%d" % (variant % Palette.TUNICS.size())))
-			var wood := _add(body, "CarryWood", mesh("carry/wood"))
-			var food := _add(body, "CarryFood", mesh("carry/food"))
-			wood.visible = false
-			food.visible = false
+			return character(parts[1] if parts.size() > 1 else "townsfolk", variant)
+	var root := Node3D.new()
+	root.name = key.get_slice("/", 1).to_pascal_case()
+	var art := _make(key, variant)
+	if art != null:
+		art.name = "Body"
+		KitMaterials.apply(art)
+		root.add_child(art)
+		root.set_meta("from_art", true)
+	else:
+		_add(root, "Body", mesh(key))
+	return root
+
+
+## A construction stage model ("stage/a", "stage/b", "stage/c", "stage/scaffolding") from the
+## art files, or null when there is none (BuildingView then uses its procedural site).
+static func stage(key: String) -> Node3D:
+	var art := _make(key, 0)
+	if art != null:
+		KitMaterials.apply(art)
+	return art
+
+
+## A unit figure. From art: the character GLB with its Skeleton3D and AnimationPlayer (meta
+## "rigged"). Procedural: Body/Mesh with CarryWood and CarryFood children.
+static func character(kind: String, variant: int) -> Node3D:
+	var root := Node3D.new()
+	root.name = kind.to_pascal_case()
+	var art: Node3D = null
+	var paths := AssetCatalog.character_paths(kind)
+	if not paths.is_empty():
+		art = _instantiate(paths[posmod(variant, paths.size())])
+	elif preview != null:
+		art = preview.call("make_character", kind, variant)
+	if art != null:
+		art.name = "Rig"
+		KitMaterials.apply(art, CHARACTER_PROFILE)
+		root.add_child(art)
+		root.set_meta("rigged", true)
+		return root
+	var body := Node3D.new()
+	body.name = "Body"
+	root.add_child(body)
+	_add(body, "Mesh", mesh("unit/townsfolk/%d" % posmod(variant, Palette.TUNICS.size())))
+	var wood := _add(body, "CarryWood", mesh("carry/wood_back"))
+	var food := _add(body, "CarryFood", mesh("carry/food_back"))
+	wood.visible = false
+	food.visible = false
 	return root
 
 
 static func building_height(type: String) -> float:
-	return float(HEIGHTS.get(type, 2.0))
+	if _heights.has(type):
+		return _heights[type]
+	var h := float(HEIGHTS.get(type, 2.0))
+	var art := _make("building/" + type, 0)
+	if art != null:
+		var rec := AssetCatalog.anchor(String(art.get_meta("art_stem", "")))
+		h = float(rec.get("height", aabb_of(art).end.y))
+		art.free()
+	_heights[type] = h
+	return h
+
+
+## A cached mesh for `key` (variant `variant`), for MultiMesh views: the single "Mesh" of the
+## art GLB with the kit material, or the procedural mesh.
+static func mesh(key: String, variant: int = 0) -> Mesh:
+	var ck := "%s#%d" % [key, variant]
+	if _meshes.has(ck):
+		return _meshes[ck]
+	var m: Mesh = null
+	if AssetCatalog.id_for(key) != "":
+		var art := _make(key, variant)
+		if art != null:
+			m = _single_mesh(art, FOLIAGE_PROFILE if key.begins_with("node/") else {})
+			art.free()
+			if m != null and key == "decor/stake_flag":
+				m = _with_flag(m)
+	if m == null:
+		var pk := key + "#proc"
+		if not _meshes.has(pk):
+			_meshes[pk] = _build(key)
+		m = _meshes[pk]
+	_meshes[ck] = m
+	return m
+
+
+## Every variant mesh of `key` (one procedural mesh when there is no art).
+static func meshes(key: String) -> Array[Mesh]:
+	var out: Array[Mesh] = []
+	for i in variant_count(key):
+		out.append(mesh(key, i))
+	return out
+
+
+## Bounds of every mesh under `root`, in root space.
+static func aabb_of(root: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	var list: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D:
+		list.append(root)
+	for n in list:
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var box := _relative(mi, root) * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
+# --- art ------------------------------------------------------------------------------------
+
+## An instance of the art model for `key` (file first, then the look-dev preview), with meta
+## "art_stem" naming its file stem for anchors; null when there is none.
+static func _make(key: String, variant: int) -> Node3D:
+	var paths := AssetCatalog.model_paths(key)
+	if not paths.is_empty():
+		var path := paths[posmod(variant, paths.size())]
+		var n := _instantiate(path)
+		if n != null:
+			n.set_meta("art_stem", AssetCatalog.stem(path))
+			return n
+	if preview != null:
+		var id := AssetCatalog.id_for(key)
+		var count := int(preview.call("variant_count", id))
+		if count > 0:
+			var v := posmod(variant, count)
+			var p: Node3D = preview.call("make", id, v)
+			if p != null:
+				p.set_meta("art_stem", id if count == 1 else "%s_%d" % [id, v])
+				return p
+	return null
+
+
+static func _instantiate(path: String) -> Node3D:
+	var res: Variant = null
+	if _scenes.has(path):
+		res = _scenes[path]
+	else:
+		res = AssetCatalog.loader.call(path)
+		_scenes[path] = res
+	if res is PackedScene:
+		return (res as PackedScene).instantiate() as Node3D
+	return null
+
+
+## The node named "Mesh" (or the first mesh) as a standalone mesh in model space, with kit
+## materials on its surfaces.
+static func _single_mesh(root: Node3D, profile: Dictionary = {}) -> Mesh:
+	var mi := root.find_child("Mesh", true, false) as MeshInstance3D
+	if mi == null:
+		if root is MeshInstance3D:
+			mi = root
+		else:
+			var all := root.find_children("*", "MeshInstance3D", true, false)
+			if all.is_empty():
+				return null
+			mi = all[0]
+	if mi.mesh == null:
+		return null
+	var xf := _relative(mi, root)
+	var out := ArrayMesh.new()
+	for s in mi.mesh.get_surface_count():
+		var st := SurfaceTool.new()
+		st.append_from(mi.mesh, s, xf)
+		st.commit(out)
+		var has_colors := KitMaterials.mesh_has_colors(mi.mesh, s)
+		var mat := KitMaterials.converted(mi.get_active_material(s), profile, has_colors)
+		out.surface_set_material(s, mat if mat != null else mi.get_active_material(s))
+	return out
+
+
+## `node`'s transform relative to `root` (works outside the scene tree).
+static func _relative(node: Node3D, root: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var n: Node = node
+	while n != null and n != root:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf
+
+
+## The art stake with a gold survey flag on top (the build-zone ring).
+static func _with_flag(stake: Mesh) -> Mesh:
+	var top := stake.get_aabb().end.y
+	var f := MeshFactory.new()
+	f.box(Vector3(0, top + 0.18, 0), Vector3(0.035, 0.36, 0.035), Palette.WOOD_DARK)
+	f.flag(Vector3(0.02, top + 0.34, 0), 0.34, 0.22, Palette.GOLD)
+	var flag := f.commit(KitMaterials.vertex_colored())
+	var out := stake.duplicate() as ArrayMesh
+	if out == null:
+		return stake
+	var arrays := flag.surface_get_arrays(0)
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	out.surface_set_material(out.get_surface_count() - 1, KitMaterials.vertex_colored())
+	return out
+
+
+static func _building(type: String, variant: int) -> Node3D:
+	var root := Node3D.new()
+	root.name = type.to_pascal_case()
+	var height := float(HEIGHTS.get(type, 2.0))
+	var art := _make("building/" + type, variant)
+	if art != null:
+		art.name = "Body"
+		var profile := {}
+		if WINDOW_CELLS.has(type):
+			profile["glow_cell_a"] = WINDOW_CELLS[type]
+		KitMaterials.apply(art, profile)
+		root.add_child(art)
+		var rec := AssetCatalog.anchor(String(art.get_meta("art_stem", "")))
+		var box := aabb_of(art)
+		height = float(rec.get("height", box.end.y))
+		root.set_meta("door", AssetCatalog.anchor_point(rec, "door", Vector3(0, 0.3, box.end.z)))
+		root.set_meta("top", AssetCatalog.anchor_point(rec, "top", Vector3(0, box.end.y, 0)))
+		var stem_key := "chimney:" + String(art.get_meta("art_stem", type))
+		if not _heights.has(stem_key):
+			_heights[stem_key] = AssetCatalog.anchor_point(rec, "chimney", Vector3.ZERO) if rec.has("chimney") else _find_chimney(art, box)
+		var chimney: Variant = _heights[stem_key]
+		if chimney != null:
+			root.set_meta("chimney", chimney)
+		root.set_meta("from_art", true)
+	else:
+		_add(root, "Body", mesh("building/" + type))
+		root.set_meta("door", PROC_DOORS.get(type, Vector3(0, 0.3, 0.7)))
+		root.set_meta("top", Vector3(0, height, 0))
+		if PROC_CHIMNEYS.has(type):
+			root.set_meta("chimney", PROC_CHIMNEYS[type])
+	root.set_meta("height", height)
+	if type == "keep":
+		var font := MeshInstance3D.new()
+		font.name = "Font"
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.58
+		torus.outer_radius = 0.7
+		torus.rings = 32
+		torus.ring_segments = 8
+		font.mesh = torus
+		font.material_override = ArtMaterials.gold()
+		font.position = Vector3(0, height + 0.9, 0)
+		font.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(font)
+	if type == "keep" and not root.has_meta("chimney"):
+		root.set_meta("chimney", PROC_CHIMNEYS["keep"] * Vector3(1, height / 6.3, 1))
+	return root
+
+
+## Kit houses: the chimney is the highest part drawn with the dark stone swatch (3, 0) that
+## stands off-centre; null when the model has none.
+static func _find_chimney(root: Node3D, box: AABB) -> Variant:
+	var best := Vector3.ZERO
+	var found := false
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := _relative(mi, root)
+		for s in mi.mesh.get_surface_count():
+			var arr := mi.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var uvs: Variant = arr[Mesh.ARRAY_TEX_UV]
+			if uvs == null:
+				continue
+			var uv: PackedVector2Array = uvs
+			for i in verts.size():
+				var u := uv[i]
+				if u.x < 0.375 or u.x > 0.5 or u.y > 0.25:
+					continue
+				var p := xf * verts[i]
+				if p.y > best.y:
+					best = p
+					found = true
+	if not found or best.y < box.end.y * 0.7:
+		return null
+	if Vector2(best.x, best.z).length() < 0.1:
+		return null
+	return best + Vector3(0, 0.05, 0)
 
 
 static func _add(parent: Node3D, node_name: String, m: Mesh) -> MeshInstance3D:
@@ -68,14 +361,7 @@ static func _add(parent: Node3D, node_name: String, m: Mesh) -> MeshInstance3D:
 	return mi
 
 
-## A cached mesh for `key`. Also used directly by MultiMesh views (trees, bushes, rings).
-static func mesh(key: String) -> Mesh:
-	if _meshes.has(key):
-		return _meshes[key]
-	var m: Mesh = _build(key)
-	_meshes[key] = m
-	return m
-
+# --- procedural fallback ------------------------------------------------------------------------
 
 static func _build(key: String) -> Mesh:
 	var parts := key.split("/")
@@ -104,20 +390,28 @@ static func _build(key: String) -> Mesh:
 			return _stake(false)
 		"decor/stake_flag":
 			return _stake(true)
+		"decor/mountain":
+			return _mountain(0)
 		"fx/ring":
 			var f := MeshFactory.new()
 			f.ring_flat(Vector3.ZERO, 0.84, 1.0, 40, Color.WHITE)
 			return f.commit(ArtMaterials.ring())
 		"carry/wood":
-			return _carry_wood()
+			return _carry_wood(false)
 		"carry/food":
-			return _carry_food()
+			return _carry_food(false)
+		"carry/wood_back":
+			return _carry_wood(true)
+		"carry/food_back":
+			return _carry_food(true)
 	if parts.size() == 3 and parts[0] == "unit":
 		return _townsfolk(int(parts[2]))
 	if parts.size() == 4 and parts[0] == "scaffold":
 		return _scaffold(Vector2i(int(parts[1]), int(parts[2])), float(parts[3]) / 100.0)
 	if parts.size() == 3 and parts[0] == "plot":
 		return _plot(Vector2i(int(parts[1]), int(parts[2])))
+	if parts.size() == 3 and parts[0] == "decor" and parts[1] == "mountain":
+		return _mountain(int(parts[2]))
 	push_warning("ModelLibrary: unknown mesh key %s" % key)
 	var f := MeshFactory.new()
 	f.box(Vector3(0, 0.5, 0), Vector3.ONE, Color.MAGENTA)
@@ -288,6 +582,56 @@ static func _stake(with_flag: bool) -> ArrayMesh:
 	return f.commit(ArtMaterials.base())
 
 
+## A low-poly mountain about 12 units across: a noisy cone with grassy flanks, grey rock above
+## and, on the taller variants, a pale cap. Variant picks the shape.
+static func _mountain(variant: int) -> ArrayMesh:
+	var f := MeshFactory.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7919 * (variant + 1)
+	var rings := 5
+	var segs := 11
+	var heights: Array[float] = [7.5, 9.5, 6.0]
+	var height := heights[posmod(variant, 3)]
+	var radius := 6.0
+	var pts: Array = []
+	for r in rings + 1:
+		var t := float(r) / float(rings)
+		var row: Array[Vector3] = []
+		for s in segs:
+			var a := TAU * float(s) / float(segs) + rng.randf_range(-0.12, 0.12)
+			var rad := radius * (1.0 - t) * rng.randf_range(0.82, 1.12)
+			var y := height * pow(t, 0.85) * rng.randf_range(0.9, 1.08) if r > 0 else 0.0
+			if r == rings:
+				rad = 0.0
+			row.append(Vector3(cos(a) * rad, y, sin(a) * rad))
+		pts.append(row)
+	var grass := Color("#6f8a45")
+	var grass_dark := Color("#58703a")
+	var rock := Color("#8d8a86")
+	var rock_dark := Color("#6f6c6a")
+	var snow := Color("#f1ece2")
+	var inner := Vector3(0, height * 0.3, 0)
+	for r in rings:
+		for s in segs:
+			var a: Vector3 = pts[r][s]
+			var b: Vector3 = pts[r][(s + 1) % segs]
+			var c: Vector3 = pts[r + 1][(s + 1) % segs]
+			var d: Vector3 = pts[r + 1][s]
+			var hmid := (a.y + c.y) * 0.5 / height
+			var col: Color
+			if hmid < 0.3:
+				col = grass if (s + r) % 2 == 0 else grass_dark
+			elif hmid < 0.72 or height < 7.0:
+				col = rock if (s + r) % 3 != 0 else rock_dark
+			else:
+				col = snow
+			if r == rings - 1:
+				f.tri(a, b, c, col, inner)
+			else:
+				f.quad(a, b, c, d, col, inner)
+	return f.commit(ArtMaterials.base())
+
+
 # --- units ---------------------------------------------------------------------------------
 
 static func _townsfolk(variant: int) -> ArrayMesh:
@@ -304,19 +648,23 @@ static func _townsfolk(variant: int) -> ArrayMesh:
 	return f.commit(ArtMaterials.base())
 
 
-static func _carry_wood() -> ArrayMesh:
+## Two logs. On the back of a procedural figure, or centred (for a hand attachment).
+static func _carry_wood(on_back: bool) -> ArrayMesh:
 	var f := MeshFactory.new()
-	f.xform = Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.46, -0.16))
+	var o := Vector3(0, 0.46, -0.16) if on_back else Vector3(0, 0.0, 0.0)
+	f.xform = Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), o)
 	f.cylinder(Vector3(0, -0.17, 0), 0.055, 0.055, 0.34, 6, Palette.TRUNK, true, true, Palette.WOOD_LIGHT)
-	f.xform = Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.55, -0.15))
+	f.xform = Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), o + Vector3(0, 0.09, 0.01))
 	f.cylinder(Vector3(0, -0.15, 0), 0.05, 0.05, 0.3, 6, Palette.TRUNK, true, true, Palette.WOOD_LIGHT)
 	return f.commit(ArtMaterials.base())
 
 
-static func _carry_food() -> ArrayMesh:
+## A basket of berries. On the back of a procedural figure, or centred.
+static func _carry_food(on_back: bool) -> ArrayMesh:
 	var f := MeshFactory.new()
-	f.cylinder(Vector3(0, 0.38, -0.17), 0.09, 0.11, 0.12, 7, Palette.WOOD_LIGHT, true, true, Palette.WOOD)
-	f.box(Vector3(0.03, 0.51, -0.17), Vector3(0.07, 0.07, 0.07), Palette.BERRY)
-	f.box(Vector3(-0.04, 0.52, -0.15), Vector3(0.07, 0.07, 0.07), Palette.BERRY)
-	f.box(Vector3(0.0, 0.51, -0.21), Vector3(0.06, 0.06, 0.06), Palette.BERRY.darkened(0.15))
+	var o := Vector3(0, 0.38, -0.17) if on_back else Vector3.ZERO
+	f.cylinder(o, 0.09, 0.11, 0.12, 7, Palette.WOOD_LIGHT, true, true, Palette.WOOD)
+	f.box(o + Vector3(0.03, 0.13, 0.0), Vector3(0.07, 0.07, 0.07), Palette.BERRY)
+	f.box(o + Vector3(-0.04, 0.14, 0.02), Vector3(0.07, 0.07, 0.07), Palette.BERRY)
+	f.box(o + Vector3(0.0, 0.13, -0.04), Vector3(0.06, 0.06, 0.06), Palette.BERRY.darkened(0.15))
 	return f.commit(ArtMaterials.base())

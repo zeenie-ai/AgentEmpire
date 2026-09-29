@@ -1,10 +1,38 @@
 class_name IconDraw
 extends RefCounted
-## Small vector icons drawn with CanvasItem primitives (resources, buildings, orders), so the
-## HUD needs no image assets yet. draw() fits the icon into `rect`.
+## HUD icons: the art's rendered icon (res://art/icons/<id>.png, see AssetCatalog.icon_id) when
+## it exists, otherwise a small vector glyph drawn with CanvasItem primitives (resources,
+## buildings, orders). draw() fits the icon into `rect`.
+
+static var _textures: Dictionary = {}
+
+
+## The icon texture for a HUD icon name, or null when the art has none.
+static func texture_for(icon: String) -> Texture2D:
+	if icon == "":
+		return null
+	if not _textures.has(icon):
+		var path := AssetCatalog.icon_path(AssetCatalog.icon_id(icon))
+		var tex: Texture2D = null
+		if path != "":
+			tex = AssetCatalog.loader.call(path) as Texture2D
+		_textures[icon] = tex
+	return _textures[icon]
+
+
+static func clear_cache() -> void:
+	_textures.clear()
 
 
 static func draw(ci: CanvasItem, icon: String, rect: Rect2, dim: bool = false) -> void:
+	var tex := texture_for(icon)
+	if tex != null:
+		var ts := tex.get_size()
+		var k2 := minf(rect.size.x / ts.x, rect.size.y / ts.y)
+		var size := ts * k2
+		var tint := Color(0.5, 0.5, 0.5, 0.85) if dim else Color.WHITE
+		ci.draw_texture_rect(tex, Rect2(rect.get_center() - size * 0.5, size), false, tint)
+		return
 	var c := rect.get_center()
 	var s := minf(rect.size.x, rect.size.y) * 0.5
 	var k := 0.55 if dim else 1.0

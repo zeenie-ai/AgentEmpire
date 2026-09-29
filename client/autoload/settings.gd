@@ -9,6 +9,8 @@ const DEFAULTS := {
 	"camera/edge_scroll": true,
 	"camera/pan_speed": 1.0,
 	"display/show_fps": false,
+	# "" picks the platform default (High on desktop, Low on the web); see GraphicsQuality.
+	"graphics/quality": "",
 	"audio/master": 0.8,
 	"game/seed": 4127,
 }

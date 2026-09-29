@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "notes": [
+    "Contract between the Blender pipeline (art_src/blender/) and the Godot client (client/art/model_library.gd).",
+    "Conventions for every model: 1 unit = 1 tile, +Y up, front faces +Z, origin at the centre of the footprint on the ground (y = 0).",
+    "Static models are exported as GLB with ONE mesh object named 'Mesh' using the kit's atlas material, so the client can reuse the mesh in MultiMeshes. Keep triangle counts as in the source kits.",
+    "Buildings are scaled uniformly so their ground bounds fit the footprint times 'fit' (default 0.92). Never stretch non-uniformly.",
+    "Characters keep their Skeleton3D and export only the animations listed in 'character_animations'.",
+    "Sources are paths relative to source_roots, fetched by scripts/fetch-assets.mjs into .tools/vendor (git-ignored). Only the processed outputs under client/art/ are committed."
+  ],
+  "source_roots": {
+    "medieval": ".tools/vendor/kaykit-medieval/addons/kaykit_medieval_hexagon_pack/Assets/gltf",
+    "adventurers": ".tools/vendor/kaykit-adventurers/addons/kaykit_character_pack_adventures"
+  },
+  "outputs": {
+    "models": "client/art/models",
+    "characters": "client/art/characters",
+    "icons": "client/art/icons",
+    "anchors": "client/art/models/anchors.json",
+    "contact_sheets": "out/art",
+    "naming": [
+      "A model with one source is client/art/models/<id>.glb (for example keep.glb, farm.glb, stage_a.glb, lectern.glb, carry_wood.glb).",
+      "A model with several variants is <id>_<n>.glb, numbered from 0 in manifest order (cottage_0.glb, cottage_1.glb, rock_0.glb .. rock_4.glb, cloud_0.glb, mountain_0.glb). tree_broadleaf, tree_conifer and stump are single files.",
+      "Characters are client/art/characters/<id>.glb (townsfolk_a.glb .. townsfolk_d.glb, agent_scholar.glb).",
+      "Icons are client/art/icons/<id>.png, using the model or character id; resources are resource_food.png, resource_wood.png, resource_stone.png and resource_gold.png.",
+      "anchors.json maps each model file stem to {size:[x,y,z], height, door:[x,y,z], top:[x,y,z]} in model space.",
+      "Write every output to a temporary file first and rename it into place, so the client never imports a half-written file."
+    ]
+  },
+
+  "buildings": [
+    { "id": "keep", "footprint": [4, 4], "fit": 0.95, "source": "medieval:buildings/blue/building_castle_blue.gltf",
+      "note": "Town Center. Blue slate roofs match the Aurelhaven keep." },
+    { "id": "cottage", "footprint": [2, 2], "variants": ["medieval:buildings/red/building_home_A_red.gltf", "medieval:buildings/red/building_home_B_red.gltf"] },
+    { "id": "farm", "footprint": [3, 3], "fit": 1.0, "source": "medieval:buildings/neutral/building_grain.gltf",
+      "note": "Crop field. Trim or scale it to a square 3x3 plot and add a low wooden fence (medieval:buildings/neutral/fence_wood_straight.gltf) around the edge with a gap on the front side." },
+    { "id": "storehouse", "footprint": [2, 2], "source": "medieval:buildings/red/building_lumbermill_red.gltf" },
+    { "id": "workshop", "footprint": [3, 3], "source": "medieval:buildings/red/building_blacksmith_red.gltf", "role": "artificer" },
+    { "id": "observatory", "footprint": [3, 3], "source": "medieval:buildings/blue/building_tower_A_blue.gltf", "role": "scholar" },
+    { "id": "scriptorium", "footprint": [3, 3], "source": "medieval:buildings/yellow/building_church_yellow.gltf", "role": "scribe" },
+    { "id": "watchhouse", "footprint": [3, 3], "source": "medieval:buildings/green/building_barracks_green.gltf", "role": "warden" },
+    { "id": "beacon_tower", "footprint": [3, 3], "source": "medieval:buildings/yellow/building_tower_B_yellow.gltf", "role": "herald" }
+  ],
+
+  "construction": [
+    { "id": "stage_a", "source": "medieval:buildings/neutral/building_stage_A.gltf", "footprint": [1, 1], "fit": 1.0, "note": "Foundations. The client scales it to each building's footprint." },
+    { "id": "stage_b", "source": "medieval:buildings/neutral/building_stage_B.gltf", "footprint": [1, 1], "fit": 1.0 },
+    { "id": "stage_c", "source": "medieval:buildings/neutral/building_stage_C.gltf", "footprint": [1, 1], "fit": 1.0 },
+    { "id": "scaffolding", "source": "medieval:buildings/neutral/building_scaffolding.gltf", "footprint": [1, 1], "fit": 1.0 }
+  ],
+
+  "tools": [
+    { "id": "lectern", "footprint": [1, 1], "recipe": "A small wooden stand (medieval:decoration/props/crate_A_small.gltf or a simple modelled post) with an open book on top (adventurers:Assets/gltf/spellbook_open.gltf).", "plain": "Read files" },
+    { "id": "quillworks", "footprint": [1, 1], "recipe": "medieval:decoration/props/tent.gltf with a small crate beside it.", "plain": "Write and edit files" },
+    { "id": "forge", "footprint": [2, 1], "recipe": "medieval:decoration/props/weaponrack.gltf plus medieval:decoration/props/barrel.gltf side by side; add a small anvil block if easy.", "plain": "Run shell commands" },
+    { "id": "rookery", "footprint": [1, 1], "recipe": "medieval:buildings/blue/building_well_blue.gltf (a small roofed dovecote).", "plain": "Web search and fetch" },
+    { "id": "archive", "footprint": [1, 1], "recipe": "A stack of medieval:decoration/props/crate_long_A.gltf, crate_B_small.gltf and a sack.gltf.", "plain": "Instructions and skills" },
+    { "id": "waygate", "footprint": [2, 2], "recipe": "medieval:buildings/neutral/wall_straight_gate.gltf (the stone arch) standing alone, centred; the client adds the portal glow.", "plain": "MCP server" }
+  ],
+
+  "nature": [
+    { "id": "tree_broadleaf", "sources": ["medieval:decoration/nature/tree_single_A.gltf", "medieval:decoration/nature/tree_single_B.gltf"], "note": "Pick the rounder one as broadleaf and the pointier one as conifer after rendering both. Target height about 2.2 units." },
+    { "id": "tree_conifer", "sources": ["medieval:decoration/nature/tree_single_A.gltf", "medieval:decoration/nature/tree_single_B.gltf"] },
+    { "id": "stump", "sources": ["medieval:decoration/nature/tree_single_A_cut.gltf", "medieval:decoration/nature/tree_single_B_cut.gltf"] },
+    { "id": "bush_berries", "recipe": "No kit bush exists. Model a low stylised bush in bpy (a few flat-shaded low-poly blobs in the kit's greens) with small red berry spheres, about 0.7 units wide and 0.5 tall. Use a single material with vertex colours or a tiny palette texture." },
+    { "id": "bush_bare", "recipe": "The same bush without berries (a depleted berry bush)." },
+    { "id": "rock", "variants": ["medieval:decoration/nature/rock_single_A.gltf", "medieval:decoration/nature/rock_single_B.gltf", "medieval:decoration/nature/rock_single_C.gltf", "medieval:decoration/nature/rock_single_D.gltf", "medieval:decoration/nature/rock_single_E.gltf"], "footprint": [1, 1] },
+    { "id": "cloud", "variants": ["medieval:decoration/nature/cloud_big.gltf", "medieval:decoration/nature/cloud_small.gltf"], "note": "Keep native scale times 3; these float above the map." },
+    { "id": "mountain", "variants": ["medieval:decoration/nature/mountain_A_grass_trees.gltf", "medieval:decoration/nature/mountain_B_grass_trees.gltf", "medieval:decoration/nature/mountain_C_grass_trees.gltf"], "note": "Scenery beyond the map edge; normalise to about 12 units across." }
+  ],
+
+  "props": [
+    { "id": "carry_wood", "source": "medieval:decoration/props/resource_lumber.gltf", "note": "Carried by townsfolk; normalise to about 0.35 units long." },
+    { "id": "carry_food", "source": "medieval:decoration/props/sack.gltf", "note": "About 0.3 units tall." },
+    { "id": "carry_scroll", "recipe": "A small rolled parchment scroll (cylinder with two end caps) for task couriers; about 0.25 long." },
+    { "id": "wood_pile", "source": "medieval:decoration/props/resource_lumber.gltf", "note": "Decoration at the Storehouse; about 0.8 units." },
+    { "id": "stone_pile", "source": "medieval:decoration/props/resource_stone.gltf" },
+    { "id": "barrel", "source": "medieval:decoration/props/barrel.gltf" },
+    { "id": "crates", "source": "medieval:decoration/props/crate_A_big.gltf" },
+    { "id": "flag_blue", "source": "medieval:decoration/props/flag_blue.gltf" },
+    { "id": "stake", "recipe": "A short wooden survey stake with a small cloth tie, about 0.5 tall, for the build-zone ring." }
+  ],
+
+  "characters": [
+    { "id": "townsfolk_a", "source": "adventurers:Characters/gltf/Rogue_Hooded.glb", "hide": ["Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Knife", "Throwable"], "recolor": "earthy peasant tones: brown tunic, tan hood", "height": 0.85 },
+    { "id": "townsfolk_b", "source": "adventurers:Characters/gltf/Barbarian.glb", "hide": ["weapons, shields and the horned helmet if it is a separate mesh"], "recolor": "olive and linen worker clothes", "height": 0.85 },
+    { "id": "townsfolk_c", "source": "adventurers:Characters/gltf/Rogue_Hooded.glb", "hide": ["Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Knife", "Throwable"], "recolor": "dusty blue tunic, grey hood", "height": 0.85 },
+    { "id": "townsfolk_d", "source": "adventurers:Characters/gltf/Barbarian.glb", "hide": ["weapons, shields and the horned helmet if it is a separate mesh"], "recolor": "rust red tunic", "height": 0.85 },
+    { "id": "agent_artificer", "source": "adventurers:Characters/gltf/Barbarian.glb", "hide": ["large weapons"], "height": 0.95 },
+    { "id": "agent_scholar", "source": "adventurers:Characters/gltf/Mage.glb", "height": 0.95 },
+    { "id": "agent_scribe", "source": "adventurers:Characters/gltf/Mage.glb", "recolor": "parchment and ink robes instead of the default mage colours", "height": 0.95 },
+    { "id": "agent_warden", "source": "adventurers:Characters/gltf/Knight.glb", "height": 0.95 },
+    { "id": "agent_herald", "source": "adventurers:Characters/gltf/Rogue.glb", "hide": ["crossbows", "knives", "throwable"], "height": 0.95 }
+  ],
+  "character_animations": [
+    "Idle", "Unarmed_Idle", "Walking_A", "Walking_B", "Running_A", "Interact", "PickUp", "Use_Item",
+    "1H_Melee_Attack_Chop", "Cheer", "Spellcasting", "Spellcast_Long", "Sit_Floor_Idle", "Sit_Chair_Idle", "Hit_A", "Throw"
+  ],
+
+  "icons": {
+    "size": 256,
+    "view": "orthographic three-quarter view (yaw 45 degrees, pitch 30 degrees), soft key light plus fill, transparent background, subject filling about 80 percent of the frame",
+    "subjects": "every building, tool, construction-free character (head-and-shoulders portrait for characters), plus resource icons food, wood, stone, gold (gold: a small stack of coins modelled in bpy)"
+  }
+}

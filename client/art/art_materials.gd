@@ -1,9 +1,9 @@
 class_name ArtMaterials
 extends RefCounted
-## Shared materials for the procedural art. night_amount drives the window glow (houses light
-## up at night, as in the handoff's city-scene.js: emissive #ffb14a ramping 0 -> 1.1).
+## Shared materials for the procedural art and world overlays. night_amount drives the window
+## glow (houses light up at night, as in the handoff's city-scene.js: emissive #ffb14a ramping
+## 0 -> 1.1) and the global shader parameter "night_amount" read by the kit shader.
 
-static var _base: StandardMaterial3D
 static var _glow: StandardMaterial3D
 static var _gold: StandardMaterial3D
 static var _ring: StandardMaterial3D
@@ -15,15 +15,10 @@ static var _bar_fill: StandardMaterial3D
 static var _night: float = 0.0
 
 
-## Vertex-coloured, rough, lit. Used by nearly every mesh.
-static func base() -> StandardMaterial3D:
-	if _base == null:
-		_base = StandardMaterial3D.new()
-		_base.vertex_color_use_as_albedo = true
-		_base.vertex_color_is_srgb = true
-		_base.roughness = 0.92
-		_base.metallic = 0.0
-	return _base
+## Vertex-coloured and lit with the town's kit shader (cloud shadows, soft wrap). Used by
+## nearly every procedural mesh.
+static func base() -> Material:
+	return KitMaterials.vertex_colored()
 
 
 ## Windows: dark glass by day, warm glow at night.
@@ -38,12 +33,16 @@ static func glow() -> StandardMaterial3D:
 	return _glow
 
 
-## The golden Summoning Font ring above the Keep.
+## The golden Summoning Font ring above the Keep (glows a little, so it catches the bloom).
 static func gold() -> StandardMaterial3D:
 	if _gold == null:
 		_gold = StandardMaterial3D.new()
-		_gold.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_gold.albedo_color = Palette.GOLD_BRIGHT
+		_gold.metallic = 0.6
+		_gold.roughness = 0.3
+		_gold.emission_enabled = true
+		_gold.emission = Palette.GOLD_BRIGHT
+		_gold.emission_energy_multiplier = 0.9
 	return _gold
 
 
@@ -65,7 +64,7 @@ static func survey_line() -> StandardMaterial3D:
 	if _line == null:
 		_line = StandardMaterial3D.new()
 		_line.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_line.albedo_color = Color(Palette.GOLD_BRIGHT, 0.75)
+		_line.albedo_color = Color(Palette.GOLD_BRIGHT, 0.55)
 		_line.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_line.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return _line
@@ -112,8 +111,9 @@ static func night_amount() -> float:
 	return _night
 
 
-## 0 = dawn, 1 = night. Windows glow as night falls.
+## 0 = day, 1 = night. Windows glow as night falls.
 static func set_night(n: float) -> void:
 	_night = clampf(n, 0.0, 1.0)
-	glow().emission_energy_multiplier = _night * 2.2
+	glow().emission_energy_multiplier = _night * 2.4
 	glow().albedo_color = Color("#4a3a2c").lerp(Color("#2a2030"), _night)
+	RenderingServer.global_shader_parameter_set("night_amount", _night)
