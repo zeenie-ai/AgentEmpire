@@ -9,6 +9,10 @@ const NAMES := ["Tobin", "Mira", "Aldric", "Wren", "Isolde", "Bram", "Elsa", "Co
 	"Ysolde", "Hugo", "Ilse", "Rowan", "Tamsin", "Oswin", "Nell", "Gerrit", "Liesl", "Dunstan",
 	"Hedda", "Anselm", "Brisa", "Cato", "Odile", "Fenn", "Greta", "Lorcan", "Runa", "Talia"]
 const NODE_NAMES := {"tree": "Tree", "berry_bush": "Berry bush"}
+
+## The AgentPanel asked for a review or for the agent's approvals (the HUD opens them).
+signal agent_review_requested(task_id: String)
+signal agent_approvals_requested(agent_id: String)
 const REFRESH_S := 0.1
 
 var selection: Selection
@@ -321,15 +325,15 @@ func _build_node(w: SimWorld, id: int) -> void:
 
 
 func _build_agent(w: SimWorld, agent_id: String) -> void:
-	var path := "res://ui/agents/agent_panel.gd"
-	if ResourceLoader.exists(path):
-		var panel := (load(path) as GDScript).new() as Control
-		if panel != null:
-			_content.add_child(panel)
-			panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			if panel.has_method("setup"):
-				panel.call("setup", agent_id)
-			return
+	if not Realm.agent(agent_id).is_empty():
+		var panel := AgentPanel.new()
+		_content.add_child(panel)
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		panel.setup(agent_id)
+		panel.review_requested.connect(func(task_id: String) -> void: agent_review_requested.emit(task_id))
+		panel.approvals_requested.connect(func(id: String) -> void: agent_approvals_requested.emit(id))
+		return
+	# Not known to the Town Hall (yet): a compact summary.
 	var a := Realm.agent(agent_id)
 	var row := _row()
 	var p := Portrait.new(104)

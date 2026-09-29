@@ -66,6 +66,13 @@ func _play() -> bool:
 	var w: SimWorld = game.world
 	var work := _arg("work", "")
 
+	# The Summoning Font, opened from the HUD the way the Keep's Summon card does.
+	main.hud.visible = true
+	main.camera.set_view(Vector3(w.keep().center().x, 0.0, w.keep().center().y + 2.0), 28.0, 0.0)
+	main.hud.open_summon()
+	await _shot("ui_summon", 45)
+	main.hud.close_window()
+	main.hud.visible = false
 	var mira := await _summon("Mira", "claude", "artificer", work, ["lectern", "quillworks", "forge"])
 	var odo := await _summon("Odo", "codex", "scribe", work, ["lectern", "quillworks"])
 	if mira == "" or odo == "":
@@ -86,6 +93,13 @@ func _play() -> bool:
 	main.hud.visible = false
 	main.camera.set_view(Vector3(mid.x, 0.0, mid.y + 2.0), 30.0, deg_to_rad(-18.0))
 	await _shot("agents_homes", 40)
+
+	# The task composer for Mira, from the HUD.
+	main.hud.visible = true
+	main.hud.open_task_composer(mira)
+	await _shot("ui_composer", 45)
+	main.hud.close_window()
+	main.hud.visible = false
 
 	# A task: a townsperson fetches the scroll at the Keep and carries it to Mira's home.
 	req = link.assign_task(mira, {"title": "Add a greeting", "prompt": "[fake:e2e_reward] Add a greeting file.", "size": "S"})
@@ -126,6 +140,11 @@ func _play() -> bool:
 		return false
 	main.camera.set_view(Vector3(home_a.center().x, 0.0, home_a.center().y + 1.5), 13.0, deg_to_rad(-15.0))
 	await _shot("agents_review", 40)
+	main.hud.visible = true
+	main.hud.open_review(task_id)
+	await _shot("ui_review", 60)
+	main.hud.close_window()
+	main.hud.visible = false
 
 	# A Font Wisp flying a scroll to Odo's home.
 	var home_b := w.agent_home(odo)
