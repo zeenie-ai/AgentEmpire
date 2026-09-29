@@ -51,6 +51,7 @@ var _title_bar: HBoxContainer
 var _title_icon: Control
 var _middle: HBoxContainer
 var _scroll: ScrollContainer
+var _side_scroll: ScrollContainer
 var _footer_row: HBoxContainer
 var _fit_queued: bool = false
 var _closing: bool = false
@@ -61,6 +62,8 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	# A modal window keeps working (and animating) even if the game pauses the tree.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_outer = VBoxContainer.new()
 	_outer.add_theme_constant_override("separation", 14)
 	add_child(_outer)
@@ -106,10 +109,16 @@ func _init() -> void:
 	body.add_theme_constant_override("separation", 16)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(body)
+	# The side column scrolls too, on screens too short for it.
+	_side_scroll = ScrollContainer.new()
+	_side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_side_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_side_scroll.visible = false
+	_middle.add_child(_side_scroll)
 	side = VBoxContainer.new()
 	side.add_theme_constant_override("separation", 12)
-	side.visible = false
-	_middle.add_child(side)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_side_scroll.add_child(side)
 
 	tray = VBoxContainer.new()
 	tray.add_theme_constant_override("separation", 10)
@@ -225,7 +234,7 @@ func set_status(text: String, kind: String = "") -> void:
 
 
 func show_side(on: bool) -> void:
-	side.visible = on
+	_side_scroll.visible = on
 	_queue_fit()
 
 
@@ -358,6 +367,8 @@ func close() -> void:
 	if _closing:
 		return
 	_closing = true
+	# The window below takes the keys at once, while this one fades out.
+	_stack.erase(self)
 	_window_closing()
 	closed.emit()
 	if not is_inside_tree():
@@ -402,11 +413,13 @@ func _fit() -> void:
 	chrome += _footer_row.get_combined_minimum_size().y + sep
 	var max_body := maxf(vp.y - MARGIN * 2.0 - chrome, 96.0)
 	var want := body_height if body_height >= 0.0 else body.get_combined_minimum_size().y
-	if side.visible:
+	if _side_scroll.visible:
 		want = maxf(want, side.get_combined_minimum_size().y)
 	var h := minf(want, max_body)
 	if not is_equal_approx(_scroll.custom_minimum_size.y, h):
 		_scroll.custom_minimum_size.y = h
+	if _side_scroll.visible:
+		_side_scroll.custom_minimum_size = Vector2(side.get_combined_minimum_size().x, h)
 	if not is_equal_approx(custom_minimum_size.x, w):
 		custom_minimum_size.x = w
 	var p := get_parent()

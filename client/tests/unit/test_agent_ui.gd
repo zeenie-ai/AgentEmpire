@@ -488,6 +488,92 @@ func test_budget_dialog_saves_and_confirms_a_raise() -> void:
 	assert_true(bool((link.last("set_budget")["args"] as Dictionary)["confirm_raise"]))
 
 
+# --- the frame --------------------------------------------------------------------------------------------------
+
+func test_windows_fit_1280x720_and_scroll() -> void:
+	var sv := SubViewport.new()
+	sv.size = Vector2i(1280, 720)
+	add_child_autofree(sv)
+	var host := Control.new()
+	host.size = Vector2(1280, 720)
+	sv.add_child(host)
+	var windows: Array[WindowFrame] = [SummonDialog.new(), TaskComposer.new().setup("agt_corvin", link),
+		ReviewWindow.new().setup("tsk_docs", link), BudgetDialog.new()]
+	for w in windows:
+		w.link = link
+		w.requester = _requester
+		host.add_child(w)
+		await wait_process_frames(4)
+		var name := w.title_label.text
+		assert_true(w.size.y <= 720.0 - 2.0 * WindowFrame.MARGIN + 1.0, "%s fits 720 high: %s" % [name, w.size])
+		assert_true(w.size.x <= 1280.0 - 2.0 * WindowFrame.MARGIN + 1.0, "%s fits 1280 wide" % name)
+		assert_true(w.position.x >= 0.0 and w.position.y >= 0.0, "%s is on screen" % name)
+		if w is SummonDialog:
+			assert_true(w.body.get_combined_minimum_size().y > w._scroll.size.y + 1.0, "the long form scrolls")
+		w.queue_free()
+		await wait_process_frames(1)
+
+
+func _press_escape() -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_ESCAPE
+	ev.physical_keycode = KEY_ESCAPE
+	ev.pressed = true
+	get_viewport().push_input(ev)
+	var up := ev.duplicate() as InputEventKey
+	up.pressed = false
+	get_viewport().push_input(up)
+
+
+func test_escape_closes_the_topmost_window_only() -> void:
+	var d := _open(SummonDialog.new()) as SummonDialog
+	await wait_process_frames(1)
+	var fb := FolderBrowser.new()
+	fb.requester = _requester
+	d.open_window(fb)
+	await wait_process_frames(1)
+	assert_true(fb.is_topmost())
+	_press_escape()
+	await wait_process_frames(1)
+	assert_true(fb.is_closing(), "Esc closes the folder browser")
+	assert_false(d.is_closing(), "and leaves the Summoning Font open")
+	await wait_process_frames(12)
+	_press_escape()
+	await wait_process_frames(1)
+	assert_true(d.is_closing())
+
+
+func test_folder_browser_fills_the_summon_form() -> void:
+	var d := _open(SummonDialog.new()) as SummonDialog
+	await wait_process_frames(1)
+	d.browse_folder()
+	await wait_process_frames(1)
+	var q := _asked(Protocol.CMD_BROWSE_FOLDER)
+	(q["req"] as NetRequest).finish(true, AgentUiDemo.browse("D:/work"))
+	await wait_process_frames(2)
+	var fb: FolderBrowser = null
+	for c in d.get_parent().get_children():
+		if c is FolderBrowser:
+			fb = c
+	assert_not_null(fb, "the browser opens beside the form")
+	(fb._rows["D:/work/notes"] as Button).button_pressed = true
+	fb.choose()
+	assert_eq(d.workspace_path, "D:/work/notes")
+	assert_eq(d.workspace_git, 0, "notes is a plain folder")
+
+
+func test_tray_keeps_one_petition_open() -> void:
+	var tray := ApprovalTray.new()
+	_host().add_child(tray)
+	await wait_process_frames(1)
+	assert_eq(tray.open_id, "apv_fetch", "the oldest is open")
+	assert_true(tray.card_for("apv_fetch").expanded)
+	assert_false(tray.card_for("apv_npm").expanded)
+	tray.card_for("apv_npm").expand_requested.emit("apv_npm")
+	assert_true(tray.card_for("apv_npm").expanded)
+	assert_false(tray.card_for("apv_fetch").expanded)
+
+
 func _state_without_agents() -> Dictionary:
 	var s := AgentUiDemo.state()
 	s["agents"] = []

@@ -9,15 +9,17 @@ extends SceneTree
 ##   --only=a,b         only these shots
 ##   --bg=town|plain    the game behind the windows (default), or a plain backdrop (faster)
 ##   --tag=<suffix>     appended to each file name: ui_summon_<suffix>.png
-## Shots: summon, summon_lower, summon_grace, folder, composer, composer_warn, approvals, review,
-## review_reward, review_blocked, agent_panel, agent_states, budget, budget_confirm, chronicle.
+## Shots: summon, summon_lower, summon_modes, summon_grace, folder, composer, composer_warn,
+## approvals, review, review_chronicle, review_reward, review_blocked, agent_panel, agent_states,
+## budget, budget_confirm, chronicle.
 ##
 ## A script run with -s compiles before the autoloads exist, so everything that uses them (the
 ## windows, Realm, Economy, Game) is loaded at run time and kept untyped here.
 
 const DEFAULT_SIZE := Vector2i(1600, 900)
-const SHOTS := ["summon", "summon_lower", "summon_grace", "folder", "composer", "composer_warn", "approvals",
-	"review", "review_reward", "review_blocked", "agent_panel", "agent_states", "budget", "budget_confirm", "chronicle"]
+const SHOTS := ["summon", "summon_lower", "summon_modes", "summon_grace", "folder", "composer", "composer_warn",
+	"approvals", "review", "review_chronicle", "review_reward", "review_blocked", "agent_panel", "agent_states",
+	"budget", "budget_confirm", "chronicle"]
 const UI := "res://ui/agents/%s.gd"
 
 var _args: PackedStringArray
@@ -150,6 +152,8 @@ func _take(shot: String) -> void:
 			await _shot_summon()
 		"summon_lower":
 			await _shot_summon_lower()
+		"summon_modes":
+			await _shot_summon_modes()
 		"summon_grace":
 			await _shot_summon_grace()
 		"folder":
@@ -162,6 +166,8 @@ func _take(shot: String) -> void:
 			await _shot_approvals()
 		"review":
 			await _shot_review()
+		"review_chronicle":
+			await _shot_review_chronicle()
 		"review_reward":
 			await _shot_review_reward()
 		"review_blocked":
@@ -360,6 +366,22 @@ func _shot_summon_lower() -> void:
 	await _snap("summon_lower")
 
 
+## The approval modes, as the dropdown lists them (with the ones this agent cannot have yet).
+func _shot_summon_modes() -> void:
+	_apply(_state_one_agent())
+	var d := _window("summon_dialog")
+	_open(d)
+	await _frames(3)
+	d.call("set_workspace", "D:/work/aurelhaven-web", 1)
+	var mode: OptionButton = d.get("_mode_select")
+	var sc: ScrollContainer = d.get("_scroll")
+	sc.ensure_control_visible(mode)
+	await _frames(3)
+	mode.show_popup()
+	await _snap("summon_modes")
+	mode.get_popup().hide()
+
+
 func _shot_summon_grace() -> void:
 	_apply(_state_empty())
 	var d := _window("summon_dialog")
@@ -463,6 +485,17 @@ func _shot_review() -> void:
 		row.button_pressed = true
 		row.pressed.emit()
 	await _snap("review")
+
+
+func _shot_review_chronicle() -> void:
+	var w := _review()
+	await _frames(3)
+	var toggle: Button = w.get("_chronicle_toggle")
+	toggle.button_pressed = true
+	await _frames(3)
+	var sc: ScrollContainer = w.get("_scroll")
+	sc.scroll_vertical = 100000
+	await _snap("review_chronicle")
 
 
 func _shot_review_reward() -> void:

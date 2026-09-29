@@ -28,7 +28,7 @@ var _level_pill: PanelContainer
 var _pool_bar: ManaBar
 var _period_label: Label
 var _by_provider: VBoxContainer
-var _windows_section: HBoxContainer
+var _windows_col: VBoxContainer
 var _windows: VBoxContainer
 var _estimate_note: Label
 var _period_buttons: Dictionary = {}
@@ -96,10 +96,15 @@ func _build_head() -> void:
 
 
 func _build_body() -> void:
-	AgentUi.section("By harness", look, "This period", body)
-	_by_provider = AgentUi.vbox(8, body)
-	_windows_section = AgentUi.section("Harness usage windows", look, "Their own limits", body)
-	_windows = AgentUi.vbox(8, body)
+	var cols := AgentUi.hbox(28, body)
+	var left := AgentUi.vbox(10, cols)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	AgentUi.section("By harness", look, "This period", left)
+	_by_provider = AgentUi.vbox(10, left)
+	_windows_col = AgentUi.vbox(10, cols)
+	_windows_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	AgentUi.section("Usage windows", look, "Their own limits", _windows_col)
+	_windows = AgentUi.vbox(10, _windows_col)
 	_estimate_note = AgentUi.para("", "Hint", body)
 	AgentUi.callout(look, Color("#7fe0ff"),
 		"1 Mana is $0.01 of real model spend, counted by the Town Hall as agents work. Resources never buy Mana and Mana never buys resources: the pool refills only when the period turns, or when you raise it here.",
@@ -269,46 +274,40 @@ func _refresh() -> void:
 		total += J.i(by[k])
 	for id in harness_ids():
 		var micros := J.gi(by, id)
-		var row := AgentUi.hbox(12, _by_provider)
-		var n := AgentUi.label(AgentUi.harness_name(id), "", row)
-		n.custom_minimum_size.x = 130
-		var bar := ManaBar.new(200, 14)
-		bar.look = look
-		bar.show_caption = false
-		bar.warn_colors = false
-		bar.bar_height = 8.0
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.set_values(float(micros), float(maxi(total, 1)))
-		row.add_child(bar)
-		var v := AgentUi.label("%s MANA  ·  %s" % [AgentUi.mana_text(micros), AgentUi.usd_text(micros)], "Mono", row)
-		v.custom_minimum_size.x = 170
-		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_figure_row(_by_provider, AgentUi.harness_name(id), float(micros), float(maxi(total, 1)), false,
+			"%s MANA  ·  %s" % [AgentUi.mana_text(micros), AgentUi.usd_text(micros)])
 	clear_box(_windows)
 	var windows := J.a(m.get("provider_windows"))
-	_windows_section.visible = not windows.is_empty()
+	_windows_col.visible = not windows.is_empty()
 	for w: Variant in windows:
 		var wd := J.d(w)
-		var row := AgentUi.hbox(12, _windows)
-		var n := AgentUi.label(AgentUi.harness_name(J.gs(wd, "provider")), "", row)
-		n.custom_minimum_size.x = 130
 		var used := J.f(wd.get("used_percent"))
-		var bar := ManaBar.new(200, 14)
-		bar.look = look
-		bar.unit = ""
-		bar.show_caption = false
-		bar.bar_height = 8.0
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.set_values(used, 100.0)
-		row.add_child(bar)
 		var resets := AgentUi.unix_of(J.gs(wd, "resets_at"))
 		var text := "%d%% USED" % roundi(used)
 		if resets > 0.0:
 			text += "  ·  RESETS IN %s" % AgentUi.duration_text(resets - AgentUi.now_unix()).to_upper()
-		var v := AgentUi.label(text, "MonoSmall", row)
-		v.custom_minimum_size.x = 240
-		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_figure_row(_windows, AgentUi.harness_name(J.gs(wd, "provider")), used, 100.0, true, text)
 	_estimate_note.visible = J.b(m.get("estimates"), false)
 	_estimate_note.text = "Some of this is estimated: harnesses on a subscription report tokens, not money, so the Town Hall prices them."
+
+
+## A harness's name over a slim gauge and its figures.
+func _figure_row(parent: Control, harness: String, value: float, total: float, warn: bool, figures: String) -> void:
+	var row := AgentUi.hbox(12, parent)
+	var n := AgentUi.label(harness, "", row)
+	n.custom_minimum_size.x = 104
+	n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var col := AgentUi.vbox(3, row)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bar := ManaBar.new(120, 10)
+	bar.look = look
+	bar.show_caption = false
+	bar.warn_colors = warn
+	bar.bar_height = 8.0
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.set_values(value, total)
+	col.add_child(bar)
+	AgentUi.label(figures, "MonoSmall", col)
 
 
 # --- form --------------------------------------------------------------------------------------------
