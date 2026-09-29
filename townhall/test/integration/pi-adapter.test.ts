@@ -104,6 +104,18 @@ describe.skipIf(!PI_CLI)("PiAdapter against the real pi with a faux provider", (
     expect(calls()[1]!.lastToolResult).toMatchObject({ tool: "bash", isError: true, text: expect.stringContaining("The player denied this: no pushing") });
   });
 
+  it("denies, and carries on, when the Town Hall cannot ask the player", async () => {
+    script([{ tool: "write", args: { path: "y.txt", content: "y" } }, { echo: true }]);
+    const host = new MockHost();
+    host.decide = () => {
+      throw new Error("the database is gone");
+    };
+    const outcome = await within(start(adapter(), host).done);
+    expect(outcome.kind).toBe("completed");
+    expect(existsSync(path.join(work, "y.txt"))).toBe(false);
+    expect(calls()[1]!.lastToolResult).toMatchObject({ tool: "write", isError: true, text: expect.stringContaining("could not ask the player") });
+  });
+
   it("maps add-ons to pi's --tools: a tool the agent lacks never runs", async () => {
     script([{ tool: "bash", args: { command: "echo hi" } }, { text: "No shell here." }]);
     const host = new MockHost();

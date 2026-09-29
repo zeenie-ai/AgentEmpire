@@ -16,18 +16,28 @@ function headerRefs(refs: Record<string, string> | undefined): Record<string, st
   return Object.fromEntries(Object.entries(refs ?? {}).map(([header, variable]) => [header, `\${${variable}}`]));
 }
 
+/**
+ * A Waygate's MCP server name as the harnesses use it: Claude Code puts it in tool names
+ * (mcp__<server>__<tool>) with anything outside [A-Za-z0-9_-] replaced, and Codex cannot
+ * carry dots in a dotted `-c` path. All three harnesses get the same name.
+ */
+export function mcpServerName(name: string): string {
+  return name.replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
 /** Waygates a harness can use, minus reserved names and incomplete configs; the rest are reported. */
 export function usableWaygates(waygates: WaygateConfig[]): { usable: WaygateConfig[]; skipped: Array<{ name: string; reason: string }> } {
   const usable: WaygateConfig[] = [];
   const skipped: Array<{ name: string; reason: string }> = [];
   const seen = new Set<string>();
   for (const w of waygates) {
-    if (RESERVED_SERVER_NAMES.has(w.server_name.toLowerCase())) skipped.push({ name: w.server_name, reason: "the name is reserved" });
-    else if (seen.has(w.server_name)) skipped.push({ name: w.server_name, reason: "another Waygate has the same name" });
+    const name = mcpServerName(w.server_name).toLowerCase();
+    if (RESERVED_SERVER_NAMES.has(name)) skipped.push({ name: w.server_name, reason: "the name is reserved" });
+    else if (seen.has(name)) skipped.push({ name: w.server_name, reason: "another Waygate has the same name" });
     else if (w.transport === "stdio" && !w.command) skipped.push({ name: w.server_name, reason: "a stdio Waygate needs a command" });
     else if (w.transport === "http" && !w.url) skipped.push({ name: w.server_name, reason: "an http Waygate needs a url" });
     else {
-      seen.add(w.server_name);
+      seen.add(name);
       usable.push(w);
     }
   }
@@ -59,7 +69,7 @@ function tomlTable(entries: Record<string, string>): string {
 
 /** The mcp_servers key Codex uses for a Waygate (dotted `-c` paths cannot carry dots in a name). */
 export function codexServerKey(name: string): string {
-  return name.replace(/[^A-Za-z0-9_-]/g, "_");
+  return mcpServerName(name);
 }
 
 /**
@@ -85,7 +95,7 @@ export function codexMcpOverrides(w: WaygateConfig): string[] {
 
 /** The mcp.json-shaped entry pi's registerMcpServer takes. */
 export function piMcpServer(w: WaygateConfig): { name: string; config: Record<string, unknown> } {
-  const name = w.server_name.replace(/[^A-Za-z0-9_-]/g, "_");
+  const name = mcpServerName(w.server_name);
   if (w.transport === "http") {
     return { name, config: { url: w.url, ...(w.header_refs ? { headers: headerRefs(w.header_refs) } : {}), exposure: "direct" } };
   }

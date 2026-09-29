@@ -20,7 +20,8 @@ import { encodeJsonl, JsonlDecoder } from "../../src/providers/common/jsonl.js";
 import { Pricing, RunningTotal } from "../../src/providers/common/pricing.js";
 import { feedbackMessage, firstMessageFor, systemPromptFor } from "../../src/providers/common/prompt.js";
 import { classifyFailure } from "../../src/providers/common/support.js";
-import { claudeMcpServer, codexMcpOverrides, piMcpServer, usableWaygates } from "../../src/providers/common/waygates.js";
+import { claudeMcpServer, codexMcpOverrides, mcpServerName, piMcpServer, usableWaygates } from "../../src/providers/common/waygates.js";
+import { insideWorkspace, parsePermissionRequest, permissionApproval } from "../../src/providers/codex/permissions.js";
 import { framingNames } from "../../src/providers/real.js";
 import { removeRoot, tempRoot } from "../helpers/harness.js";
 import { runRequest } from "../helpers/run-host.js";
@@ -267,6 +268,62 @@ describe("Waygate configs name secrets, never copy them", () => {
     const { usable, skipped } = usableWaygates([stdio, { ...stdio }, { server_name: "aurelhaven", transport: "stdio", command: "x" }, { server_name: "empty", transport: "http" }]);
     expect(usable).toEqual([stdio]);
     expect(skipped.map((s) => s.name)).toEqual(["github", "aurelhaven", "empty"]);
+  });
+
+  it("compares names the way the harnesses see them", () => {
+    expect(mcpServerName("docs.site")).toBe("docs_site");
+    const clash = { ...http, server_name: "docs_site" };
+    const { usable, skipped } = usableWaygates([http, clash, { ...stdio, server_name: "Aurel.haven" }, { ...stdio, server_name: "AURELHAVEN" }]);
+    expect(usable).toEqual([http, { ...stdio, server_name: "Aurel.haven" }]);
+    expect(skipped).toEqual([
+      { name: "docs_site", reason: "another Waygate has the same name" },
+      { name: "AURELHAVEN", reason: "the name is reserved" },
+    ]);
+  });
+});
+
+describe("Codex permission requests", () => {
+  const work = path.resolve("/work/app");
+  const parse = (raw: unknown) => parsePermissionRequest(raw, work, work);
+  const entry = (p: unknown, access = "read") => ({ network: null, fileSystem: { read: null, write: null, entries: [{ path: p, access }] } });
+
+  it("treats only plain paths inside the work folder as inside", () => {
+    expect(insideWorkspace("src/a.ts", work, work)).toBe(true);
+    expect(insideWorkspace(path.join(work, "..", "other"), work, work)).toBe(false);
+    expect(insideWorkspace("~/.ssh", work, work)).toBe(false);
+    expect(insideWorkspace("$HOME/x", work, work)).toBe(false);
+    expect(insideWorkspace("%USERPROFILE%\\x", work, work)).toBe(false);
+    expect(parse(entry({ type: "glob_pattern", pattern: "src/**" }))!.files).toEqual([{ access: "read", label: "files matching src/**", inside: false }]);
+    expect(parse(entry({ type: "special", value: { kind: "project_roots", subpath: "docs" } }))!.files[0]).toMatchObject({ label: "the project roots (docs)", inside: false });
+  });
+
+  it("returns null for anything it does not understand", () => {
+    expect(parse(null)).toBeNull();
+    expect(parse({ network: { enabled: "yes" }, fileSystem: null })).toBeNull();
+    expect(parse({ network: { enabled: true, proxy: "x" }, fileSystem: null })).toBeNull();
+    expect(parse({ network: null, fileSystem: { read: [3], write: null } })).toBeNull();
+    expect(parse(entry({ type: "special", value: { kind: "everything" } }))).toBeNull();
+    expect(parse(entry({ type: "path", path: "a" }, "execute"))).toBeNull();
+    expect(parse({ network: null, fileSystem: { read: null, write: null, extra: [] } })).toBeNull();
+  });
+
+  it("keeps blocked paths in the grant and out of the category", () => {
+    const req = parse({
+      network: null,
+      fileSystem: {
+        read: null,
+        write: ["src"],
+        entries: [{ path: { type: "path", path: path.resolve("/etc/secrets") }, access: "deny" }],
+        globScanMaxDepth: 3,
+      },
+    })!;
+    expect(req.profile).toEqual({
+      fileSystem: { read: null, write: ["src"], entries: [{ path: { type: "path", path: path.resolve("/etc/secrets") }, access: "deny" }], globScanMaxDepth: 3 },
+    });
+    const approval = permissionApproval(req, "to build");
+    expect(approval).toMatchObject({ tool: "file_access", category: "write", reason: "to build" });
+    expect(approval.summary).toMatch(/^Allow write access to src for this turn \(keeping .*secrets blocked\)$/);
+    expect(parse({ network: { enabled: false }, fileSystem: null })).toEqual({ network: false, files: [], profile: {} });
   });
 });
 

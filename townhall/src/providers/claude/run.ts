@@ -5,9 +5,9 @@ import { approvalFor, claudeCategory, describeToolCall, writtenPaths } from "../
 import { claudePlan } from "../common/capabilities.js";
 import { harnessEnv } from "../common/env.js";
 import type { Launch } from "../common/exec.js";
-import { HarnessProcess, type ExitInfo } from "../common/process.js";
+import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { RunningTotal } from "../common/pricing.js";
-import { firstMessageFor, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
 import {
   asNumber,
   asString,
@@ -18,8 +18,8 @@ import {
   removeScratch,
   type HarnessDeps,
 } from "../common/support.js";
-import { claudeMcpServer, usableWaygates } from "../common/waygates.js";
-import type { RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
+import { claudeMcpServer, mcpServerName, usableWaygates } from "../common/waygates.js";
+import type { ApprovalAnswer, RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
 import { ApprovalBridge, type PermissionPrompt, type PermissionResult } from "./bridge.js";
 
 /** The MCP server and tool Claude Code asks for permission (`--permission-prompt-tool`). */
@@ -118,7 +118,10 @@ export class ClaudeRun implements RunHandle {
   // ---------- RunHandle ----------
 
   send(message: string): void {
-    if (this.finishing || this.stop) return;
+    if (this.finishing || this.stop) {
+      notDelivered((e) => this.emit(e));
+      return;
+    }
     const text = nudgeMessage(message);
     if (!this.proc) {
       this.queued.push(text);
@@ -183,7 +186,8 @@ export class ClaudeRun implements RunHandle {
     }
   }
 
-  private buildArgs(mode: Mode): string[] {
+  /** `baselineUsd`: the cost total a resumed session starts from, which Claude Code counts against the cap. */
+  private buildArgs(mode: Mode, baselineUsd: number): string[] {
     const req = this.req;
     const plan = claudePlan(this.opts.deps.tools, req.tools);
     const tools = [...plan.tools];
@@ -202,11 +206,15 @@ export class ClaudeRun implements RunHandle {
         env: { AURELHAVEN_APPROVAL_URL: this.bridge!.url, AURELHAVEN_APPROVAL_TOKEN: this.bridge!.token },
       },
     };
+    this.allowedMcpTools.clear();
     if (plan.mcp) {
       const { usable, skipped } = usableWaygates(req.waygates);
       for (const w of usable) {
-        servers[w.server_name] = claudeMcpServer(w);
-        if (w.allowed_tools?.length) this.allowedMcpTools.set(w.server_name, new Set(w.allowed_tools));
+        // The name Claude Code puts in the tool names (mcp__<server>__<tool>).
+        const name = mcpServerName(w.server_name);
+        servers[name] = claudeMcpServer(w);
+        // Tool names are listed as given and as Claude Code may normalise them.
+        if (w.allowed_tools?.length) this.allowedMcpTools.set(name, new Set(w.allowed_tools.flatMap((t) => [t, mcpServerName(t)])));
       }
       for (const s of skipped) this.emit({ kind: "activity", activity: "system", text: `Waygate ${s.name} was skipped: ${s.reason}.` });
     }
@@ -243,14 +251,17 @@ export class ClaudeRun implements RunHandle {
     if (model && model !== "default") args.push("--model", model);
     if (mode === "resume") args.push("--resume", this.state.sessionId);
     else args.push("--session-id", this.state.sessionId);
-    // A backstop only: the Town Hall pauses the task at its seal first.
-    if (remainingUsd > 0) args.push("--max-budget-usd", (remainingUsd * 1.1 + 0.01).toFixed(4));
+    // A backstop only: the Town Hall pauses the task at its seal first. The cap applies to
+    // Claude Code's running total, which on resume starts from the restored total.
+    if (remainingUsd > 0) args.push("--max-budget-usd", (baselineUsd + remainingUsd * 1.1 + 0.01).toFixed(4));
     return args;
   }
 
   private async runProcess(mode: Mode): Promise<ProcessEnd> {
     const plan = claudePlan(this.opts.deps.tools, this.req.tools);
-    const args = this.buildArgs(mode);
+    // Cost baseline: a resumed session restores the total saved at its last clean exit.
+    const baseline = mode === "resume" && this.opts.restoresCostOnResume ? this.state.costSavedUsd : 0;
+    const args = this.buildArgs(mode, baseline);
     const env = harnessEnv(this.opts.deps.env, {
       MCP_TOOL_TIMEOUT: MCP_TOOL_TIMEOUT_MS,
       // Approvals wait for the player: no idle limit on MCP tool calls.
@@ -260,8 +271,6 @@ export class ClaudeRun implements RunHandle {
     });
 
     if (this.stop) return { kind: "interrupted" };
-    // Cost baseline: a resumed session restores the total saved at its last clean exit.
-    const baseline = mode === "resume" && this.opts.restoresCostOnResume ? this.state.costSavedUsd : 0;
     this.cost = new RunningTotal(baseline);
     this.tokenCost = new RunningTotal(0);
     this.sawInit = false;
@@ -284,9 +293,11 @@ export class ClaudeRun implements RunHandle {
     const exit = await proc.exited;
     await this.stopping;
     // Claude Code saves the session's cost total when it exits on its own (whatever the exit
-    // code, and also when the Town Hall itself dies and closes its stdin), not when its process
-    // tree is ended from outside: then the next resume restores this process's starting total.
-    const exitedOnItsOwn = !exit.spawnError && !proc.forced && this.stop !== "kill";
+    // code, and also when the Town Hall itself dies and closes its stdin), not when a hard kill
+    // ends it: then the next resume restores this process's starting total. An exit after a
+    // polite request to end counts as its own; if that guess is wrong, the next attempt is
+    // undercharged a little, never charged twice.
+    const exitedOnItsOwn = !exit.spawnError && !proc.forced;
     this.state.costSavedUsd = exitedOnItsOwn ? this.state.costSeenUsd : baseline;
     this.checkpoint();
     return this.outcome(mode, exit, proc);
@@ -337,11 +348,7 @@ export class ClaudeRun implements RunHandle {
       request_id: `interrupt-${++this.interruptSeq}`,
       request: { subtype: "interrupt", cancel_queued: true },
     });
-    await Promise.race([
-      new Promise<void>((resolve) => this.resultWaiters.push(resolve)),
-      proc.exited,
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ]);
+    await waitAny([new Promise<void>((resolve) => this.resultWaiters.push(resolve)), proc.exited], 5_000);
     // End of input lets Claude Code save the session and exit; then taskkill /T, then /F.
     await proc.stop(this.opts.exitGraceMs ?? 8_000);
   }
@@ -529,25 +536,47 @@ export class ClaudeRun implements RunHandle {
       tool_name: asString(request.tool_name) ?? "tool",
       input: isPlainObject(request.input) ? request.input : {},
     };
-    void this.onPermission(prompt).then((result) => {
-      this.proc?.send({ type: "control_response", response: { subtype: "success", request_id: requestId, response: result } });
-    });
+    void this.onPermission(prompt)
+      .catch((): PermissionResult => ({ behavior: "deny", message: "The Town Hall could not decide on this request." }))
+      .then((result) => {
+        this.proc?.send({ type: "control_response", response: { subtype: "success", request_id: requestId, response: result } });
+      });
   }
 
   // ---------- approvals ----------
+
+  /** Capability checks on MCP tools: a reason to refuse without asking, or null. */
+  private mcpRefusal(tool: string): string | null {
+    if (tool.startsWith(`mcp__${APPROVAL_SERVER}__`)) {
+      // The approval channel is the Town Hall's, not a tool for the agent: calling it would
+      // only put made-up requests in front of the player.
+      return "This tool belongs to the Town Hall and is not available to agents.";
+    }
+    for (const [server, allowed] of this.allowedMcpTools) {
+      const prefix = `mcp__${server}__`;
+      if (!tool.startsWith(prefix)) continue;
+      const name = tool.slice(prefix.length);
+      // Capability, not approval: this Waygate does not offer the tool to the agent. When two
+      // server names could both match, every restriction that applies is honoured.
+      if (!allowed.has(name)) return `The ${server} Waygate does not allow the tool ${name}.`;
+    }
+    return null;
+  }
 
   private async onPermission(prompt: PermissionPrompt): Promise<PermissionResult> {
     if (this.stop) return { behavior: "deny", message: "The task is stopping.", interrupt: true };
     const tool = prompt.tool_name;
     if (tool.startsWith("mcp__")) {
-      const [, server, name] = tool.split("__");
-      const allowed = server ? this.allowedMcpTools.get(server) : undefined;
-      if (allowed && name && !allowed.has(name)) {
-        // Capability, not approval: this Waygate does not offer the tool to the agent.
-        return { behavior: "deny", message: `The ${server} Waygate does not allow the tool ${name}.` };
-      }
+      const refusal = this.mcpRefusal(tool);
+      if (refusal) return { behavior: "deny", message: refusal };
     }
-    const answer = await this.host.requestApproval(approvalFor(tool, claudeCategory(tool), prompt.input, this.req.cwd));
+    let answer: ApprovalAnswer;
+    try {
+      answer = await this.host.requestApproval(approvalFor(tool, claudeCategory(tool), prompt.input, this.req.cwd));
+    } catch (err) {
+      this.opts.deps.log?.warn({ taskId: this.req.taskId, tool, err: String(err) }, "an approval request failed");
+      return { behavior: "deny", message: "The Town Hall could not ask the player about this action." };
+    }
     if (answer.cancelled) {
       return { behavior: "deny", message: "The Town Hall withdrew this request because the task is stopping.", interrupt: true };
     }

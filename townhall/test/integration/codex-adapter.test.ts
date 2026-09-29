@@ -26,8 +26,8 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
   afterEach(() => removeRoot(root));
 
   const adapter = () => new CodexCliAdapter(testDeps(path.join(root, "data"), env));
-  const scenario = (turns: unknown[]) => {
-    env.FAKE_CODEX_SCENARIO = writeJson(root, `scenario-${Math.random().toString(36).slice(2)}.json`, { turns });
+  const scenario = (turns: unknown[], extra: Record<string, unknown> = {}) => {
+    env.FAKE_CODEX_SCENARIO = writeJson(root, `scenario-${Math.random().toString(36).slice(2)}.json`, { turns, ...extra });
   };
   const start = (a: CodexCliAdapter, host: MockHost, overrides: Partial<RunRequest> = {}) =>
     a.start(runRequest(work, { provider: "codex", model: "gpt-5.6-luna", tools: ["lectern", "quillworks", "forge"], ...overrides }), host);
@@ -90,7 +90,12 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     const overrides: string[] = log().find((e) => e.kind === "start")!.overrides;
     expect(overrides).toEqual(expect.arrayContaining(["features.apps=false", "features.plugins=false", "features.multi_agent=false", 'web_search="disabled"', "project_doc_max_bytes=0"]));
     const cp = host.lastCheckpoint<CodexCheckpoint>();
-    expect(cp).toEqual({ v: 1, harness: "codex", threadId: expect.stringMatching(/^thr_/) });
+    expect(cp).toEqual({
+      v: 1,
+      harness: "codex",
+      threadId: expect.stringMatching(/^thr_/),
+      tokens: { inputTokens: 1_000_000, cachedInputTokens: 400_000, outputTokens: 100_000 },
+    });
     expect(host.events).toContainEqual({ kind: "session", sessionId: cp.threadId });
   });
 
@@ -132,8 +137,123 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
       ["shell", "network"],
       ["mcp__github__create_issue", "mcp"],
     ]);
+    // The host goes in as a URL, so an answer for the task or the agent covers that host only.
+    expect(host.approvals[0]!.input).toMatchObject({ command: "curl https://example.org", url: "https://example.org" });
+    expect(host.approvals[0]!.summary).toBe("Network access to example.org for: curl https://example.org");
+    expect(host.approvals[0]!.risk).toBeUndefined();
     expect(host.approvals[1]!.input).toEqual({ title: "Bug" });
     expect(approvals()[1]!.response.result).toEqual({ action: "decline", content: null, _meta: null });
+  });
+
+  it("asks about an MCP tool named in a request for user input, and a command known only from its item", async () => {
+    scenario([
+      {
+        steps: [
+          { userInput: { server: "github", tool: "create_issue", params: { title: "Bug" } } },
+          { command: "npm run build", omitCommand: true },
+          { text: "Done." },
+        ],
+      },
+    ]);
+    const host = new MockHost();
+    host.decide = (r) => ({ decision: r.category === "mcp" ? "allow" : "deny" });
+    await within(start(adapter(), host).done);
+    expect(host.approvals.map((r) => [r.tool, r.category, r.risk])).toEqual([
+      ["mcp__github__create_issue", "mcp", undefined],
+      ["shell", "command", undefined],
+    ]);
+    expect(host.approvals[0]!.input).toEqual({ title: "Bug" });
+    expect(host.approvals[1]!.input).toMatchObject({ command: "npm run build", cwd: work });
+    const [input, command] = approvals();
+    expect(Object.values(input!.response.result.answers)).toEqual([{ answers: ["Allow"] }]);
+    expect(command!.response.result.decision).toBe("decline");
+  });
+
+  it("grants only the permissions it understood, asking with the strictest category", async () => {
+    const special = (kind: string) => ({ path: { type: "special", value: { kind } }, access: "write" });
+    scenario([
+      {
+        steps: [
+          { permissions: { network: { enabled: true }, fileSystem: null } },
+          { permissions: { network: null, fileSystem: { read: null, write: null, entries: [special("root")] } } },
+          { permissions: { network: { enabled: true }, fileSystem: { read: ["docs"], write: null } } },
+          { permissions: { network: null, fileSystem: { read: null, write: null, entries: [{ path: { type: "path", path: "src" }, access: "write" }] } } },
+          { permissions: { network: null, fileSystem: { read: null, write: null, entries: [{ path: { type: "mystery" }, access: "write" }] } } },
+          { permissions: { network: null, fileSystem: null, somethingNew: { enabled: true } } },
+          { text: "Done." },
+        ],
+      },
+    ]);
+    const host = new MockHost();
+    const outcome = await within(start(adapter(), host).done);
+    expect(outcome).toEqual({ kind: "completed", summary: "Done." });
+    expect(host.approvals.map((r) => [r.tool, r.category, r.risk])).toEqual([
+      ["network_access", "network", undefined],
+      ["file_access", "outside_workspace", undefined],
+      ["permissions", "network", "high"],
+      ["file_access", "write", undefined],
+    ]);
+    expect(host.approvals[1]!.summary).toBe("Allow write access to the whole file system for this turn");
+    expect(host.approvals[2]!.summary).toBe("Allow network access and read access to docs for this turn");
+    const answers = approvals().map((e) => e.response.result);
+    expect(answers).toEqual([
+      { permissions: { network: { enabled: true } }, scope: "turn" },
+      { permissions: { fileSystem: { read: null, write: null, entries: [special("root")] } }, scope: "turn" },
+      { permissions: { network: { enabled: true }, fileSystem: { read: ["docs"], write: null } }, scope: "turn" },
+      { permissions: { fileSystem: { read: null, write: null, entries: [{ path: { type: "path", path: "src" }, access: "write" }] } }, scope: "turn" },
+      // Not understood: declined without a grant, and without asking the player.
+      { permissions: {}, scope: "turn" },
+      { permissions: {}, scope: "turn" },
+    ]);
+    expect(host.texts("activity").filter((t) => t.includes("does not understand"))).toHaveLength(2);
+  });
+
+  it("refuses file edits and write permissions without a Quillworks, and edits it cannot see", async () => {
+    scenario([
+      {
+        steps: [
+          { patch: [{ path: "no.txt", content: "x" }] },
+          { permissions: { network: null, fileSystem: { read: null, write: ["src"] } } },
+          { text: "Read only." },
+        ],
+      },
+    ]);
+    const host = new MockHost();
+    await within(start(adapter(), host, { tools: ["lectern", "forge"] }).done);
+    expect(host.approvals).toHaveLength(0);
+    expect(approvals().map((e) => e.response.result)).toEqual([{ decision: "decline" }, { permissions: {}, scope: "turn" }]);
+    expect(existsSync(path.join(work, "no.txt"))).toBe(false);
+    expect(host.texts("activity").filter((t) => t.includes("no Quillworks"))).toHaveLength(2);
+
+    scenario([{ steps: [{ patch: [{ path: "hidden.txt", content: "x" }], hidden: true }, { text: "Unseen." }] }]);
+    const unseen = new MockHost();
+    await within(start(adapter(), unseen).done);
+    expect(unseen.approvals).toHaveLength(0);
+    expect(approvals().at(-1)!.response.result).toEqual({ decision: "decline" });
+    expect(existsSync(path.join(work, "hidden.txt"))).toBe(false);
+  });
+
+  it("treats a move out of the work folder as an outside-workspace edit", async () => {
+    scenario([{ steps: [{ patch: [{ path: "inside.txt", content: "x", move: "../outside.txt" }] }, { text: "Moved." }] }]);
+    const host = new MockHost();
+    host.decide = () => ({ decision: "deny" });
+    await within(start(adapter(), host).done);
+    expect(host.approvals[0]).toMatchObject({ tool: "apply_patch", category: "outside_workspace" });
+    expect((host.approvals[0]!.input as { path: string }).path).toBe(path.resolve(work, "../outside.txt"));
+  });
+
+  it("does not start a new turn for a nudge that fails to steer after a stop", async () => {
+    scenario([{ steps: [{ text: "Long job." }, { hang: true }] }], { rejectSteer: true });
+    const host = new MockHost();
+    const run = start(adapter(), host);
+    await host.waitFor((e) => e.kind === "activity");
+    run.send("One more thing");
+    run.interrupt();
+    expect(await within(run.done)).toEqual({ kind: "interrupted" });
+    expect(log().some((e) => e.kind === "steer_rejected")).toBe(true);
+    expect(log().filter((e) => e.kind === "turn")).toHaveLength(1);
+    run.send("Too late");
+    await host.waitFor((e) => e.kind === "activity" && e.text.includes("not delivered"));
   });
 
   it("steers nudges into the running turn", async () => {
@@ -171,7 +291,8 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     await within(start(adapter(), firstHost).done);
     const cp = firstHost.lastCheckpoint<CodexCheckpoint>();
 
-    scenario([{ steps: [{ tokens: { input: 50_000, output: 5_000 } }, { text: "Second." }] }]);
+    // Codex restates the restored figures (as on a rate-limit update) before the new request's.
+    scenario([{ steps: [{ restate: true }, { tokens: { input: 50_000, output: 5_000 } }, { text: "Second." }] }]);
     const host = new MockHost();
     const outcome = await within(start(adapter(), host, { attempt: 2, resume: { sessionId: cp.threadId, state: cp, feedback: "Shorter please" } }).done);
     expect(outcome).toEqual({ kind: "completed", summary: "Second." });
@@ -179,6 +300,7 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     expect(log().filter((e) => e.kind === "turn").at(-1)!.text).toMatch(/sent it back with this feedback:\n\nShorter please/);
     // 50k input at $0.20 + 5k output at $1.20 per 1M; the restored thread total is not charged again.
     expect(host.usageMicros()).toBe(16_000);
+    expect(host.lastCheckpoint<CodexCheckpoint>().tokens).toEqual({ inputTokens: 150_000, cachedInputTokens: 0, outputTokens: 15_000 });
   });
 
   it("starts a new thread when the old one is gone", async () => {

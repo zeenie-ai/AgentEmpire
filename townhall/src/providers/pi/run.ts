@@ -4,9 +4,9 @@ import { approvalFor, describeToolCall, piCategory, writtenPaths } from "../comm
 import { piPlan, type PiPlan } from "../common/capabilities.js";
 import { harnessEnv } from "../common/env.js";
 import type { Launch } from "../common/exec.js";
-import { HarnessProcess, type ExitInfo } from "../common/process.js";
+import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { usdToMicros } from "../common/pricing.js";
-import { firstMessageFor, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
 import {
   asNumber,
   asString,
@@ -18,7 +18,7 @@ import {
   type HarnessDeps,
 } from "../common/support.js";
 import { piMcpServer, usableWaygates } from "../common/waygates.js";
-import type { RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
+import type { ApprovalAnswer, RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
 
 /** The dialog title the gate extension uses for approval requests. */
 export const APPROVAL_TITLE = "aurelhaven:approval";
@@ -123,7 +123,10 @@ export class PiRun implements RunHandle {
   // ---------- RunHandle ----------
 
   send(message: string): void {
-    if (this.finishing || this.stop) return;
+    if (this.finishing || this.stop) {
+      notDelivered((e) => this.emit(e));
+      return;
+    }
     const text = nudgeMessage(message);
     if (!this.proc) {
       this.queued.push(text);
@@ -237,7 +240,7 @@ export class PiRun implements RunHandle {
     if (proc.running) {
       const settled = new Promise<void>((resolve) => this.settleWaiters.push(resolve));
       proc.send({ id: "th-abort", type: "abort" });
-      await Promise.race([settled, proc.exited, new Promise((r) => setTimeout(r, 10_000))]);
+      await waitAny([settled, proc.exited], 10_000);
     }
     await proc.stop(this.opts.exitGraceMs ?? 8_000);
   }
@@ -435,7 +438,10 @@ export class PiRun implements RunHandle {
     const method = asString(r.method);
     if (!id || !method) return;
     if (method === "input" && r.title === APPROVAL_TITLE) {
-      void this.onApproval(id, asString(r.placeholder) ?? "{}");
+      this.onApproval(id, asString(r.placeholder) ?? "{}").catch((err: unknown) => {
+        this.opts.deps.log?.warn({ taskId: this.req.taskId, err: String(err) }, "pi approval handling failed");
+        this.proc?.send({ type: "extension_ui_response", id, cancelled: true });
+      });
       return;
     }
     if (DIALOGS.has(method)) {
@@ -460,19 +466,33 @@ export class PiRun implements RunHandle {
     }
     const tool = asString(payload.tool) ?? "tool";
     const input = payload.input ?? {};
-    const answer = this.stop
-      ? { decision: "deny" as const, cancelled: true }
-      : await this.host.requestApproval(approvalFor(tool, piCategory(tool), input, this.req.cwd));
+    let answer: ApprovalAnswer;
+    let failed = false;
+    try {
+      answer = this.stop
+        ? { decision: "deny", cancelled: true }
+        : await this.host.requestApproval(approvalFor(tool, piCategory(tool), input, this.req.cwd));
+    } catch (err) {
+      // The dialog must still be answered, or the tool call would wait for ever.
+      this.opts.deps.log?.warn({ taskId: this.req.taskId, tool, err: String(err) }, "an approval request failed");
+      answer = { decision: "deny" };
+      failed = true;
+    }
     const proc = this.proc;
     if (!proc?.acceptsInput) return;
     if (answer.cancelled) {
       proc.send({ type: "extension_ui_response", id: dialogId, cancelled: true });
       return;
     }
+    const denial = failed
+      ? "The Town Hall could not ask the player about this action."
+      : answer.message
+        ? `The player denied this: ${answer.message}`
+        : "The player denied this action.";
     const decision =
       answer.decision === "allow"
         ? { decision: "allow", ...(isPlainObject(answer.updatedInput) ? { updatedInput: answer.updatedInput } : {}) }
-        : { decision: "deny", message: answer.message ? `The player denied this: ${answer.message}` : "The player denied this action." };
+        : { decision: "deny", message: denial };
     proc.send({ type: "extension_ui_response", id: dialogId, value: JSON.stringify(decision) });
   }
 }

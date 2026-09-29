@@ -229,6 +229,8 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
     const argv: string[] = starts()[1]!.argv;
     expect(argv[argv.indexOf("--resume") + 1]).toBe(cp.sessionId);
     expect(argv).not.toContain("--session-id");
+    // The cap applies to Claude Code's running total, which starts from the restored $0.02.
+    expect(Number(argv[argv.indexOf("--max-budget-usd") + 1])).toBeCloseTo(0.47, 4);
     const messages = readLog(logFile).filter((e) => e.kind === "message").map((e) => e.text as string);
     expect(messages[1]).toMatch(/^The player reviewed your work on this task and sent it back with this feedback:\n\nUse a warmer greeting/);
     expect(host.usageMicros()).toBe(3_000);
@@ -294,6 +296,52 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
     expect(everything).not.toContain("secret-header-value");
     expect(host.texts("activity").some((t) => t.includes("Waygate aurelhaven was skipped"))).toBe(true);
     expect(starts()[0]!.claudeMdsDisabled).toBe(false);
+  });
+
+  it("refuses the approval tool itself and Waygate tools outside allowed_tools, without asking", async () => {
+    scenario([
+      {
+        steps: [
+          { tool: "mcp__aurelhaven__approve", input: { tool_name: "Bash", input: { command: "rm -rf /" } } },
+          { tool: "mcp__docs_site__search", input: { q: "x" } },
+          { tool: "mcp__docs_site__lookup", input: { q: "y" } },
+          { text: "Done." },
+        ],
+      },
+    ]);
+    const host = new MockHost();
+    const outcome = await within(
+      start(adapter(), host, {
+        tools: ["lectern", "waygate"],
+        waygates: [{ server_name: "docs.site", transport: "http", url: "https://mcp.example.invalid/mcp", allowed_tools: ["lookup"] }],
+      }).done,
+    );
+    expect(outcome).toEqual({ kind: "completed", summary: "Done." });
+    expect(host.approvals.map((r) => r.tool)).toEqual(["mcp__docs_site__lookup"]);
+    const decisions = readLog(logFile).filter((e) => e.kind === "approval").map((e) => [e.tool, e.decision.behavior, e.decision.message]);
+    expect(decisions).toEqual([
+      ["mcp__aurelhaven__approve", "deny", "This tool belongs to the Town Hall and is not available to agents."],
+      ["mcp__docs_site__search", "deny", "The docs_site Waygate does not allow the tool search."],
+      ["mcp__docs_site__lookup", "allow", undefined],
+    ]);
+    // Claude Code's name for the server, as it appears in tool names.
+    expect(Object.keys(readLog(logFile).find((e) => e.kind === "mcp_config")!.servers)).toEqual(["aurelhaven", "docs_site"]);
+  });
+
+  it("denies, and carries on, when the Town Hall cannot ask the player", async () => {
+    scenario([{ steps: [{ tool: "Write", input: { file_path: "c.txt", content: "c" } }, { text: "Could not write." }] }]);
+    const host = new MockHost();
+    host.decide = () => {
+      throw new Error("the database is gone");
+    };
+    const run = start(adapter(), host);
+    expect(await within(run.done)).toEqual({ kind: "completed", summary: "Could not write." });
+    const approval = readLog(logFile).find((e) => e.kind === "approval")!;
+    expect(approval.decision).toEqual({ behavior: "deny", message: "The Town Hall could not ask the player about this action." });
+    expect(existsSync(path.join(work, "c.txt"))).toBe(false);
+    // A nudge after the run ended cannot reach the agent: the player is told so.
+    run.send("Too late");
+    await host.waitFor((e) => e.kind === "activity" && e.text.includes("not delivered"));
   });
 
   it("uses plan mode for plan_first and adds ExitPlanMode", async () => {

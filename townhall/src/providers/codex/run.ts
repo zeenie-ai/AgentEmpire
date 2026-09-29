@@ -1,22 +1,31 @@
-import path from "node:path";
 import { DAEMON_VERSION } from "../../protocol/version.js";
-import { approvalFor, displayTarget } from "../common/approvals.js";
+import { approvalFor, clip, displayTarget } from "../common/approvals.js";
 import { codexPlan, type CodexPlan } from "../common/capabilities.js";
 import { harnessEnv } from "../common/env.js";
 import type { Launch } from "../common/exec.js";
-import { HarnessProcess, type ExitInfo } from "../common/process.js";
+import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { usdToMicros } from "../common/pricing.js";
-import { firstMessageFor, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
 import { asNumber, asString, classifyFailure, cleanText, isPlainObject, type HarnessDeps } from "../common/support.js";
 import { codexMcpOverrides, usableWaygates } from "../common/waygates.js";
 import type { ApprovalAnswer, ApprovalRequest, RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
+import { insideWorkspace, parsePermissionRequest, permissionApproval } from "./permissions.js";
 import { RpcClient, RpcError, type RpcId } from "./rpc.js";
+
+/** Token counts as the app server reports them (a TokenUsageBreakdown, minus the derived fields). */
+export interface Tokens {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+}
 
 /** Adapter state saved through RunHost.checkpoint. */
 export interface CodexCheckpoint {
   v: 1;
   harness: "codex";
   threadId: string;
+  /** The thread's token total when usage was last charged: a resumed thread is charged from here. */
+  tokens?: Tokens;
 }
 
 function isCheckpoint(v: unknown): v is CodexCheckpoint {
@@ -26,6 +35,7 @@ function isCheckpoint(v: unknown): v is CodexCheckpoint {
 /** Codex features a town agent does not get: they bring their own tools or agents. */
 const DISABLED_FEATURES = ["apps", "plugins", "multi_agent", "computer_use", "browser_use", "browser_use_external", "in_app_browser", "image_generation"];
 const MCP_APPROVAL_QUESTION = "mcp_tool_call_approval";
+const ZERO: Tokens = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
 
 export interface CodexRunOptions {
   launch: Launch;
@@ -33,12 +43,6 @@ export interface CodexRunOptions {
   /** True when Codex is signed in with a ChatGPT plan: priced usage is an API-equivalent estimate. */
   estimate: boolean | undefined;
   exitGraceMs?: number;
-}
-
-interface Tokens {
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
 }
 
 function tokensOf(v: unknown): Tokens | null {
@@ -69,6 +73,11 @@ function decisionOf(answer: ApprovalAnswer): Decision {
   return answer.decision === "allow" ? "accept" : "decline";
 }
 
+/** The URL scheme for a network approval's protocol (only the host matters to approval rules). */
+function schemeOf(protocol: unknown): string {
+  return protocol === "http" || protocol === "https" ? protocol : "socks5";
+}
+
 /**
  * One attempt of a task on the Codex CLI through `codex app-server`, the JSON-RPC interface
  * Codex's own IDE integrations use. Codex asks for approval with server-to-client requests,
@@ -86,6 +95,7 @@ export class CodexRun implements RunHandle {
   private readonly ourTurns = new Set<string>();
   private readonly queued: string[] = [];
   private readonly items = new Map<string, Record<string, unknown>>();
+  /** The thread total already charged; null when unknown (a resume without a saved total). */
   private prevTotal: Tokens | null = null;
   private lastAgentText = "";
   private turnError: string | null = null;
@@ -108,7 +118,10 @@ export class CodexRun implements RunHandle {
   // ---------- RunHandle ----------
 
   send(message: string): void {
-    if (this.finishing || this.stop) return;
+    if (this.finishing || this.stop) {
+      notDelivered((e) => this.emit(e));
+      return;
+    }
     const text = nudgeMessage(message);
     const turn = this.activeTurn;
     if (!this.rpc || !this.threadId || !turn) {
@@ -116,6 +129,11 @@ export class CodexRun implements RunHandle {
       return;
     }
     this.rpc.request("turn/steer", { threadId: this.threadId, expectedTurnId: turn, input: textInput(text) }).catch(() => {
+      if (this.finishing || this.stop) {
+        // The turn ended meanwhile and the run is over: no new turn after a stop.
+        notDelivered((e) => this.emit(e));
+        return;
+      }
       // Not steerable right now: deliver it as the next turn instead.
       this.queued.push(text);
       if (!this.activeTurn) this.startQueuedTurn();
@@ -144,6 +162,15 @@ export class CodexRun implements RunHandle {
     }
   }
 
+  private checkpoint(): void {
+    if (!this.threadId) return;
+    try {
+      this.host.checkpoint({ v: 1, harness: "codex", threadId: this.threadId, ...(this.prevTotal ? { tokens: this.prevTotal } : {}) } satisfies CodexCheckpoint);
+    } catch {
+      // best effort
+    }
+  }
+
   private args(): string[] {
     const args = ["app-server"];
     for (const f of DISABLED_FEATURES) args.push("-c", `features.${f}=false`);
@@ -165,22 +192,31 @@ export class CodexRun implements RunHandle {
           ]
         : [];
     if (!this.plan.commands) notes.push("You may read files, but this agent has no Forge: do not run commands that change anything.");
+    if (this.plan.sandbox === "read-only") notes.push("This agent has no Quillworks: it may read files but not change them.");
     return systemPromptFor(this.req, { names: this.opts.deps.names, notes });
   }
 
   private async run(): Promise<RunOutcome> {
     await Promise.resolve();
     if (this.stop) return { kind: "interrupted" };
-    const proc = new HarnessProcess(this.opts.launch, this.args(), {
-      cwd: this.req.cwd,
-      env: harnessEnv(this.opts.deps.env),
-      onRecord: (r) => this.rpc?.handle(r),
-    });
+    let proc: HarnessProcess;
+    let rpc: RpcClient;
+    try {
+      const p = new HarnessProcess(this.opts.launch, this.args(), {
+        cwd: this.req.cwd,
+        env: harnessEnv(this.opts.deps.env),
+        onRecord: (r) => this.rpc?.handle(r),
+      });
+      proc = p;
+      rpc = new RpcClient((m) => p.send(m), {
+        onNotification: (method, params) => this.onNotification(method, params),
+        onRequest: (method, params, id) => this.onRequest(method, params, id),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { kind: "failed", error: { code: "crash", message: cleanText(message, this.opts.deps.redactor), transient: true } };
+    }
     this.proc = proc;
-    const rpc = new RpcClient((m) => proc.send(m), {
-      onNotification: (method, params) => this.onNotification(method, params),
-      onRequest: (method, params, id) => this.onRequest(method, params, id),
-    });
     this.rpc = rpc;
     void proc.exited.then((exit) => rpc.close(exit.spawnError ?? `exited with code ${exit.code}`));
     if (this.stop === "kill") this.stopping = proc.kill();
@@ -220,7 +256,8 @@ export class CodexRun implements RunHandle {
     };
     const model = this.req.model.trim();
     if (model && model !== "default") settings.model = model;
-    const prior = isCheckpoint(this.req.resume?.state) ? this.req.resume.state.threadId : (this.req.resume?.sessionId ?? null);
+    const saved = isCheckpoint(this.req.resume?.state) ? this.req.resume.state : null;
+    const prior = saved?.threadId ?? this.req.resume?.sessionId ?? null;
     let response: unknown = null;
     let resumed = false;
     if (prior) {
@@ -238,8 +275,12 @@ export class CodexRun implements RunHandle {
     if (!threadId) throw new Error("the app server started no thread");
     this.threadId = threadId;
     this.model = asString(r.model) ?? this.model;
+    // A new thread starts from nothing. A resumed one starts from the total charged before, so
+    // a restated figure is not charged twice; without a saved total, the first update's `last`
+    // (the newest request) is charged instead.
+    this.prevTotal = !resumed ? { ...ZERO } : saved && saved.threadId === threadId ? tokensOf(saved.tokens) : null;
     this.emit({ kind: "session", sessionId: threadId });
-    this.host.checkpoint({ v: 1, harness: "codex", threadId } satisfies CodexCheckpoint);
+    this.checkpoint();
     return resumed;
   }
 
@@ -255,6 +296,7 @@ export class CodexRun implements RunHandle {
   }
 
   private startQueuedTurn(): void {
+    if (this.stop || this.finishing) return;
     const text = this.queued.splice(0).join("\n\n");
     if (!text) return;
     this.startTurn(text).catch((err: unknown) => {
@@ -273,7 +315,7 @@ export class CodexRun implements RunHandle {
     if (this.rpc && this.threadId && this.activeTurn) {
       const waiting = new Promise<void>((resolve) => this.turnWaiters.push(resolve));
       this.rpc.request("turn/interrupt", { threadId: this.threadId, turnId: this.activeTurn }, 10_000).catch(() => undefined);
-      await Promise.race([waiting, proc.exited, new Promise((r) => setTimeout(r, 5_000))]);
+      await waitAny([waiting, proc.exited], 5_000);
     }
     await this.stopProcess(proc);
   }
@@ -373,9 +415,17 @@ export class CodexRun implements RunHandle {
     }
   }
 
+  /** Every path a file change touches, including the destination of a move. */
   private changePaths(item: Record<string, unknown>): string[] {
-    const changes = Array.isArray(item.changes) ? item.changes : [];
-    return changes.filter(isPlainObject).map((c) => String(c.path));
+    const changes = Array.isArray(item.changes) ? item.changes.filter(isPlainObject) : [];
+    const out: string[] = [];
+    for (const c of changes) {
+      const p = asString(c.path);
+      if (p) out.push(p);
+      const moved = isPlainObject(c.kind) ? asString(c.kind.move_path) : null;
+      if (moved) out.push(moved);
+    }
+    return out;
   }
 
   private onItemStarted(item: Record<string, unknown>): void {
@@ -421,7 +471,6 @@ export class CodexRun implements RunHandle {
     if (!turnId || !this.ourTurns.has(turnId)) return;
     const usage = isPlainObject(p.tokenUsage) ? p.tokenUsage : {};
     const total = tokensOf(usage.total);
-    const last = tokensOf(usage.last);
     let delta: Tokens | null;
     if (total && this.prevTotal) {
       delta = {
@@ -430,10 +479,13 @@ export class CodexRun implements RunHandle {
         outputTokens: Math.max(0, total.outputTokens - this.prevTotal.outputTokens),
       };
     } else {
-      // First update of this process: the thread total may include earlier attempts.
-      delta = last;
+      // A resumed thread without a saved total: its total includes earlier attempts.
+      delta = tokensOf(usage.last);
     }
-    if (total) this.prevTotal = total;
+    if (total) {
+      this.prevTotal = total;
+      this.checkpoint();
+    }
     if (!delta || delta.inputTokens + delta.outputTokens === 0) return;
     const cached = Math.min(delta.cachedInputTokens, delta.inputTokens);
     const usd = this.opts.deps.pricing.costUsd("codex", this.model, {
@@ -482,7 +534,23 @@ export class CodexRun implements RunHandle {
 
   private async ask(req: ApprovalRequest): Promise<ApprovalAnswer> {
     if (this.stop) return { decision: "deny", cancelled: true };
-    return this.host.requestApproval(req);
+    try {
+      return await this.host.requestApproval(req);
+    } catch (err) {
+      this.opts.deps.log?.warn({ taskId: this.req.taskId, tool: req.tool, err: String(err) }, "an approval request failed");
+      this.emit({
+        kind: "activity",
+        activity: "error",
+        text: cleanText(`The Town Hall could not ask the player about ${req.summary ?? req.tool}; it was declined.`, this.opts.deps.redactor, 400),
+      });
+      return { decision: "deny" };
+    }
+  }
+
+  /** Declines without asking the player: the agent lacks the capability, or the request cannot be judged. */
+  private refuse(text: string): "decline" {
+    this.emit({ kind: "activity", activity: "system", text: cleanText(text, this.opts.deps.redactor, 400) });
+    return "decline";
   }
 
   private async onRequest(method: string, raw: unknown, _id: RpcId): Promise<unknown> {
@@ -504,7 +572,12 @@ export class CodexRun implements RunHandle {
         return { decision: d === "accept" ? "approved" : d === "cancel" ? "abort" : "denied" };
       }
       case "applyPatchApproval": {
-        const changes = isPlainObject(p.fileChanges) ? Object.keys(p.fileChanges) : [];
+        const changes: string[] = [];
+        for (const [file, change] of Object.entries(isPlainObject(p.fileChanges) ? p.fileChanges : {})) {
+          changes.push(file);
+          const moved = isPlainObject(change) ? asString(change.move_path) : null;
+          if (moved) changes.push(moved);
+        }
         const d = await this.fileApprovalFor(changes, asString(p.reason), asString(p.grantRoot));
         return { decision: d === "accept" ? "approved" : d === "cancel" ? "abort" : "denied" };
       }
@@ -514,51 +587,81 @@ export class CodexRun implements RunHandle {
   }
 
   private async commandApproval(p: Record<string, unknown>): Promise<Decision> {
-    const command = asString(p.command) ?? "";
-    const cwd = asString(p.cwd) ?? this.req.cwd;
+    // `command` is optional in the request; the item Codex announced before it has one too.
+    const item = this.items.get(asString(p.itemId) ?? "");
+    const command = asString(p.command) ?? (item ? asString(item.command) : null) ?? "";
+    const cwd = asString(p.cwd) ?? (item ? asString(item.cwd) : null) ?? this.req.cwd;
     if (!this.plan.commands) {
       // Capability, not approval: without a Forge the agent may only run Codex's known-safe reads.
-      this.emit({ kind: "activity", activity: "system", text: `Refused a command (the agent has no Forge): ${command}` });
-      return "decline";
+      return this.refuse(`Refused a command (the agent has no Forge): ${command}`);
     }
-    const network = isPlainObject(p.networkApprovalContext);
-    const input: Record<string, unknown> = { command, cwd };
-    const answer = await this.ask(approvalFor("shell", network ? "network" : "command", input, this.req.cwd, asString(p.reason)));
+    const net = isPlainObject(p.networkApprovalContext) ? p.networkApprovalContext : null;
+    if (net) {
+      // A sandboxed command wants to reach a host. The host goes in as a URL, so an answer for
+      // the task or the agent covers that host only.
+      const host = asString(net.host)?.trim() ?? "";
+      const url = `${schemeOf(net.protocol)}://${host}`;
+      let parsed = false;
+      try {
+        parsed = host !== "" && new URL(url).hostname !== "";
+      } catch {
+        parsed = false;
+      }
+      const req = approvalFor("shell", "network", { command, cwd, url }, this.req.cwd, asString(p.reason));
+      const answer = await this.ask({
+        ...req,
+        summary: `Network access to ${host || "an unknown host"}${command ? ` for: ${clip(command, 120)}` : ""}`,
+        // A host that is not understood can only be allowed once.
+        ...(parsed ? {} : { risk: "high" as const }),
+      });
+      return decisionOf(answer);
+    }
+    if (!command.trim()) return this.refuse("Declined a command the Town Hall could not see.");
+    const answer = await this.ask(approvalFor("shell", "command", { command, cwd }, this.req.cwd, asString(p.reason)));
     return decisionOf(answer);
   }
 
   private fileApproval(p: Record<string, unknown>): Promise<Decision> {
     const item = this.items.get(asString(p.itemId) ?? "");
-    const changes = item ? this.changePaths(item) : [];
-    return this.fileApprovalFor(changes, asString(p.reason), asString(p.grantRoot));
+    // The paths come from the item Codex announced first; without them there is nothing to judge.
+    if (!item) return Promise.resolve(this.refuse("Declined a file edit whose files the Town Hall could not see."));
+    return this.fileApprovalFor(this.changePaths(item), asString(p.reason), asString(p.grantRoot));
   }
 
   private async fileApprovalFor(changes: string[], reason: string | null, grantRoot: string | null): Promise<Decision> {
-    const outside = changes.find((c) => {
-      const rel = path.relative(this.req.workspaceRoot, path.resolve(this.req.cwd, c));
-      return rel.startsWith("..") || path.isAbsolute(rel);
-    });
+    const shown = changes.map((c) => displayTarget(c, this.req.cwd));
+    if (this.plan.sandbox === "read-only") {
+      // Capability, not approval: an approved patch would be written despite the read-only
+      // sandbox, and without a Quillworks the agent may not change files.
+      return this.refuse(`Refused a file edit (the agent has no Quillworks): ${shown.join(", ") || "unknown files"}`);
+    }
+    if (changes.length === 0 && !grantRoot) return this.refuse("Declined a file edit that named no files.");
+    const outside = changes.find((c) => !insideWorkspace(c, this.req.cwd, this.req.workspaceRoot));
     // `path` lets the Town Hall spot a write outside the work folder.
     const target = grantRoot ?? outside ?? changes[0];
     const input: Record<string, unknown> = { ...(target ? { path: target } : {}), changes };
-    const req = approvalFor("apply_patch", "write", input, this.req.cwd, reason);
-    const shown = changes.map((c) => displayTarget(c, this.req.cwd));
-    const answer = await this.ask({ ...req, summary: shown.length > 0 ? `Edit: ${shown.join(", ")}` : "Edit files" });
+    const req = approvalFor("apply_patch", outside ? "outside_workspace" : "write", input, this.req.cwd, reason);
+    const answer = await this.ask({ ...req, summary: shown.length > 0 ? `Edit: ${shown.join(", ")}` : `Write under ${displayTarget(grantRoot ?? "", this.req.cwd)}` });
     return decisionOf(answer);
   }
 
   private async permissionsApproval(p: Record<string, unknown>): Promise<unknown> {
-    const permissions = isPlainObject(p.permissions) ? p.permissions : {};
-    const network = isPlainObject(permissions.network) && permissions.network.enabled === true;
-    const fs = isPlainObject(permissions.fileSystem) ? permissions.fileSystem : null;
-    const paths = fs ? [...(Array.isArray(fs.write) ? fs.write : []), ...(Array.isArray(fs.read) ? fs.read : [])].map(String) : [];
-    const input: Record<string, unknown> = { ...(paths[0] ? { path: paths[0] } : {}), permissions };
-    const answer = await this.ask({
-      ...approvalFor("permissions", network ? "network" : paths.length > 0 ? "outside_workspace" : "command", input, this.req.cwd, asString(p.reason)),
-      summary: network ? "Allow network access for this turn" : `Allow access to ${paths.join(", ") || "more files"} for this turn`,
-    });
-    if (answer.decision === "allow" && !answer.cancelled) return { permissions, scope: "turn" };
-    return { permissions: {}, scope: "turn" };
+    const none = { permissions: {}, scope: "turn" };
+    const cwd = asString(p.cwd) ?? this.req.cwd;
+    const request = parsePermissionRequest(p.permissions, cwd, this.req.workspaceRoot);
+    if (!request) {
+      this.refuse("Declined a request for more sandbox permissions that the Town Hall does not understand.");
+      return none;
+    }
+    if (!request.network && request.files.length === 0) return none;
+    if (this.plan.sandbox === "read-only" && request.files.some((f) => f.access === "write")) {
+      this.refuse(`Refused a request for write access (the agent has no Quillworks): ${request.files.filter((f) => f.access === "write").map((f) => f.label).join(", ")}`);
+      return none;
+    }
+    const answer = await this.ask(permissionApproval(request, asString(p.reason)));
+    // Only what was understood and allowed is granted, for this turn only.
+    if (answer.decision === "allow" && !answer.cancelled) return { permissions: request.profile, scope: "turn" };
+    return none;
   }
 
   private async elicitation(p: Record<string, unknown>): Promise<unknown> {
@@ -580,11 +683,18 @@ export class CodexRun implements RunHandle {
   private async userInput(p: Record<string, unknown>): Promise<unknown> {
     const questions = Array.isArray(p.questions) ? p.questions.filter(isPlainObject) : [];
     const answers: Record<string, { answers: string[] }> = {};
+    // The MCP tool call the question is about, when Codex announced it first.
+    const item = this.items.get(asString(p.itemId) ?? "");
+    const call = item?.type === "mcpToolCall" ? item : null;
     for (const q of questions) {
       const id = asString(q.id) ?? "";
       if (id.startsWith(MCP_APPROVAL_QUESTION)) {
         const text = asString(q.question) ?? "Allow an MCP tool call?";
-        const answer = await this.ask({ tool: "mcp", category: "mcp", input: { question: text }, summary: text });
+        const req: ApprovalRequest = call
+          ? { ...approvalFor(`mcp__${String(call.server)}__${String(call.tool)}`, "mcp", call.arguments ?? {}, this.req.cwd), summary: text }
+          : // An unidentified tool: allowed once at most, so one answer never covers every MCP tool.
+            { tool: "mcp", category: "mcp", input: { question: text }, summary: text, risk: "high" };
+        const answer = await this.ask(req);
         answers[id] = { answers: [answer.decision === "allow" && !answer.cancelled ? "Allow" : "Cancel"] };
       } else {
         this.emit({ kind: "activity", activity: "system", text: `The agent asked a question the Town Hall cannot pass on: ${asString(q.question) ?? id}` });

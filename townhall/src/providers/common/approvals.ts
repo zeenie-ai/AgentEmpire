@@ -76,7 +76,8 @@ export function displayTarget(target: string, cwd: string): string {
   return abs.replace(/\\/g, "/");
 }
 
-function clip(text: string, max = 160): string {
+/** One line, at most `max` characters. */
+export function clip(text: string, max = 160): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
   return oneLine.length > max ? `${oneLine.slice(0, max - 3)}...` : oneLine;
 }

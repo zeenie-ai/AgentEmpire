@@ -88,9 +88,9 @@ async function runStep(step, turn) {
       itemId: id,
       startedAtMs: Date.now(),
       environmentId: null,
-      command: step.command,
-      cwd: process.cwd(),
-      ...(step.network ? { networkApprovalContext: { host: "example.org" } } : {}),
+      // `command` and `cwd` are optional in the request; the item carries them too.
+      ...(step.omitCommand ? {} : { command: step.command, cwd: process.cwd() }),
+      ...(step.network ? { networkApprovalContext: { host: step.network === true ? "example.org" : step.network, protocol: "https" } } : {}),
       ...(step.reason ? { reason: step.reason } : {}),
     });
     log({ kind: "approval", method: "item/commandExecution/requestApproval", response: res });
@@ -102,9 +102,14 @@ async function runStep(step, turn) {
     });
   } else if (step.patch !== undefined) {
     const id = `item_${++itemSeq}`;
-    const changes = step.patch.map((f) => ({ path: path.resolve(process.cwd(), f.path), kind: { type: "add" }, diff: f.content }));
+    const changes = step.patch.map((f) => ({
+      path: path.resolve(process.cwd(), f.path),
+      kind: f.move ? { type: "update", move_path: path.resolve(process.cwd(), f.move) } : { type: "add" },
+      diff: f.content,
+    }));
     const item = { type: "fileChange", id, changes, status: "inProgress" };
-    out({ method: "item/started", params: { threadId, turnId: turn.id, item, startedAtMs: Date.now() } });
+    // `hidden`: ask without announcing the item first, so the paths are unknown.
+    if (!step.hidden) out({ method: "item/started", params: { threadId, turnId: turn.id, item, startedAtMs: Date.now() } });
     const res = await serverRequest("item/fileChange/requestApproval", { threadId, turnId: turn.id, itemId: id, startedAtMs: Date.now(), reason: null });
     log({ kind: "approval", method: "item/fileChange/requestApproval", response: res });
     const accepted = res.result?.decision === "accept";
@@ -128,6 +133,33 @@ async function runStep(step, turn) {
       requestedSchema: { type: "object", properties: {} },
     });
     log({ kind: "approval", method: "mcpServer/elicitation/request", response: res });
+  } else if (step.permissions !== undefined) {
+    const res = await serverRequest("item/permissions/requestApproval", {
+      threadId,
+      turnId: turn.id,
+      itemId: `item_${++itemSeq}`,
+      environmentId: null,
+      startedAtMs: Date.now(),
+      cwd: process.cwd(),
+      reason: step.reason ?? null,
+      permissions: step.permissions,
+    });
+    log({ kind: "approval", method: "item/permissions/requestApproval", response: res });
+  } else if (step.userInput !== undefined) {
+    const id = `item_${++itemSeq}`;
+    const item = { type: "mcpToolCall", id, server: step.userInput.server, tool: step.userInput.tool, status: "inProgress", arguments: step.userInput.params ?? {}, appContext: null, pluginId: null, result: null, error: null, durationMs: null };
+    out({ method: "item/started", params: { threadId, turnId: turn.id, item, startedAtMs: Date.now() } });
+    const res = await serverRequest("item/tool/requestUserInput", {
+      threadId,
+      turnId: turn.id,
+      itemId: id,
+      autoResolutionMs: null,
+      questions: [{ id: `mcp_tool_call_approval_${id}`, header: "Approve app tool call?", question: `Allow ${step.userInput.server} to run ${step.userInput.tool}?`, isOther: false, isSecret: false, options: [{ label: "Allow", description: "" }, { label: "Cancel", description: "" }] }],
+    });
+    log({ kind: "approval", method: "item/tool/requestUserInput", response: res });
+  } else if (step.restate) {
+    // As Codex does when rate limits update: the thread's current figures again, nothing new.
+    out({ method: "thread/tokenUsage/updated", params: { threadId, turnId: turn.id, tokenUsage: { total: breakdown(thread.total), last: breakdown(thread.last ?? thread.total), modelContextWindow: 272000 } } });
   } else if (step.tokens !== undefined) {
     const last = { inputTokens: step.tokens.input, cachedInputTokens: step.tokens.cached ?? 0, outputTokens: step.tokens.output };
     thread.total = {
@@ -135,6 +167,7 @@ async function runStep(step, turn) {
       cachedInputTokens: thread.total.cachedInputTokens + last.cachedInputTokens,
       outputTokens: thread.total.outputTokens + last.outputTokens,
     };
+    thread.last = last;
     out({ method: "thread/tokenUsage/updated", params: { threadId, turnId: turn.id, tokenUsage: { total: breakdown(thread.total), last: breakdown(last), modelContextWindow: 272000 } } });
   } else if (step.sleep !== undefined) {
     await new Promise((resolve) => setTimeout(resolve, step.sleep));
@@ -205,7 +238,8 @@ function handleRequest(msg) {
       return;
     }
     case "turn/steer":
-      if (!active || active.id !== params.expectedTurnId) {
+      if (!active || active.id !== params.expectedTurnId || scenario.rejectSteer) {
+        log({ kind: "steer_rejected" });
         out({ id, error: { code: -32600, message: "no active turn to steer" } });
         return;
       }

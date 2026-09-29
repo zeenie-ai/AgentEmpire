@@ -1,4 +1,4 @@
-import type { RunRequest } from "../types.js";
+import type { RunEvent, RunRequest } from "../types.js";
 
 /** Role and size names from economy.json, for the task framing. */
 export interface FramingNames {
@@ -72,4 +72,12 @@ export function firstMessageFor(req: RunRequest, resumedSession: boolean): strin
 /** A nudge sent while the agent works. */
 export function nudgeMessage(message: string): string {
   return `Message from the player: ${message.trim()}`;
+}
+
+/**
+ * Tells the player that a nudge arrived while the run was already ending, so the agent never
+ * saw it. Deferred so it follows the supervisor's own note of the nudge.
+ */
+export function notDelivered(emit: (event: RunEvent) => void): void {
+  setImmediate(() => emit({ kind: "activity", activity: "system", text: "The agent was already finishing, so the message was not delivered." }));
 }
