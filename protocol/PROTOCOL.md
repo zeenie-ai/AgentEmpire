@@ -1,10 +1,11 @@
-# Town Hall protocol, version 1.0
+# Town Hall protocol, version 1.1
 
 This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change.
 
 ## Connection
 
-- The endpoint is `ws://127.0.0.1:<port>/ws`, and the server listens on 127.0.0.1 only. The port and token are written to `runtime.json` in the Town Hall data folder.
+- The endpoint is `ws://127.0.0.1:<port>/ws`, and the server listens on 127.0.0.1 only. The port and token are written to `runtime.json` in the Town Hall data folder, as `{pid, port, token, url, data_dir}`.
+- The desktop client finds a running Town Hall through a copy of that file in the per-user config folder: `<config dir>/Aurelhaven/runtime.json`, where the config dir is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` elsewhere (Godot's `OS.get_config_dir()`). `AURELHAVEN_DISCOVERY_FILE` moves it (`off` disables it). The client also honours `AURELHAVEN_RUNTIME`, a path to any runtime file. The web client gets the token in the page's `#t=` fragment instead.
 - The server rejects the upgrade unless:
   - the `Host` header is `127.0.0.1:<port>` or `localhost:<port>`;
   - the `Origin` header is absent (the desktop client), the Town Hall's own origin, or a configured development origin. A `null` Origin is rejected.
@@ -74,7 +75,8 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "activity": "idle|working|awaiting_approval|blocked",     // meaningful when lifecycle = active
   "blocked_reason": null,   // "missing_tools"|"no_mana"|"provider_offline"|"workspace_error"|null
   "home": { "tile": {"x":40,"y":52}, "built": false },      // null until placed
-  "tool_ids": ["tl_..."], "current_task_id": null, "queue": ["tsk_..."],
+  "tool_ids": ["tl_..."], "starting_tools": ["lectern", "quillworks"],   // starting_tools: added in 1.1
+  "current_task_id": null, "queue": ["tsk_..."],
   "xp": 0, "level": 1, "rank": "F",
   "stats": { "accepted": 0, "accepted_first_try": 0, "sent_back": 0, "failed": 0, "rites_passed": 0,
              "party_tasks": 0, "mana_spent_micros": 0 },

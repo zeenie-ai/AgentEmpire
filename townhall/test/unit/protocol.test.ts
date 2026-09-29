@@ -112,6 +112,7 @@ const agent = {
   blocked_reason: null,
   home: { tile: { x: 40, y: 52 }, built: false },
   tool_ids: ["tl_1"],
+  starting_tools: ["lectern", "quillworks"],
   current_task_id: null,
   queue: ["tsk_1"],
   xp: 0,

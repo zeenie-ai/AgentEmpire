@@ -147,6 +147,8 @@ export const Agent = z.object({
   blocked_reason: BlockedReason.nullable(),
   home: z.object({ tile: Tile, built: z.boolean() }).nullable(),
   tool_ids: z.array(id),
+  /** Add-ons chosen when the agent was summoned; the client builds the missing ones after the home. */
+  starting_tools: z.array(ToolType),
   current_task_id: id.nullable(),
   queue: z.array(id),
   xp: nonNegInt,

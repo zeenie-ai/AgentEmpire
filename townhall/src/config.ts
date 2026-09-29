@@ -24,6 +24,11 @@ export interface Config {
   /** Upper bounds for copying a plain (non-git) work folder into the agent's versioned folder. */
   plainFolderMaxFiles: number;
   plainFolderMaxBytes: number;
+  /**
+   * A copy of runtime.json in the per-user config folder, where the desktop client looks for the
+   * Town Hall (Godot's OS.get_config_dir() + "/Aurelhaven/runtime.json"). null writes none.
+   */
+  discoveryFile: string | null;
 }
 
 type Env = Record<string, string | undefined>;
@@ -62,6 +67,25 @@ export function defaultWorkRoots(): string[] {
   return roots;
 }
 
+/**
+ * Where the desktop client looks for a running Town Hall: `AURELHAVEN_DISCOVERY_FILE` ("off"
+ * disables it), else <config dir>/Aurelhaven/runtime.json with the same config dir Godot uses
+ * (%APPDATA% on Windows, ~/Library/Application Support on macOS, $XDG_CONFIG_HOME or ~/.config
+ * elsewhere). Only the given environment is consulted, so tests that pass `{}` write none.
+ */
+export function defaultDiscoveryFile(env: Env): string | null {
+  const explicit = env.AURELHAVEN_DISCOVERY_FILE;
+  if (explicit !== undefined) {
+    const v = explicit.trim();
+    return v === "" || v.toLowerCase() === "off" ? null : path.resolve(v);
+  }
+  let base: string | undefined;
+  if (process.platform === "win32") base = env.APPDATA;
+  else if (process.platform === "darwin") base = env.HOME ? path.join(env.HOME, "Library", "Application Support") : undefined;
+  else base = env.XDG_CONFIG_HOME || (env.HOME ? path.join(env.HOME, ".config") : undefined);
+  return base ? path.join(base, "Aurelhaven", "runtime.json") : null;
+}
+
 export function loadConfig(env: Env = process.env, overrides: Partial<Config> = {}): Config {
   const providerRaw = (env.AURELHAVEN_PROVIDER ?? "fake").trim().toLowerCase();
   if (providerRaw !== "fake" && providerRaw !== "real") {
@@ -83,6 +107,7 @@ export function loadConfig(env: Env = process.env, overrides: Partial<Config> = 
     logLevel: env.AURELHAVEN_LOG_LEVEL ?? "info",
     plainFolderMaxFiles: intFromEnv(env, "AURELHAVEN_PLAIN_MAX_FILES", 20_000),
     plainFolderMaxBytes: intFromEnv(env, "AURELHAVEN_PLAIN_MAX_MB", 200) * 1024 * 1024,
+    discoveryFile: defaultDiscoveryFile(env),
   };
   return { ...base, ...overrides };
 }
