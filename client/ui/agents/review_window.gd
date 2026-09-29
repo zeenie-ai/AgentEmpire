@@ -400,13 +400,20 @@ func _state_color(state: String) -> Color:
 	return AgentTheme.c(look, "faint")
 
 
+## Git work folders merge or keep the branch; plain folders export (the Town Hall refuses the
+## other combinations).
 func _refresh_integrate() -> void:
 	var git := workspace_is_git()
+	if (integrate == Protocol.Integrate.EXPORT) == git:
+		integrate = default_integrate()
 	for key: String in _integrate_buttons:
 		var b: Button = _integrate_buttons[key]
-		var needs_git := key != Protocol.Integrate.EXPORT
-		b.disabled = needs_git and not git
-		b.tooltip_text = _integrate_text(key) + ("\nOnly for work folders that are git repositories." if b.disabled else "")
+		var for_git := key != Protocol.Integrate.EXPORT
+		b.disabled = for_git != git
+		var why := ""
+		if b.disabled:
+			why = "\nOnly for work folders that are git repositories." if for_git else "\nOnly for plain work folders; a git repository merges or keeps its branch."
+		b.tooltip_text = _integrate_text(key) + why
 		b.set_pressed_no_signal(key == integrate)
 	_integrate_hint.text = _integrate_text(integrate)
 
@@ -417,7 +424,7 @@ func _integrate_text(key: String) -> String:
 			return "Merge the agent's branch into your checkout (which must be clean)."
 		Protocol.Integrate.KEEP_BRANCH:
 			return "Accept, but leave the work on its branch for you to merge later."
-	return "Copy the changed files out as a plain folder."
+	return "Write the changed files back into your work folder, all or nothing."
 
 
 func _on_integrate_toggled(on: bool, key: String) -> void:
@@ -480,7 +487,7 @@ func _set_mode(m: String) -> void:
 			send.disabled = true
 			send.name = "SendBack"
 			send.pressed.connect(send_back)
-			set_status("The agent tries again with your notes; the task keeps its Mana seal.")
+			set_status("The agent starts attempt %d from your notes; Mana already spent still counts against the seal." % (J.gi(task(), "attempt", 1) + 1))
 		"abandon":
 			AgentUi.callout(look, AgentTheme.c(look, "bad"),
 				"The agent earns nothing for this task. Its workspace is kept until you discard it, so nothing is lost yet.", "Abandon this task?", "warning", _tray_box)
@@ -499,7 +506,7 @@ func _set_mode(m: String) -> void:
 			var keep := add_button("Keep branch instead", "primary", "Accept and leave the work on its branch.")
 			keep.custom_minimum_size.x = 210
 			keep.pressed.connect(accept.bind(Protocol.Integrate.KEEP_BRANCH))
-			keep.disabled = not workspace_is_git()
+			keep.visible = workspace_is_git()
 		"done":
 			var close_d := add_button("Close", "primary")
 			close_d.custom_minimum_size.x = 150

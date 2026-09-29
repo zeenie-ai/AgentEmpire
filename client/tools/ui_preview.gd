@@ -9,17 +9,17 @@ extends SceneTree
 ##   --only=a,b         only these shots
 ##   --bg=town|plain    the game behind the windows (default), or a plain backdrop (faster)
 ##   --tag=<suffix>     appended to each file name: ui_summon_<suffix>.png
-## Shots: summon, summon_lower, summon_modes, summon_grace, folder, composer, composer_warn,
-## approvals, review, review_chronicle, review_reward, review_blocked, agent_panel, agent_states,
-## budget, budget_confirm, chronicle.
+## Shots: summon, summon_lower, summon_modes, summon_grace, summon_error, folder, composer,
+## composer_warn, approvals, approval_deny, review, review_chronicle, review_send_back,
+## review_reward, review_blocked, agent_panel, agent_states, budget, budget_confirm, chronicle.
 ##
 ## A script run with -s compiles before the autoloads exist, so everything that uses them (the
 ## windows, Realm, Economy, Game) is loaded at run time and kept untyped here.
 
 const DEFAULT_SIZE := Vector2i(1600, 900)
-const SHOTS := ["summon", "summon_lower", "summon_modes", "summon_grace", "folder", "composer", "composer_warn",
-	"approvals", "review", "review_chronicle", "review_reward", "review_blocked", "agent_panel", "agent_states",
-	"budget", "budget_confirm", "chronicle"]
+const SHOTS := ["summon", "summon_lower", "summon_modes", "summon_grace", "summon_error", "folder", "composer",
+	"composer_warn", "approvals", "approval_deny", "review", "review_chronicle", "review_send_back", "review_reward",
+	"review_blocked", "agent_panel", "agent_states", "budget", "budget_confirm", "chronicle"]
 const UI := "res://ui/agents/%s.gd"
 
 var _args: PackedStringArray
@@ -43,6 +43,8 @@ class PreviewLink:
 	var detail: Dictionary = {}
 	var accept_reply: Dictionary = {}
 	var budget_conflict: bool = false
+	## When set, summon fails with WORKSPACE_DENIED and this message.
+	var summon_error: String = ""
 	var request_script: GDScript = load("res://net/net_request.gd")
 
 	func reply(type: String, payload: Variant, ok: bool = true, code: String = "", message: String = "") -> Object:
@@ -54,6 +56,8 @@ class PreviewLink:
 		return r
 
 	func summon(_spec: Dictionary) -> Object:
+		if summon_error != "":
+			return reply("create_agent", null, false, "WORKSPACE_DENIED", summon_error)
 		return reply("create_agent", {"agent_id": "agt_preview", "cost": {}, "free": false, "training": {"duration_ms": 40000}})
 
 	func assign_task(_agent_id: String, _spec: Dictionary) -> Object:
@@ -156,6 +160,8 @@ func _take(shot: String) -> void:
 			await _shot_summon_modes()
 		"summon_grace":
 			await _shot_summon_grace()
+		"summon_error":
+			await _shot_summon_error()
 		"folder":
 			await _shot_folder()
 		"composer":
@@ -164,10 +170,14 @@ func _take(shot: String) -> void:
 			await _shot_composer_warn()
 		"approvals":
 			await _shot_approvals()
+		"approval_deny":
+			await _shot_approval_deny()
 		"review":
 			await _shot_review()
 		"review_chronicle":
 			await _shot_review_chronicle()
+		"review_send_back":
+			await _shot_review_send_back()
 		"review_reward":
 			await _shot_review_reward()
 		"review_blocked":
@@ -394,6 +404,20 @@ func _shot_summon_grace() -> void:
 	await _snap("summon_grace")
 
 
+## The Town Hall refuses the work folder: the error shows in the footer, the form stays open.
+func _shot_summon_error() -> void:
+	_apply(_state_one_agent())
+	_link.summon_error = "system folders cannot be used as a work folder"
+	var d := _window("summon_dialog")
+	_open(d)
+	await _frames(3)
+	d.call("set_workspace", "C:/Windows/System32", 0)
+	await _frames(2)
+	d.call("summon")
+	await _snap("summon_error")
+	_link.summon_error = ""
+
+
 func _shot_folder() -> void:
 	_apply(_demo.state())
 	var fb := _window("folder_browser")
@@ -469,6 +493,26 @@ func _shot_approvals() -> void:
 	await _snap("approvals", 40)
 
 
+## Deny opens a word to the agent before it is sent.
+func _shot_approval_deny() -> void:
+	_apply(_demo.state())
+	var tray: Control = load(UI % "approval_tray").new()
+	tray.set("link", _link)
+	_stage.add_child(tray)
+	_open_nodes.append(tray)
+	tray.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	tray.offset_top = 46 + 12
+	tray.offset_right = -16
+	tray.offset_left = -16 - 420
+	await _frames(3)
+	var card: Variant = tray.call("card_for", String(tray.get("open_id")))
+	if card != null:
+		(card.get("deny_button") as Button).pressed.emit()
+		var edit: LineEdit = card.get("deny_edit")
+		edit.text = "Read the RFC instead; MDN is not needed for this."
+	await _snap("approval_deny", 40)
+
+
 func _review() -> Control:
 	_apply(_demo.state())
 	var w: Control = load(UI % "review_window").new().call("setup", "tsk_docs", _link)
@@ -496,6 +540,17 @@ func _shot_review_chronicle() -> void:
 	var sc: ScrollContainer = w.get("_scroll")
 	sc.scroll_vertical = 100000
 	await _snap("review_chronicle")
+
+
+func _shot_review_send_back() -> void:
+	var w := _review()
+	await _frames(3)
+	w.call("_set_mode", "send_back")
+	await _frames(2)
+	var fb: TextEdit = w.get("feedback_edit")
+	fb.text = "Add a diagram of the three save blocks, and say which fields a client may ignore."
+	fb.text_changed.emit()
+	await _snap("review_send_back")
 
 
 func _shot_review_reward() -> void:

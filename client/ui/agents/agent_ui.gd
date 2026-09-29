@@ -197,7 +197,7 @@ static func merge_blocked_text(reason: String) -> String:
 		Protocol.MergeBlockedReason.MERGE_FAILED:
 			return "Git could not merge the agent's branch."
 		Protocol.MergeBlockedReason.EXPORT_CONFLICT:
-			return "The export folder already holds files that would be overwritten."
+			return "Some of these files changed in your work folder since the agent started, so nothing was written. Save or undo your edits there, then accept again."
 		Protocol.MergeBlockedReason.NOT_A_REPO:
 			return "The work folder is not a git repository, so there is nothing to merge. Export the files instead."
 		Protocol.MergeBlockedReason.WORKSPACE_MISSING:
@@ -364,6 +364,25 @@ static func category_verb(category: String) -> String:
 		Protocol.ApprovalCategory.MCP:
 			return "wants to use an MCP tool"
 	return "asks for permission"
+
+
+## What a task or agent rule made from this approval would cover, as the Town Hall matches it:
+## the first two words of a command, the host of a network request, otherwise the tool.
+## "“npm install” commands", "requests to developer.mozilla.org", "Edit".
+static func approval_reach(approval: Dictionary) -> String:
+	var tool := J.gs(approval, "tool", "this tool")
+	var parsed: Variant = JSON.parse_string(J.gs(approval, "input_preview"))
+	var input := J.d(parsed)
+	match J.gs(approval, "category"):
+		Protocol.ApprovalCategory.COMMAND:
+			var words := J.gs(input, "command").strip_edges().split(" ", false)
+			if not words.is_empty():
+				return "“%s” commands" % " ".join(words.slice(0, 2)).to_lower()
+		Protocol.ApprovalCategory.NETWORK:
+			var host := J.gs(input, "url").get_slice("://", 1).get_slice("/", 0).to_lower()
+			if host != "":
+				return "requests to %s" % host
+	return tool
 
 
 static func risk_color(risk: String) -> Color:
@@ -743,6 +762,14 @@ static func add_costs(a: Dictionary, b: Dictionary) -> Dictionary:
 	for k: Variant in b.keys():
 		out[String(k)] = int(out.get(String(k), 0)) + int(b[k])
 	return out
+
+
+## A button whose tooltip is the rich parchment kind (first line as a title).
+class TipButton:
+	extends Button
+
+	func _make_custom_tooltip(for_text: String) -> Object:
+		return CraftedTooltip.make(for_text) if for_text != "" else null
 
 
 ## A thin horizontal rule that fades out to the right.

@@ -182,7 +182,7 @@ func set_title_icon(icon: Variant, px: float = 40.0) -> void:
 
 ## A footer button. kind: "primary" (the terracotta call to action), "ghost" or "danger".
 func add_button(text: String, kind: String = "ghost", tip: String = "") -> Button:
-	var b := Button.new()
+	var b := AgentUi.TipButton.new()
 	b.text = text.to_upper()
 	match kind:
 		"ghost":
@@ -340,6 +340,16 @@ func _ready() -> void:
 ## True when this is the window on top.
 func is_topmost() -> bool:
 	return not _stack.is_empty() and _stack[_stack.size() - 1] == self
+
+
+## True while any agent window is open (the HUD can hold back game hotkeys meanwhile).
+static func any_open() -> bool:
+	return not _stack.is_empty()
+
+
+## The window on top, or null.
+static func topmost() -> WindowFrame:
+	return _stack[_stack.size() - 1] if not _stack.is_empty() else null
 
 
 func _input(event: InputEvent) -> void:

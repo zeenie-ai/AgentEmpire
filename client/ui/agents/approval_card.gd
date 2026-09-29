@@ -167,7 +167,11 @@ func _build() -> void:
 		col.add_child(_details)
 		var sc := ScrollContainer.new()
 		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		sc.custom_minimum_size = Vector2(0, mini(160, 18 * (preview.count("\n") + 1) + 6))
+		# About 46 monospace characters fit a line; long requests scroll past eight lines.
+		var lines := 0
+		for line in preview.split("\n"):
+			lines += maxi(1, ceili(float(line.length()) / 46.0))
+		sc.custom_minimum_size = Vector2(0, mini(160, 18 * lines + 6))
 		_details.add_child(sc)
 		var code := AgentUi.para(preview, "Mono", sc)
 		code.add_theme_font_size_override("font_size", 12)
@@ -182,17 +186,25 @@ func _build() -> void:
 	var scopes := J.a(approval.get("scopes"))
 	if scopes.is_empty():
 		scopes = [Protocol.ApprovalScope.ONCE]
+	var reach := AgentUi.approval_reach(approval)
 	var row_a := AgentUi.hbox(6, _buttons)
-	allow_once_button = _button("Allow once", "", "Let the agent do this one time.", row_a)
+	allow_once_button = _button("Allow once", "", "Allow once\nLet %s do just this, this one time." % who, row_a)
 	allow_once_button.pressed.connect(answer.bind(Protocol.ApprovalDecision.ALLOW, Protocol.ApprovalScope.ONCE))
 	if Protocol.ApprovalScope.TASK in scopes:
-		allow_task_button = _button("Allow for this task", "GhostButton", "Allow this kind of request until the task ends.", row_a)
+		allow_task_button = _button("Allow for this task", "GhostButton", "Allow for this task\nAllow %s without asking until this task ends." % reach, row_a)
 		allow_task_button.pressed.connect(answer.bind(Protocol.ApprovalDecision.ALLOW, Protocol.ApprovalScope.TASK))
 	var row_b := AgentUi.hbox(6, _buttons)
 	if Protocol.ApprovalScope.AGENT in scopes:
 		var label_text := "Always for %s" % who if who.length() <= 10 else "Always for this agent"
-		allow_agent_button = _button(label_text, "GhostButton", "Always allow %s this kind of request, on every task." % who, row_b)
+		allow_agent_button = _button(label_text, "GhostButton", "Always for %s\nAllow %s without asking, on every task from now on." % [who, reach], row_b)
 		allow_agent_button.pressed.connect(answer.bind(Protocol.ApprovalDecision.ALLOW, Protocol.ApprovalScope.AGENT))
+	elif scopes.size() == 1:
+		var note := AgentUi.label("HIGH RISK: ONLY ONE AT A TIME", "MonoSmall", row_b)
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		note.add_theme_color_override("font_color", AgentUi.risk_color(Protocol.Risk.HIGH))
+		note.tooltip_text = "High-risk requests cannot be allowed for a whole task or for the agent."
+		note.mouse_filter = Control.MOUSE_FILTER_PASS
 	deny_button = _button("Deny", "DangerButton", "Refuse; you can tell the agent why.", row_b)
 	deny_button.pressed.connect(_ask_deny)
 
@@ -256,7 +268,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _button(text: String, variation: String, tip: String, parent: Control) -> Button:
-	var b := Button.new()
+	var b := AgentUi.TipButton.new()
 	b.text = text.to_upper()
 	if variation != "":
 		b.theme_type_variation = variation

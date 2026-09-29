@@ -384,6 +384,20 @@ func test_deny_asks_why_then_answers() -> void:
 	assert_eq(String(got[0]), "deny")
 
 
+func test_scope_rules_are_explained_as_the_town_hall_matches_them() -> void:
+	var approvals := AgentUiDemo.approvals()
+	assert_eq(AgentUi.approval_reach(approvals[0]), "“npm install” commands", "commands match on two words")
+	assert_eq(AgentUi.approval_reach(approvals[1]), "requests to developer.mozilla.org", "network matches on the host")
+	var high: Dictionary = (approvals[0] as Dictionary).duplicate()
+	high["risk"] = "high"
+	high["scopes"] = ["once"]
+	var c := ApprovalCard.new().setup(high, link)
+	_host().add_child(c)
+	assert_null(c.allow_task_button, "high risk: no task rule")
+	assert_null(c.allow_agent_button, "high risk: no agent rule")
+	assert_not_null(c.allow_once_button)
+
+
 func test_portrait_click_asks_for_focus() -> void:
 	var c := _card(1)
 	var got := [""]
@@ -430,6 +444,30 @@ func test_review_window_offers_keep_branch_when_blocked() -> void:
 	assert_not_null(keep, "offers to keep the branch")
 	keep.pressed.emit()
 	assert_eq(String((link.last("accept_result")["args"] as Dictionary)["integrate"]), "keep_branch")
+
+
+func test_review_plain_folders_export() -> void:
+	var s := AgentUiDemo.state()
+	var corvin: Dictionary = (s["agents"] as Array)[1]
+	corvin["workspace"] = {"path": "D:/notes", "mode": "plain_folder", "repo_root": null}
+	Realm.apply_state(s)
+	var w := ReviewWindow.new().setup("tsk_docs", link)
+	_host(AgentTheme.DOCUMENT).add_child(w)
+	await wait_process_frames(1)
+	assert_eq(w.integrate, "export", "plain folders export")
+	assert_true((w._integrate_buttons["merge"] as Button).disabled, "no merge without git")
+	assert_true((w._integrate_buttons["keep_branch"] as Button).disabled)
+	assert_false((w._integrate_buttons["export"] as Button).disabled)
+	w.accept()
+	assert_eq(String((link.last("accept_result")["args"] as Dictionary)["integrate"]), "export")
+
+
+func test_review_git_folders_do_not_export() -> void:
+	var w := ReviewWindow.new().setup("tsk_docs", link)
+	_host(AgentTheme.DOCUMENT).add_child(w)
+	await wait_process_frames(1)
+	assert_true((w._integrate_buttons["export"] as Button).disabled, "the Town Hall refuses export for git work")
+	assert_false((w._integrate_buttons["keep_branch"] as Button).disabled)
 
 
 func test_review_send_back_needs_feedback() -> void:
