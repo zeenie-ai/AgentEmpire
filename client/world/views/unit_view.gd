@@ -2,11 +2,12 @@ class_name UnitView
 extends Node3D
 ## A walking unit. Interpolates between the simulation's prev_pos and pos and turns toward
 ## where it walks.
-## - Rigged characters (res://art/characters/townsfolk_[a-d].glb) are driven by an AnimationTree
-##   state machine from the unit's state (UnitAnim: idle, walk, carry, gather, chop, build,
-##   cheer), cross-fading between states, with walking speed matched to the ground speed. The
-##   carried load hangs from the right-hand bone (BoneAttachment3D, or the root when the rig has
-##   no hand bone). Off-screen units stop animating.
+## - Rigged characters (res://art/characters/townsfolk_[a-d].glb, and agent_<role>.glb for
+##   agents) are driven by an AnimationTree state machine from the unit's state (UnitAnim),
+##   cross-fading between states, with walking speed matched to the ground speed. The carried
+##   load (wood, food, or a courier's task scroll) hangs from the right-hand bone
+##   (BoneAttachment3D, or the root when the rig has no hand bone). Off-screen units stop
+##   animating.
 ## - The procedural figure bobs while walking, swings while working and shows its load on its
 ##   back.
 
@@ -26,6 +27,7 @@ var rigged: bool = false
 var body: Node3D
 var carry_wood: Node3D
 var carry_food: Node3D
+var carry_scroll: Node3D
 var anim_tree: AnimationTree
 var anim_state: String = ""
 
@@ -43,7 +45,7 @@ var _clips: Dictionary = {}
 func setup(u: SimUnit) -> void:
 	unit_id = u.id
 	_phase = float(u.id % 17) * 0.7
-	var model := ModelLibrary.instance("unit/" + u.kind, u.id)
+	var model := ModelLibrary.instance("unit/" + figure_kind(u), u.id)
 	add_child(model)
 	rigged = bool(model.get_meta("rigged", false))
 	if rigged:
@@ -63,6 +65,13 @@ func setup(u: SimUnit) -> void:
 	add_child(notifier)
 	position = Vector3(u.pos.x, 0.0, u.pos.y)
 	rotation.y = u.facing
+
+
+## The character a unit wears: its kind, or "agent_<role>" for agents.
+static func figure_kind(u: SimUnit) -> String:
+	if u.kind == "agent" and u.role != "":
+		return "agent_" + u.role
+	return u.kind
 
 
 func _setup_rig(rig: Node3D) -> void:
@@ -110,6 +119,7 @@ func _setup_rig(rig: Node3D) -> void:
 	var in_hand := holder != rig
 	carry_wood = _prop(holder, "wood", in_hand, rig_scale)
 	carry_food = _prop(holder, "food", in_hand, rig_scale)
+	carry_scroll = _prop(holder, "scroll", in_hand, rig_scale)
 
 
 func _prop(holder: Node3D, res: String, in_hand: bool, rig_scale: float) -> Node3D:
@@ -156,6 +166,8 @@ func update_visual(u: SimUnit, alpha: float, time: float, delta: float) -> void:
 		carry_wood.visible = u.carry_m > 0 and u.carry_res == "wood"
 	if carry_food != null:
 		carry_food.visible = u.carry_m > 0 and u.carry_res == "food"
+	if carry_scroll != null:
+		carry_scroll.visible = CourierJob.carrying_scroll(u)
 	if not _on_screen:
 		rotation.y = u.facing
 		return

@@ -57,6 +57,8 @@ var _tool_retry_at: Dictionary = {}
 var _tool_pending: Dictionary = {}
 var _plot_announced: Dictionary = {}
 var _offered: bool = false
+## agent_id -> unit id picked by the player to carry that agent's next scroll.
+var _next_courier: Dictionary = {}
 
 
 func _ready() -> void:
@@ -222,7 +224,8 @@ func _on_world_started(w: SimWorld) -> void:
 	if ledger != null and not ledger.rejected.is_connected(_on_rejected):
 		ledger.rejected.connect(_on_rejected)
 	Game.issue(GameCommands.set_age(Realm.current_age()))
-	reconcile()
+	# After the views have bound the new world (they hear world_started after us).
+	reconcile.call_deferred()
 
 
 func _on_world_stopped() -> void:
@@ -731,8 +734,9 @@ func detach_tool(tool_id: String) -> NetRequest:
 
 
 ## Sends a task. `spec`: {title, prompt, size, acceptance?, rite?, seal_mana?, express?}.
-## A townsperson carries the scroll when one is free, else a Font Wisp after a while; express
-## (or the express_dispatch setting) skips the walk.
+## A townsperson carries the scroll when one is free (the one the player picked with a
+## right-click on the home, if any), else a Font Wisp after a while; express (or the
+## express_dispatch setting) skips the walk.
 func assign_task(agent_id: String, spec: Dictionary) -> NetRequest:
 	var w := world()
 	var home := w.agent_home(agent_id) if w != null else null
@@ -741,7 +745,9 @@ func assign_task(agent_id: String, spec: Dictionary) -> NetRequest:
 	if bool(spec.get("express", false)) or bool(Realm.settings.get("express_dispatch", false)):
 		courier = {"mode": Protocol.CourierMode.EXPRESS}
 	elif home != null:
-		carrier = pick_courier()
+		carrier = _chosen_courier(agent_id)
+		if carrier == null:
+			carrier = pick_courier()
 		if carrier != null:
 			courier = {"mode": Protocol.CourierMode.HUMAN, "human_id": "u%d" % carrier.id}
 	var payload := spec.duplicate(true)
@@ -763,6 +769,40 @@ func _on_task_assigned(r: NetRequest, agent_id: String, mode: String, carrier_id
 		Game.issue(GameCommands.courier(carrier_id, home_id, task_id, agent_id))
 	elif mode == Protocol.CourierMode.WISP:
 		Game.issue(GameCommands.wisp(home_id, task_id, agent_id, int(round(w.econ.wisp_after_s() * float(w.tick_rate)))))
+
+
+## Townsfolk right-clicked onto an agent's home: the first of them carries the agent's oldest
+## scroll still in transit (taking it from a waiting wisp). Returns false when there is none;
+## the unit is then remembered as the courier of the next task sent to that agent.
+func manual_courier(unit_ids: Array, agent_id: String) -> bool:
+	var w := world()
+	var home := w.agent_home(agent_id) if w != null else null
+	if home == null or unit_ids.is_empty():
+		return false
+	var carrier: SimUnit = w.units.get(int(unit_ids[0]))
+	if carrier == null or carrier.kind != "townsfolk":
+		return false
+	var oldest: Dictionary = {}
+	for t in Realm.tasks_of(agent_id):
+		if J.gs(t, "state") == Protocol.TaskState.IN_TRANSIT:
+			oldest = t
+			break
+	if oldest.is_empty():
+		_next_courier[agent_id] = carrier.id
+		return false
+	var task_id := J.gs(oldest, "id")
+	Game.issue(GameCommands.cancel_courier(task_id))
+	Game.issue(GameCommands.courier(carrier.id, home.id, task_id, agent_id))
+	return true
+
+
+func _chosen_courier(agent_id: String) -> SimUnit:
+	var id := int(_next_courier.get(agent_id, 0))
+	_next_courier.erase(agent_id)
+	var u: SimUnit = world().units.get(id) if id != 0 else null
+	if u == null or u.kind != "townsfolk" or u.job == SimConst.JOB_BUILD or u.job == SimConst.JOB_COURIER:
+		return null
+	return u
 
 
 func respond_approval(approval_id: String, decision: String, scope: String, message: String = "") -> NetRequest:

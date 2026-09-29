@@ -31,6 +31,7 @@ func _ready() -> void:
 	input.setup(world_view, camera, selection, hud)
 	hud.setup(world_view, camera, selection, input)
 	Game.world_started.connect(_on_world_started)
+	Game.link.plot_needed.connect(_on_plot_needed)
 	if Game.world != null:
 		_on_world_started(Game.world)
 	elif autostart:
@@ -50,6 +51,15 @@ func _capture_and_quit(path: String) -> void:
 	var err := img.save_png(path)
 	print("capture: %s %dx%d %s" % [path, img.get_width(), img.get_height(), "ok" if err == OK else "error %d" % err])
 	get_tree().quit()
+
+
+## A newly trained agent needs a plot: select it and start placing, unless the player is busy
+## placing something else.
+func _on_plot_needed(agent_id: String) -> void:
+	if input.mode != RtsInput.Mode.SELECT or hud.has_window():
+		return
+	input.focus_agent(agent_id)
+	input.begin_plot_placement(agent_id)
 
 
 func _on_world_started(w: SimWorld) -> void:

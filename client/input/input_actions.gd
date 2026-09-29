@@ -30,6 +30,10 @@ const DEFAULTS := {
 	"quick_save": KEY_F5,
 	"quick_load": KEY_F9,
 	"pause": KEY_PAUSE,
+	## Jumps to the agent whose approval has waited longest (then the next one).
+	"next_bell": KEY_SPACE,
+	## Opens the Mana budget.
+	"mana": KEY_F4,
 }
 
 

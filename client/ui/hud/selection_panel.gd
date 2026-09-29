@@ -1,7 +1,9 @@
 class_name SelectionPanel
 extends PanelContainer
 ## Middle of the bottom panel: portrait and stats for one selected unit, building or resource;
-## a grid of portraits for several units; a few hints when nothing is selected.
+## a grid of portraits for several units; a few hints when nothing is selected. An agent (its
+## figure or its home) shows its AgentPanel (res://ui/agents/agent_panel.gd) when available,
+## else a compact summary; an add-on shows what it grants.
 
 const NAMES := ["Tobin", "Mira", "Aldric", "Wren", "Isolde", "Bram", "Elsa", "Corin", "Maren", "Pell",
 	"Ysolde", "Hugo", "Ilse", "Rowan", "Tamsin", "Oswin", "Nell", "Gerrit", "Liesl", "Dunstan",
@@ -52,9 +54,17 @@ func rebuild() -> void:
 		_build_empty(w)
 	elif ids.size() == 1:
 		var id := ids[0]
-		if w.units.has(id):
+		var u: SimUnit = w.units.get(id)
+		var b: SimBuilding = w.buildings.get(id)
+		if u != null and u.kind == "agent":
+			_build_agent(w, u.agent_id)
+		elif b != null and b.owner_agent_id != "" and b.tool_id != "":
+			_build_tool(w, id)
+		elif b != null and b.owner_agent_id != "":
+			_build_agent(w, b.owner_agent_id)
+		elif u != null:
 			_build_unit(w, id)
-		elif w.buildings.has(id):
+		elif b != null:
 			_build_building(w, id)
 		elif w.nodes.has(id):
 			_build_node(w, id)
@@ -308,6 +318,116 @@ func _build_node(w: SimWorld, id: int) -> void:
 		else:
 			status.text = "%d of %d %s left." % [nn.amount(), nn.max_m / 1000, res.capitalize()]
 			bar.value = float(nn.amount_m) / float(maxi(nn.max_m, 1))
+
+
+func _build_agent(w: SimWorld, agent_id: String) -> void:
+	var path := "res://ui/agents/agent_panel.gd"
+	if ResourceLoader.exists(path):
+		var panel := (load(path) as GDScript).new() as Control
+		if panel != null:
+			_content.add_child(panel)
+			panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			if panel.has_method("setup"):
+				panel.call("setup", agent_id)
+			return
+	var a := Realm.agent(agent_id)
+	var row := _row()
+	var p := Portrait.new(104)
+	p.show_icon("agent_" + J.gs(a, "role", "artificer"))
+	row.add_child(p)
+	var col := _column(row)
+	var title := _label(col, "", "TitleLabel")
+	var sub := _label(col, "", "MutedLabel")
+	var state := _label(col, "", "BodyLabel")
+	var bar := _bar(col)
+	var extra := _label(col, "", "MutedLabel")
+	_updater = func() -> void:
+		var ag := Realm.agent(agent_id)
+		if ag.is_empty():
+			title.text = "AGENT"
+			state.text = "Waiting for the Town Hall."
+			return
+		title.text = J.gs(ag, "name").to_upper()
+		sub.text = "%s  -  %s  -  %s  -  RANK %s  LEVEL %d" % [w.econ.role_name(J.gs(ag, "role")).to_upper(),
+			J.gs(ag, "provider").to_upper(), J.gs(ag, "model"), J.gs(ag, "rank", "F"), J.gi(ag, "level", 1)]
+		state.text = describe_agent(w, agent_id)
+		var cur := Realm.headline_task(agent_id)
+		if cur.is_empty():
+			bar.value = 0.0
+			extra.text = "%d ADD-ONS  -  NO TASK" % Realm.tools_of(agent_id).size()
+		else:
+			var seal := maxf(J.f(cur.get("seal_micros")), 1.0)
+			bar.value = clampf(J.f(cur.get("spent_micros")) / seal, 0.0, 1.0)
+			extra.text = "%s  -  MANA %d / %d" % [J.gs(cur, "title").to_upper(), int(J.f(cur.get("spent_micros")) / 10000.0), int(seal / 10000.0)]
+
+
+## One line about what an agent is doing, for the panel and tooltips.
+static func describe_agent(w: SimWorld, agent_id: String) -> String:
+	var a := Realm.agent(agent_id)
+	var home := w.agent_home(agent_id) if w != null else null
+	match J.gs(a, "lifecycle"):
+		"training":
+			return "Training at the Keep: %d s left." % int(ceil(Game.link.training_left_s(agent_id)))
+		"settling":
+			if home == null:
+				return "Waiting for you to choose a plot (T)."
+			var site := w.agent_next_site(agent_id)
+			if site != null:
+				return "Building the %s (%d%%)." % [w.econ.building_name(site.type), int(site.progress() * 100.0)]
+			var wait: Dictionary = Game.link.waiting_tools.get(agent_id, {})
+			if not wait.is_empty():
+				return "Waiting for resources to build the %s." % w.econ.building_name(String(wait.get("tool", "")))
+			return "Setting up the work folder."
+		"retired":
+			return "Retired."
+	if not Realm.approvals_for(agent_id).is_empty():
+		return "Waiting for your approval (Space)."
+	for t in Realm.tasks_awaiting_review():
+		if J.gs(t, "agent_id") == agent_id:
+			return "Finished \"%s\": ready for review." % J.gs(t, "title")
+	match J.gs(a, "activity"):
+		"working":
+			var cur := Realm.current_task(agent_id)
+			var p: Dictionary = Realm.progress.get(J.gs(cur, "id"), {})
+			var tool := J.gs(p, "current_tool")
+			return "Working on \"%s\"%s." % [J.gs(cur, "title"), (": " + tool) if tool != "" else ""]
+		"blocked":
+			var reason := J.gs(a, "blocked_reason").replace("_", " ")
+			return "Blocked: %s." % reason
+	return "Idle. Send a task (Q)."
+
+
+func _build_tool(w: SimWorld, id: int) -> void:
+	var b: SimBuilding = w.buildings[id]
+	var row := _row()
+	var p := Portrait.new(104)
+	p.show_icon(b.type)
+	row.add_child(p)
+	var col := _column(row)
+	_label(col, w.econ.building_name(b.type).to_upper(), "TitleLabel")
+	var def := w.econ.tool_def(b.type)
+	_label(col, String(def.get("plain", "")).to_upper(), "MutedLabel")
+	var status := _label(col, "", "BodyLabel")
+	var bar := _bar(col)
+	_updater = func() -> void:
+		var bb: SimBuilding = w.buildings.get(id)
+		if bb == null:
+			return
+		var owner := J.gs(Realm.agent(bb.owner_agent_id), "name", "its agent")
+		bar.visible = not bb.complete
+		bar.value = bb.progress()
+		if not bb.complete:
+			status.text = "%s is building it: %d%%." % [owner, int(bb.progress() * 100.0)]
+		else:
+			status.text = "%s's add-on. %s" % [owner, _grants(def)]
+
+
+static func _grants(def: Dictionary) -> String:
+	var claude: Dictionary = def.get("claude", {})
+	var tools: Array = claude.get("tools", [])
+	if not tools.is_empty():
+		return "Claude Code tools: %s." % ", ".join(PackedStringArray(tools))
+	return String(def.get("plain", ""))
 
 
 func _build_group(w: SimWorld, ids: Array[int]) -> void:
