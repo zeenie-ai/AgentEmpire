@@ -84,4 +84,13 @@ This test cost $0.0126 in 2 turns on Haiku 4.5.
 
 ## S4: web token handoff
 
-Pending. It will be checked once the Town Hall serves the Godot web export (Phase 3).
+Verified on 2026-09-29 with the Phase 3 client.
+
+- The Town Hall serves `client/export/web` from its own origin. `index.html` is `text/html` and `index.wasm` is `application/wasm` (39.5 MB); the single-threaded export needs no COOP/COEP headers.
+- Headless Edge, running WebGL 2 through SwiftShader, loaded `runtime.json`'s `url` (`http://127.0.0.1:<port>/#t=<token>`). The client:
+  1. read the token from the fragment;
+  2. moved it into `sessionStorage`, so a reload of the same tab still connects;
+  3. cleared it from the address bar (`location.hash` was empty after load);
+  4. connected to `ws://<same host>:<port>/ws` and opened the Town Hall's own town (`hall-...`).
+- Software rendering took 50-60 s from page load to the first frame; a real GPU is much faster.
+- Found and fixed along the way: the camera edge-scrolled toward the top-left while the pointer had never moved over the page (Godot reports it at 0,0). Edge scrolling now waits for a real mouse movement over the window.
