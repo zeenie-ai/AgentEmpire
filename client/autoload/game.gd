@@ -16,6 +16,8 @@ const MAX_FRAME_DELTA := 1.0
 const SAVE_DIR := "user://saves"
 ## How long boot() waits for the Town Hall before starting an offline town.
 const BOOT_WAIT_MS := 3000
+## How long boot() waits for a Town Hall it started itself.
+const LAUNCH_WAIT_MS := 25000
 ## How long quitting waits for the final save_town.
 const QUIT_SAVE_WAIT_MS := 2000
 
@@ -48,20 +50,35 @@ func boot(map_seed: int) -> void:
 	if Net.wanted():
 		Net.enable(true)
 		var deadline := Time.get_ticks_msec() + BOOT_WAIT_MS
+		var launched := false
 		while not Net.is_online() and Time.get_ticks_msec() < deadline:
 			if Net.status == Net.STATUS_BUSY or Net.status == Net.STATUS_REJECTED:
 				break
-			if Net.status == Net.STATUS_SEARCHING and Net.endpoint.is_empty() and Net.attempts > 0:
-				break
-			# A stale runtime file: the first attempt failed and Net is retrying.
-			if Net.attempts >= 2:
-				break
+			# No Town Hall found: no runtime file, or one whose Town Hall did not answer.
+			var missing := (Net.status == Net.STATUS_SEARCHING and Net.endpoint.is_empty() and Net.attempts > 0) or Net.failures > 0
+			if missing and not launched:
+				if not _start_town_hall():
+					break
+				launched = true
+				deadline = Time.get_ticks_msec() + LAUNCH_WAIT_MS
 			await get_tree().process_frame
 	if Net.is_online() and await link.open_online_town(map_seed):
 		booting = false
 		return
 	booting = false
 	new_town(map_seed)
+
+
+## Starts the Town Hall when the settings allow and it can be found (desktop dev layout).
+func _start_town_hall() -> bool:
+	if not bool(Settings.get_value("townhall/auto_start", true)) or TownHallLauncher.find_dir() == "":
+		return false
+	if TownHallLauncher.start(String(Settings.get_value("townhall/provider", "fake"))) <= 0:
+		Notify.push("Could not start the Town Hall. Is Node.js installed?", "warn", "hall_start", 5000)
+		return false
+	Notify.push("Starting the Town Hall...", "info", "hall_start", 3000)
+	Net.reconnect_now()
+	return true
 
 
 ## Leaves the offline town and opens the Town Hall's.

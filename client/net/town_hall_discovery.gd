@@ -46,6 +46,9 @@ static func candidate_paths() -> PackedStringArray:
 	return out
 
 
+## A runtime file's endpoint, or {} when there is none. A stale file (its Town Hall crashed)
+## still gives an endpoint; connecting to it fails fast (Net's connect timeout) and Net keeps
+## re-reading the files, so a newly started Town Hall is found.
 static func read_runtime_file(path: String) -> Dictionary:
 	if path == "" or not FileAccess.file_exists(path):
 		return {}

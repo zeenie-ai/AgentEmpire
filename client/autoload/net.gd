@@ -34,6 +34,8 @@ const RETRY_MIN_S := 1.0
 const RETRY_MAX_S := 8.0
 const SEARCH_EVERY_S := 2.0
 const REJECTED_RETRY_S := 5.0
+## A connection attempt still pending after this long is given up and retried.
+const CONNECT_TIMEOUT_MS := 2000
 const TRANSIENT_EVENTS := ["session_revoked", "daemon_shutdown"]
 
 var status: String = STATUS_OFF
@@ -48,6 +50,8 @@ var last_seq: int = -1
 var last_problem: String = ""
 ## Connection attempts so far (boot waits for the first one).
 var attempts: int = 0
+## Attempts that failed since the last successful connection (no answer, refused, rejected).
+var failures: int = 0
 
 var _enabled: bool = false
 var _ws: WebSocketPeer
@@ -61,6 +65,7 @@ var _counter: int = 0
 var _session: String = ""
 var _snapshot_pending: bool = false
 var _held: Array[Dictionary] = []
+var _connect_started_msec: int = 0
 
 
 func _ready() -> void:
@@ -140,6 +145,12 @@ func _process(delta: float) -> void:
 		return
 	_ws.poll()
 	match _ws.get_ready_state():
+		WebSocketPeer.STATE_CONNECTING:
+			if Time.get_ticks_msec() - _connect_started_msec > CONNECT_TIMEOUT_MS:
+				last_problem = "The Town Hall did not answer."
+				_close(1000, "connect timeout")
+				_schedule_retry()
+				return
 		WebSocketPeer.STATE_OPEN:
 			if not _hello_sent:
 				_send_hello()
@@ -168,6 +179,7 @@ func _attempt() -> void:
 		return
 	_ws = ws
 	_hello_sent = false
+	_connect_started_msec = Time.get_ticks_msec()
 	_set_status(STATUS_CONNECTING)
 
 
@@ -249,6 +261,7 @@ func _on_snapshot(req: NetRequest) -> void:
 
 
 func _go_online() -> void:
+	failures = 0
 	online = true
 	_set_status(STATUS_ONLINE)
 	connection_changed.emit(true)
@@ -298,6 +311,7 @@ func _teardown() -> void:
 
 
 func _schedule_retry() -> void:
+	failures += 1
 	_retry_in = _backoff
 	_backoff = minf(_backoff * 2.0, RETRY_MAX_S)
 	_set_status(STATUS_CONNECTING if not endpoint.is_empty() else STATUS_SEARCHING)

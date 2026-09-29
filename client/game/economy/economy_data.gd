@@ -214,7 +214,7 @@ func building_types() -> Array[String]:
 ## their "tools" entry is returned with built_by "agent", so footprints, build times and names
 ## work the same way for them.
 func building_def(type: String) -> Dictionary:
-	var v: Variant = section("buildings").get(type, {})
+	var v: Variant = section("buildings").get(type)
 	if typeof(v) == TYPE_DICTIONARY:
 		return v
 	var t := tool_def(type)

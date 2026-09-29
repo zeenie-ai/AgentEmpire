@@ -72,3 +72,17 @@ func test_population() -> void:
 	assert_eq(econ.pop_limit(1), int(p["cap_by_age"][0]))
 	assert_eq(econ.unit_pop("townsfolk"), int(p["townsfolk_pop"]))
 	assert_eq(econ.unit_pop("agent"), int(p["agent_pop"]))
+
+
+func test_tool_add_ons_are_buildings_with_their_own_footprints_and_times() -> void:
+	var e := EconomyData.load_default()
+	assert_true(e.has_building("forge"))
+	assert_true(e.is_tool("forge"))
+	assert_false(e.is_home("forge"))
+	assert_eq(e.building_footprint("forge"), Vector2i(2, 1), "the Forge is 2x1")
+	assert_eq(e.building_footprint("waygate"), Vector2i(2, 2))
+	assert_gt(e.building_build_s("forge"), 0.0)
+	assert_eq(int(e.building_cost("forge").get("wood", 0)), 60)
+	assert_eq(e.building_built_by("lectern"), "agent")
+	assert_true(e.is_home("workshop"))
+	assert_eq(e.role_home("artificer"), "workshop")

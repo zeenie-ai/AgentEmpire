@@ -13,6 +13,11 @@ const DEFAULTS := {
 	"graphics/quality": "",
 	"audio/master": 0.8,
 	"game/seed": 4127,
+	# Start the Town Hall when the game opens and none is running (desktop).
+	"townhall/auto_start": true,
+	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed
+	# Claude Code, Codex and pi).
+	"townhall/provider": "fake",
 }
 
 var _values: Dictionary = {}
