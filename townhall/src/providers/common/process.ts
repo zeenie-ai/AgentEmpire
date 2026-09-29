@@ -152,6 +152,7 @@ export class HarnessProcess {
   async stop(graceMs: number): Promise<ExitInfo> {
     this.endInput();
     if (await this.waitExit(graceMs)) return this.exited;
+    this.terminated = true;
     await killTree(this.pid, false);
     if (await this.waitExit(2_000)) return this.exited;
     await killTree(this.pid, true);
@@ -161,10 +162,20 @@ export class HarnessProcess {
 
   /** Ends the whole tree at once, before closing stdin so the harness gets no chance to carry on. */
   async kill(): Promise<void> {
-    if (this.running) await killTree(this.pid, true);
+    if (this.running) {
+      this.terminated = true;
+      await killTree(this.pid, true);
+    }
     this.endInput();
     await this.waitExit(5_000);
   }
+
+  /** True when the process had to be ended from outside rather than exiting on its own. */
+  get forced(): boolean {
+    return this.terminated;
+  }
+
+  private terminated = false;
 }
 
 export interface CaptureResult {

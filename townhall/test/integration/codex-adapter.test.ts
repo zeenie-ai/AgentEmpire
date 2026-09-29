@@ -86,6 +86,7 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     const [thread] = requests("thread/start");
     expect(thread!.params).toMatchObject({ cwd: work, approvalPolicy: "untrusted", sandbox: "workspace-write", model: "gpt-5.6-luna", ephemeral: false });
     expect(thread!.params.developerInstructions).toMatch(/^# Aurelhaven/);
+    expect(thread!.params.config).toEqual({ projects: { [work]: { trust_level: "untrusted" } } });
     const overrides: string[] = log().find((e) => e.kind === "start")!.overrides;
     expect(overrides).toEqual(expect.arrayContaining(["features.apps=false", "features.plugins=false", "features.multi_agent=false", 'web_search="disabled"', "project_doc_max_bytes=0"]));
     const cp = host.lastCheckpoint<CodexCheckpoint>();

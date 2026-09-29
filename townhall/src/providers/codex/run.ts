@@ -207,11 +207,16 @@ export class CodexRun implements RunHandle {
 
   /** Resumes the saved thread, or starts a new one. Returns true when a thread was resumed. */
   private async openThread(rpc: RpcClient): Promise<boolean> {
+    // Marking the work folder as an untrusted project keeps a repository's own .codex config
+    // (which can start processes) from loading, and stops the app server from writing a
+    // `trust_level = "trusted"` entry for every worktree into the player's ~/.codex/config.toml.
+    const untrusted = { trust_level: "untrusted" };
     const settings: Record<string, unknown> = {
       cwd: this.req.cwd,
       approvalPolicy: "untrusted",
       sandbox: this.plan.sandbox,
       developerInstructions: this.instructions(),
+      config: { projects: { [this.req.cwd]: untrusted, [this.req.workspaceRoot]: untrusted } },
     };
     const model = this.req.model.trim();
     if (model && model !== "default") settings.model = model;

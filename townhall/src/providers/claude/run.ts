@@ -282,8 +282,10 @@ export class ClaudeRun implements RunHandle {
 
     const exit = await proc.exited;
     await this.stopping;
-    const cleanExit = exit.code === 0 && !exit.spawnError && this.stop !== "kill";
-    if (cleanExit) this.state.costSavedUsd = this.state.costSeenUsd;
+    // Claude Code saves the session's cost total when it exits on its own (whatever the exit
+    // code), not when its process tree is ended from outside.
+    const exitedOnItsOwn = !exit.spawnError && !proc.forced && this.stop !== "kill";
+    if (exitedOnItsOwn) this.state.costSavedUsd = this.state.costSeenUsd;
     this.checkpoint();
     return this.outcome(mode, exit, proc);
   }
