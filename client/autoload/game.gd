@@ -3,14 +3,16 @@ extends Node
 ## notices to toasts, income stats and audio cues. With a Town Hall running, the town is the
 ## Town Hall's (TownLink, a child of this node); without one it is an offline town.
 ##
-## The simulation steps at economy.json tick_rate (20/s) from an accumulator in _process, with
-## the frame delta capped at MAX_FRAME_DELTA. interp_alpha tells views how far they are between
-## the last two ticks.
+## The simulation steps at economy.json tick_rate (20/s) from an accumulator in _process, fed
+## with real elapsed time (capped at MAX_FRAME_DELTA). The engine clamps the delta it reports
+## after a long frame, so a rendering stall (a slow driver, a screen recorder) would otherwise
+## slow the whole town down; with the real clock the town keeps its speed and catches up.
+## interp_alpha tells views how far they are between the last two ticks.
 
 signal world_started(world: SimWorld)
 signal world_stopped()
 
-const MAX_FRAME_DELTA := 0.25
+const MAX_FRAME_DELTA := 1.0
 const SAVE_DIR := "user://saves"
 ## How long boot() waits for the Town Hall before starting an offline town.
 const BOOT_WAIT_MS := 3000
@@ -29,6 +31,7 @@ var booting: bool = false
 
 var _accumulator: float = 0.0
 var _quitting: bool = false
+var _last_usec: int = 0
 
 
 func _ready() -> void:
@@ -134,12 +137,14 @@ func _start(w: SimWorld) -> void:
 
 
 func _process(delta: float) -> void:
-	if world == null:
+	if world == null or paused:
+		_last_usec = 0
 		return
-	if paused:
-		return
+	var now := Time.get_ticks_usec()
+	var real := float(now - _last_usec) / 1000000.0 if _last_usec > 0 else delta
+	_last_usec = now
 	var tick_dt := world.dt
-	_accumulator += minf(delta, MAX_FRAME_DELTA) * time_scale
+	_accumulator += minf(maxf(real, 0.0), MAX_FRAME_DELTA) * time_scale
 	var guard := 0
 	while _accumulator >= tick_dt and guard < 64:
 		world.step(1)
