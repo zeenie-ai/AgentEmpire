@@ -1,15 +1,18 @@
 import { fail } from "../../protocol/errors.js";
 import type { ModelInfo, ProviderInfo } from "../../protocol/objects.js";
+import type { HarnessDeps } from "../common/support.js";
 import type { ProviderAdapter, RunHandle } from "../types.js";
 
-const PHASE_4 = "The Codex adapter is implemented in Phase 4";
+const PENDING = "The Codex adapter is being built in Phase 4";
 
-/** Placeholder until Phase 4 wires `codex app-server`. */
-export class CodexAdapter implements ProviderAdapter {
+/** Placeholder while the app-server adapter is written. */
+export class CodexCliAdapter implements ProviderAdapter {
   readonly id = "codex" as const;
 
+  constructor(readonly deps: HarnessDeps) {}
+
   async probe(): Promise<ProviderInfo> {
-    return { id: this.id, installed: false, logged_in: false, billing_hint: "unknown", message: PHASE_4 };
+    return { id: this.id, installed: false, logged_in: false, billing_hint: "unknown", message: PENDING };
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -17,6 +20,6 @@ export class CodexAdapter implements ProviderAdapter {
   }
 
   start(): RunHandle {
-    throw fail.provider(PHASE_4);
+    throw fail.provider(PENDING);
   }
 }
