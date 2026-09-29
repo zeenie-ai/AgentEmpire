@@ -84,9 +84,12 @@ if (resumeId) {
 }
 sessionId ??= "00000000-0000-4000-8000-000000000000";
 
+// The transcript exists from the start; the cost total is written only when the process exits
+// on its own (as Claude Code does), never when it is killed.
 function saveSession() {
   writeFileSync(path.join(home, `${sessionId}.json`), JSON.stringify({ totalCost }));
 }
+saveSession();
 
 // ---------- the approval MCP server from --mcp-config ----------
 

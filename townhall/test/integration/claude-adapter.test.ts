@@ -40,7 +40,7 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
   it("probes version and sign-in, and never throws when the CLI is missing", async () => {
     const info = await adapter().probe();
     expect(info).toMatchObject({ id: "claude", installed: true, version: "2.1.281", logged_in: true, billing_hint: "subscription" });
-    expect(info.message).not.toMatch(/example\.invalid/);
+    expect(info.message).toBe("Claude Code 2.1.281, signed in with a Claude Max subscription");
 
     env.FAKE_CLAUDE_AUTH = "none";
     expect(await adapter().probe()).toMatchObject({ installed: true, logged_in: false });
@@ -232,6 +232,27 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
     const messages = readLog(logFile).filter((e) => e.kind === "message").map((e) => e.text as string);
     expect(messages[1]).toMatch(/^The player reviewed your work on this task and sent it back with this feedback:\n\nUse a warmer greeting/);
     expect(host.usageMicros()).toBe(3_000);
+  });
+
+  it("after a kill, charges the resumed run from the total Claude Code actually restores", async () => {
+    scenario([{ steps: [{ cost: 0.01 }, { sleep: 400 }, { text: "Part one." }] }, { steps: [{ hang: true }] }]);
+    const host = new MockHost();
+    const run = start(adapter(), host);
+    await host.waitFor((e) => e.kind === "session");
+    run.send("Keep going");
+    await host.waitFor((e) => e.kind === "usage");
+    await waitUntil(() => readLog(logFile).filter((e) => e.kind === "message").length >= 2);
+    run.kill();
+    expect(await within(run.done)).toEqual({ kind: "interrupted" });
+    const cp = host.lastCheckpoint<ClaudeCheckpoint>();
+    // Killed: nothing was saved, so the session will restore the total it started with.
+    expect(cp).toMatchObject({ costSeenUsd: 0.01, costSavedUsd: 0 });
+
+    scenario([{ steps: [{ cost: 0.004 }, { text: "Resumed." }] }]);
+    const resumed = new MockHost();
+    await within(start(adapter(), resumed, { resume: { sessionId: cp.sessionId, state: cp, feedback: null } }).done);
+    expect(host.usageMicros()).toBe(10_000);
+    expect(resumed.usageMicros()).toBe(4_000);
   });
 
   it("starts a new session when the old one cannot be resumed", async () => {

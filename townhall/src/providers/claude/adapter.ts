@@ -88,7 +88,10 @@ export class ClaudeCodeAdapter implements ProviderAdapter {
       const loggedIn = status.loggedIn === true;
       const subscription = asString(status.subscriptionType);
       const method = asString(status.authMethod) ?? "";
-      if (subscription) return { loggedIn, billing: "subscription", describe: `signed in with a Claude ${subscription} subscription` };
+      if (subscription) {
+        const plan = subscription.replace(/^claude\s+/i, "");
+        return { loggedIn, billing: "subscription", describe: `signed in with a Claude ${plan[0]!.toUpperCase()}${plan.slice(1)} subscription` };
+      }
       if (/api|console|key/i.test(method) || envValue(this.deps.env, "ANTHROPIC_API_KEY")) {
         return { loggedIn, billing: "api_key", describe: "signed in with an API key" };
       }

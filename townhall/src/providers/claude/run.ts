@@ -33,7 +33,7 @@ export interface ClaudeCheckpoint {
   sessionId: string;
   /** The last `total_cost_usd` seen (Claude Code's running total for the session). */
   costSeenUsd: number;
-  /** The total at the last clean exit: what Claude Code restores when the session resumes. */
+  /** What Claude Code will restore when the session resumes: the total at its last exit on its own. */
   costSavedUsd: number;
 }
 
@@ -261,7 +261,8 @@ export class ClaudeRun implements RunHandle {
 
     if (this.stop) return { kind: "interrupted" };
     // Cost baseline: a resumed session restores the total saved at its last clean exit.
-    this.cost = new RunningTotal(mode === "resume" && this.opts.restoresCostOnResume ? this.state.costSavedUsd : 0);
+    const baseline = mode === "resume" && this.opts.restoresCostOnResume ? this.state.costSavedUsd : 0;
+    this.cost = new RunningTotal(baseline);
     this.tokenCost = new RunningTotal(0);
     this.sawInit = false;
     this.lastResult = null;
@@ -283,9 +284,10 @@ export class ClaudeRun implements RunHandle {
     const exit = await proc.exited;
     await this.stopping;
     // Claude Code saves the session's cost total when it exits on its own (whatever the exit
-    // code), not when its process tree is ended from outside.
+    // code, and also when the Town Hall itself dies and closes its stdin), not when its process
+    // tree is ended from outside: then the next resume restores this process's starting total.
     const exitedOnItsOwn = !exit.spawnError && !proc.forced && this.stop !== "kill";
-    if (exitedOnItsOwn) this.state.costSavedUsd = this.state.costSeenUsd;
+    this.state.costSavedUsd = exitedOnItsOwn ? this.state.costSeenUsd : baseline;
     this.checkpoint();
     return this.outcome(mode, exit, proc);
   }
@@ -472,7 +474,10 @@ export class ClaudeRun implements RunHandle {
     let micros = 0;
     if (result.total_cost_usd !== undefined) {
       micros = this.cost.update(result.total_cost_usd);
+      // Checkpointed as saved too: if the Town Hall dies now, Claude Code sees stdin close, exits
+      // on its own and saves this total, which the next resume restores.
       this.state.costSeenUsd = this.cost.value;
+      this.state.costSavedUsd = this.cost.value;
       this.checkpoint();
     } else if (isPlainObject(r.usage)) {
       // No cost in the result: price this process's token totals with pricing.json instead.
