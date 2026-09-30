@@ -11,8 +11,19 @@ const DEFAULTS := {
 	"display/show_fps": false,
 	# "" picks the platform default (High on desktop, Low on the web); see GraphicsQuality.
 	"graphics/quality": "",
+	# Volumes from 0 to 1, one per audio bus (see the Audio autoload).
 	"audio/master": 0.8,
+	"audio/music": 0.6,
+	"audio/sfx": 0.9,
+	"audio/ui": 0.8,
+	"audio/ambience": 0.6,
+	# Quiet the game while its window is in the background.
+	"audio/mute_unfocused": true,
 	"game/seed": 4127,
+	# First-run onboarding: whether it is finished, and the work folder the player chose for
+	# new agents (the Summoning dialog's default).
+	"onboarding/done": false,
+	"onboarding/work_folder": "",
 	# Start the Town Hall when the game opens and none is running (desktop).
 	"townhall/auto_start": true,
 	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed
