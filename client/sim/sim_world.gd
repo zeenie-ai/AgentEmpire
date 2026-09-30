@@ -23,7 +23,8 @@ signal grid_changed(rect: Rect2i)
 const CAT_UNIT := "unit"
 const CAT_BUILDING := "building"
 const CAT_NODE := "node"
-## Buildings that train units, and what. Agents are summoned through the Town Hall (Phase 3).
+## Buildings that train units, and what. Agents are summoned through the Town Hall, which
+## charges for them; the Keep then trains them like townsfolk (queue_agent).
 const TRAINERS := {"keep": ["townsfolk"]}
 ## The building type whose count raises the Food and Wood caps (storage.storehouse_bonus).
 const STOREHOUSE_TYPE := "storehouse"
@@ -42,6 +43,9 @@ var tick: int = 0
 var age: int = 1
 var next_id: int = 1
 var op_seq: int = 0
+## Random per run and never saved: ledger op ids stay unique even when a town is reloaded from
+## a snapshot older than its last operations (the Town Hall remembers every op id).
+var session: String = ""
 var tick_rate: int = 20
 var dt: float = 0.05
 ## Allows debug_spawn (perf and capture tools). Never enabled in normal play.
@@ -54,6 +58,9 @@ var rocks: Array[Vector2i] = []
 ## Depleted node ids waiting to regrow.
 var regrowing: Array[int] = []
 var keep_id: int = 0
+## Font Wisps in flight: {"id", "task_id", "agent_id", "building", "pos": Vector2,
+## "prev": Vector2, "delay": int}. They carry scrolls nobody else could.
+var wisps: Array[Dictionary] = []
 
 var _node_chunks: Dictionary = {}
 var _region: PackedByteArray = PackedByteArray()
@@ -68,6 +75,7 @@ func _init(economy: EconomyData, resource_ledger: Ledger) -> void:
 	tick_rate = maxi(econ.tick_rate(), 1)
 	dt = 1.0 / float(tick_rate)
 	commands = GameCommands.new()
+	session = "%06x" % (randi() & 0xffffff)
 	grid = SimGrid.new(econ.map_size())
 	path_service = PathService.new()
 	spatial = SpatialHash.new(SimConst.HASH_CELL)
@@ -129,6 +137,7 @@ func _tick_once() -> void:
 	ConstructionSystem.tick(self)
 	TrainingSystem.tick(self)
 	RegrowSystem.tick(self)
+	WispSystem.tick(self)
 	tick += 1
 	ticked.emit(tick)
 
@@ -144,7 +153,7 @@ func new_id() -> int:
 ## Unique ledger op id for this town (the Town Hall uses op ids as idempotency keys).
 func next_op_id(kind: String) -> String:
 	op_seq += 1
-	return "%s:%s:%d" % [town_id, kind, op_seq]
+	return "%s:%s:%s:%d" % [town_id, session, kind, op_seq]
 
 
 # --- entities -------------------------------------------------------------------------------
@@ -160,7 +169,11 @@ func add_unit(kind: String, p: Vector2) -> SimUnit:
 	return u
 
 
-func add_building(type: String, cell: Vector2i, complete: bool, spend_op: String) -> SimBuilding:
+## Adds a building or site. Agent homes and add-ons pass their owner (and tool id); a home also
+## reserves its plot. Nodes under the footprint are cleared for good (the placement checks keep
+## live ones out; a home placed to catch up with the Town Hall clears whatever is there).
+func add_building(type: String, cell: Vector2i, complete: bool, spend_op: String,
+		owner_agent_id: String = "", tool_id: String = "") -> SimBuilding:
 	var b := SimBuilding.new()
 	b.id = new_id()
 	b.type = type
@@ -170,8 +183,11 @@ func add_building(type: String, cell: Vector2i, complete: bool, spend_op: String
 	b.work = SimConst.WORK_SCALE if complete else 0
 	b.spend_op = spend_op
 	b.walkable = econ.building_is_field(type)
+	b.owner_agent_id = owner_agent_id
+	b.tool_id = tool_id
+	if owner_agent_id != "" and tool_id == "":
+		b.plot = HomeLayout.plot_rect(cell)
 	var r := b.rect()
-	# Depleted (regrowing) nodes under the footprint are cleared for good.
 	for y in range(r.position.y, r.end.y):
 		for x in range(r.position.x, r.end.x):
 			var occ := grid.occupant_at(Vector2i(x, y))
@@ -288,7 +304,13 @@ func complete_building(b: SimBuilding) -> void:
 	b.complete = true
 	b.work = SimConst.WORK_SCALE
 	entity_changed.emit(b.id, CAT_BUILDING)
-	emit_notice("built", {"building": b.id, "type": b.type})
+	emit_notice("built", {"building": b.id, "type": b.type, "agent_id": b.owner_agent_id})
+	if b.owner_agent_id == "":
+		return
+	if b.tool_id != "":
+		emit_notice("tool_complete", {"building": b.id, "agent_id": b.owner_agent_id, "tool_id": b.tool_id, "type": b.type})
+	else:
+		emit_notice("home_complete", {"building": b.id, "agent_id": b.owner_agent_id, "type": b.type})
 
 
 func finish_training(b: SimBuilding, item: Dictionary) -> void:
@@ -297,10 +319,31 @@ func finish_training(b: SimBuilding, item: Dictionary) -> void:
 	var c := cells[0] if not cells.is_empty() else Pathing.nearest_walkable(grid, Vector2i(b.center()), 12)
 	if c == Pathing.NO_CELL:
 		c = Vector2i(b.center())
+	if kind == "agent":
+		var a := add_agent_unit(String(item.get("agent_id", "")), String(item.get("role", "")), Pathing.center_of(c))
+		emit_notice("agent_trained", {"building": b.id, "unit": a.id, "agent_id": a.agent_id, "role": a.role})
+		entity_changed.emit(b.id, CAT_BUILDING)
+		return
 	var u := add_unit(kind, Pathing.center_of(c))
 	emit_notice("trained", {"building": b.id, "unit": u.id, "kind": kind})
 	entity_changed.emit(b.id, CAT_BUILDING)
 	send_to_rally(b, u)
+
+
+## An agent's walking figure. It builds its home and add-ons, then lives on its plot (AgentJob).
+func add_agent_unit(agent_id: String, role: String, p: Vector2) -> SimUnit:
+	var u := SimUnit.new()
+	u.id = new_id()
+	u.kind = "agent"
+	u.agent_id = agent_id
+	u.role = role
+	u.pos = p
+	u.prev_pos = p
+	var home := agent_home(agent_id)
+	u.home_id = home.id if home != null else 0
+	units[u.id] = u
+	entity_spawned.emit(u.id, CAT_UNIT)
+	return u
 
 
 ## Where new units from `b` head: its rally point, or just outside its south side.
@@ -348,6 +391,87 @@ func deposit_carry(u: SimUnit, b: SimBuilding) -> void:
 
 func keep() -> SimBuilding:
 	return buildings.get(keep_id)
+
+
+# --- agents -----------------------------------------------------------------------------------
+
+## The walking figure of a Town Hall agent, or null.
+func agent_unit(agent_id: String) -> SimUnit:
+	if agent_id == "":
+		return null
+	for u: SimUnit in units.values():
+		if u.agent_id == agent_id:
+			return u
+	return null
+
+
+## The agent's home (complete or under construction), or null.
+func agent_home(agent_id: String) -> SimBuilding:
+	if agent_id == "":
+		return null
+	for b: SimBuilding in buildings.values():
+		if b.owner_agent_id == agent_id and b.tool_id == "":
+			return b
+	return null
+
+
+## The agent's add-ons (complete or under construction), oldest first.
+func agent_tools(agent_id: String) -> Array[SimBuilding]:
+	var out: Array[SimBuilding] = []
+	if agent_id == "":
+		return out
+	for b: SimBuilding in buildings.values():
+		if b.owner_agent_id == agent_id and b.tool_id != "":
+			out.append(b)
+	out.sort_custom(func(x: SimBuilding, y: SimBuilding) -> bool: return x.id < y.id)
+	return out
+
+
+func tool_building(tool_id: String) -> SimBuilding:
+	if tool_id == "":
+		return null
+	for b: SimBuilding in buildings.values():
+		if b.tool_id == tool_id:
+			return b
+	return null
+
+
+## The agent's first unfinished building: the home first, then add-ons in the order placed.
+func agent_next_site(agent_id: String) -> SimBuilding:
+	var home := agent_home(agent_id)
+	if home != null and not home.complete:
+		return home
+	for t in agent_tools(agent_id):
+		if not t.complete:
+			return t
+	return null
+
+
+## The queue entry of an agent in training ({} when it is not queued anywhere).
+func queued_agent(agent_id: String) -> Dictionary:
+	for b: SimBuilding in buildings.values():
+		for item in b.queue:
+			if String(item.get("agent_id", "")) == agent_id:
+				return item
+	return {}
+
+
+## Every home plot, as {agent_id: Rect2i}.
+func plots() -> Dictionary:
+	var out := {}
+	for b: SimBuilding in buildings.values():
+		if b.owner_agent_id != "" and b.tool_id == "" and b.plot.size != Vector2i.ZERO:
+			out[b.owner_agent_id] = b.plot
+	return out
+
+
+## The agent whose plot covers `c`, or "".
+func plot_owner_at(c: Vector2i) -> String:
+	var ps := plots()
+	for id: String in ps:
+		if (ps[id] as Rect2i).has_point(c):
+			return id
+	return ""
 
 
 func get_entity(id: int) -> Object:
@@ -515,11 +639,13 @@ func find_free_farm(p: Vector2, radius: float, for_unit: int, exclude: Array[int
 	return best
 
 
+## The nearest unfinished site within `radius` that townsfolk may build (agents build their
+## own homes and add-ons).
 func find_site_near(p: Vector2, radius: float) -> SimBuilding:
 	var best: SimBuilding = null
 	var best_d := INF
 	for b: SimBuilding in buildings.values():
-		if b.complete:
+		if b.complete or b.owner_agent_id != "":
 			continue
 		var d := Pathing.rect_distance(p, b.rect())
 		if d <= radius and d < best_d:

@@ -274,6 +274,14 @@ static func _tick_to_drop(w: SimWorld, u: SimUnit) -> void:
 
 
 static func _after_drop(w: SimWorld, u: SimUnit) -> void:
+	# Gathering into a full store is wasted work: go and gather what the town lacks instead.
+	var res := w.econ.node_resource(u.gather_kind)
+	if res != "" and _is_full(w, res, w.ledger.treasury(), w.storehouse_count()):
+		var other := preferred_resources(w)
+		if not other.is_empty() and other[0] != res and not _is_full(w, other[0], w.ledger.treasury(), w.storehouse_count()):
+			JobUtil.release_claims(w, u)
+			if auto_assign(w, u):
+				return
 	if _valid(w, u):
 		u.phase = TO_NODE
 		_go_node(w, u)

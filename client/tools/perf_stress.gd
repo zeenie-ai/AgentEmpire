@@ -1,6 +1,8 @@
 extends SceneTree
 ## Stress test: 90 townsfolk that keep walking around the town, with the full scene and HUD.
-## Prints the average FPS over 10 seconds (after a 2 second warm-up). Needs a real window:
+## Prints the average FPS over 10 seconds (after a 2 second warm-up), every frame longer than
+## 60 ms ("hitch") and every render longer than 30 ms ("draw"), and how much frame time the
+## engine reported against real time (it clamps long frames). Needs a real window:
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/perf_stress.gd
 ## Options after "--": --units=90 --seconds=10 --vsync (keep vsync on; off by default so the
 ## number is not capped by the monitor's refresh rate).
@@ -53,6 +55,11 @@ func _run() -> void:
 	main.camera.set_view(Vector3(k.center().x, 0.0, k.center().y + 3.0), 45.0, 0.0)
 	main.selection.set_ids(w.units.keys())
 
+	RenderingServer.frame_pre_draw.connect(func() -> void: set_meta("pre", Time.get_ticks_usec()))
+	RenderingServer.frame_post_draw.connect(func() -> void:
+		var ms := (Time.get_ticks_usec() - int(get_meta("pre", 0))) / 1000.0
+		if ms > 30.0:
+			print("PERF draw %.1f ms" % ms))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
 	var orders_every := 3.0
@@ -61,7 +68,7 @@ func _run() -> void:
 	var t := 0.0
 	var frames := 0
 	var frame_ms: Array[float] = []
-	var process_ms := 0.0
+	var engine_delta := 0.0
 	var start_tick := w.tick
 	var start_paths := w.path_service.total_served
 	var last := Time.get_ticks_usec()
@@ -82,8 +89,10 @@ func _run() -> void:
 			start_tick = w.tick
 			start_paths = w.path_service.total_served
 		frames += 1
+		engine_delta += get_root().get_process_delta_time()
+		if dt > 0.06:
+			print("PERF hitch t=%.2f frame_ms=%.1f engine_delta_ms=%.1f since_orders=%.2f" % [t, dt * 1000.0, get_root().get_process_delta_time() * 1000.0, t - (next_orders - orders_every)])
 		frame_ms.append(dt * 1000.0)
-		process_ms += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 		if float(now - measure_start) / 1000000.0 >= seconds:
 			break
 	var elapsed := float(Time.get_ticks_usec() - measure_start) / 1000000.0
@@ -94,8 +103,9 @@ func _run() -> void:
 	for u: SimUnit in w.units.values():
 		if u.job == SimConst.JOB_MOVE:
 			moving += 1
-	print("PERF units=%d moving_at_end=%d seconds=%.2f frames=%d avg_fps=%.1f p95_frame_ms=%.2f worst_frame_ms=%.2f avg_process_ms=%.2f sim_ticks=%d paths=%d vsync=%s renderer=%s gpu=%s" % [
-		w.units.size(), moving, elapsed, frames, float(frames) / elapsed, p95, worst, process_ms / float(maxi(frames, 1)),
+	print("PERF engine_delta_sum=%.2f real=%.2f" % [engine_delta, float(Time.get_ticks_usec() - measure_start) / 1000000.0])
+	print("PERF units=%d moving_at_end=%d seconds=%.2f frames=%d avg_fps=%.1f p95_frame_ms=%.2f worst_frame_ms=%.2f sim_ticks=%d paths=%d vsync=%s renderer=%s gpu=%s" % [
+		w.units.size(), moving, elapsed, frames, float(frames) / elapsed, p95, worst,
 		w.tick - start_tick, w.path_service.total_served - start_paths, "on" if vsync else "off",
 		RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name()])
 	quit(0)

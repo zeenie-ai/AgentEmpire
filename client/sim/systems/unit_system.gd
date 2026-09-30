@@ -21,5 +21,7 @@ static func tick(w: SimWorld) -> void:
 				DepositJob.tick(w, u)
 			SimConst.JOB_COURIER:
 				CourierJob.tick(w, u)
+			SimConst.JOB_AGENT:
+				AgentJob.tick(w, u)
 		Movement.advance(w, u)
 	Movement.separate(w)

@@ -3,6 +3,8 @@ extends Node3D
 ## The 3D town. Binds to a SimWorld and follows its signals: entity_spawned / entity_removed /
 ## entity_changed create, free and refresh views. Every frame, units are interpolated between
 ## ticks (Game.interp_alpha) and construction sites rise with their progress.
+## Agent homes carry a HomeStatusView (name plate, approval bell, review chest, trouble), and
+## Font Wisps in flight get a WispView.
 ## Graphics quality (Settings "graphics/quality") is applied here to the environment, the grass
 ## and the selection rings (decals on Forward+, a MultiMesh elsewhere).
 
@@ -32,6 +34,10 @@ var motes: GeometryInstance3D
 
 var unit_views: Dictionary = {}
 var building_views: Dictionary = {}
+## Agent home building id -> HomeStatusView.
+var home_views: Dictionary = {}
+## Wisp id -> WispView.
+var wisp_views: Dictionary = {}
 
 var _units_root: Node3D
 var _buildings_root: Node3D
@@ -77,6 +83,9 @@ func _ready() -> void:
 	var settings := get_node_or_null("/root/Settings")
 	if settings != null:
 		settings.changed.connect(_on_setting_changed)
+	var realm := get_node_or_null("/root/Realm")
+	if realm != null:
+		realm.task_changed.connect(_on_task_changed)
 
 
 func _on_setting_changed(key: String, _value: Variant) -> void:
@@ -128,8 +137,14 @@ func unbind() -> void:
 		v.queue_free()
 	for v: Node in building_views.values():
 		v.queue_free()
+	for v: Node in home_views.values():
+		v.queue_free()
+	for v: Node in wisp_views.values():
+		v.queue_free()
 	unit_views.clear()
 	building_views.clear()
+	home_views.clear()
+	wisp_views.clear()
 	world = null
 
 
@@ -147,6 +162,12 @@ func _add_building(b: SimBuilding) -> void:
 	_buildings_root.add_child(v)
 	v.setup(b)
 	building_views[b.id] = v
+	if b.owner_agent_id != "" and b.tool_id == "":
+		var hv := HomeStatusView.new()
+		hv.name = "Home%d" % b.id
+		_buildings_root.add_child(hv)
+		hv.setup(b, v.height, v.model.get_meta("door", Vector3(0, 0.3, float(b.size.y) * 0.5)))
+		home_views[b.id] = hv
 
 
 func _on_spawned(id: int, category: String) -> void:
@@ -170,6 +191,9 @@ func _on_removed(id: int, category: String) -> void:
 			if building_views.has(id):
 				(building_views[id] as Node).queue_free()
 				building_views.erase(id)
+			if home_views.has(id):
+				(home_views[id] as Node).queue_free()
+				home_views.erase(id)
 		SimWorld.CAT_NODE:
 			resources.refresh(id)
 
@@ -215,8 +239,51 @@ func _process(delta: float) -> void:
 		var b: SimBuilding = world.buildings.get(id)
 		if b != null:
 			(building_views[id] as BuildingView).update_visual(b, _time, delta)
+	for id: int in home_views:
+		var hv := home_views[id] as HomeStatusView
+		hv.set_work_position(_work_position(hv.agent_id))
+		hv.update_visual(_time, delta)
+	_update_wisps(alpha)
 	_update_rings(alpha)
 	_update_motes()
+
+
+## Where an agent's add-on in use stands, or null when it works at none.
+func _work_position(agent_id: String) -> Variant:
+	var u := world.agent_unit(agent_id)
+	if u == null or u.activity != "working" or u.work_tool == "":
+		return null
+	var t := AgentJob.tool_of_type(world, agent_id, u.work_tool)
+	if t == null:
+		return null
+	return Vector3(t.center().x, 0.0, t.center().y)
+
+
+func _update_wisps(alpha: float) -> void:
+	var live := {}
+	for wisp in world.wisps:
+		var id := int(wisp["id"])
+		live[id] = true
+		if not wisp_views.has(id):
+			var v := WispView.new()
+			v.name = "Wisp%d" % id
+			add_child(v)
+			v.setup(id)
+			wisp_views[id] = v
+		(wisp_views[id] as WispView).update_visual(wisp, alpha, _time)
+	for id: int in wisp_views.keys():
+		if not live.has(id):
+			(wisp_views[id] as Node).queue_free()
+			wisp_views.erase(id)
+
+
+## An agent whose work was accepted cheers.
+func _on_task_changed(t: Dictionary, before: String) -> void:
+	if world == null or J.gs(t, "state") != "accepted" or before == "accepted":
+		return
+	var u := world.agent_unit(J.gs(t, "agent_id"))
+	if u != null and unit_views.has(u.id):
+		(unit_views[u.id] as UnitView).cheer()
 
 
 ## Pollen drifts in a box around the point the camera looks at.

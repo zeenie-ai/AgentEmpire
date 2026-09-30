@@ -13,6 +13,18 @@ extends RefCounted
 ## | chop   | gathering wood                         | 1H_Melee_Attack_Chop                |
 ## | build  | building                               | Use_Item, then the chop             |
 ## | cheer  | just finished a construction           | Cheer                               |
+##
+## Agents at home show their work (AgentJob, u.activity and u.work_tool):
+##
+## | state   | when                                      | clips (first found)            |
+## |---------|-------------------------------------------|--------------------------------|
+## | study   | reading at the Lectern or the Archive     | Interact, Use_Item             |
+## | write   | writing at the Quillworks                 | Use_Item, Interact             |
+## | hammer  | running commands at the Forge             | 1H_Melee_Attack_Chop           |
+## | cast    | working without an add-on, or the Rookery | Spellcasting, Spellcast_Long   |
+## | channel | at the Waygate                            | Spellcast_Long, Spellcasting   |
+## | wait    | waiting at the door for an approval       | Unarmed_Idle, Idle             |
+## | rest    | nothing to do for a while                 | Sit_Floor_Idle, Idle           |
 
 const IDLE := "idle"
 const WALK := "walk"
@@ -21,7 +33,14 @@ const GATHER := "gather"
 const CHOP := "chop"
 const BUILD := "build"
 const CHEER := "cheer"
-const STATES: Array[String] = [IDLE, WALK, CARRY, GATHER, CHOP, BUILD, CHEER]
+const STUDY := "study"
+const WRITE := "write"
+const HAMMER := "hammer"
+const CAST := "cast"
+const CHANNEL := "channel"
+const WAIT := "wait"
+const REST := "rest"
+const STATES: Array[String] = [IDLE, WALK, CARRY, GATHER, CHOP, BUILD, CHEER, STUDY, WRITE, HAMMER, CAST, CHANNEL, WAIT, REST]
 
 const CLIPS := {
 	IDLE: ["Idle", "Unarmed_Idle"],
@@ -31,9 +50,20 @@ const CLIPS := {
 	CHOP: ["1H_Melee_Attack_Chop", "2H_Melee_Attack_Chop", "Use_Item"],
 	BUILD: ["Use_Item", "1H_Melee_Attack_Chop", "Interact"],
 	CHEER: ["Cheer", "Idle"],
+	STUDY: ["Interact", "Use_Item", "Idle"],
+	WRITE: ["Use_Item", "Interact", "Idle"],
+	HAMMER: ["1H_Melee_Attack_Chop", "Use_Item", "Idle"],
+	CAST: ["Spellcasting", "Spellcast_Long", "Interact"],
+	CHANNEL: ["Spellcast_Long", "Spellcasting", "Interact"],
+	WAIT: ["Unarmed_Idle", "Idle"],
+	REST: ["Sit_Floor_Idle", "Sit_Chair_Idle", "Idle"],
 }
 ## States whose clips loop (cheer plays once).
-const LOOPING: Array[String] = [IDLE, WALK, CARRY, GATHER, CHOP, BUILD]
+const LOOPING: Array[String] = [IDLE, WALK, CARRY, GATHER, CHOP, BUILD, STUDY, WRITE, HAMMER, CAST, CHANNEL, WAIT, REST]
+## The work state at each add-on.
+const TOOL_STATES := {"lectern": STUDY, "archive": STUDY, "quillworks": WRITE, "forge": HAMMER, "rookery": CAST, "waygate": CHANNEL}
+## An agent idle at its spot this long (ticks) sits down.
+const REST_AFTER_TICKS := 100
 ## Blend time between states, in seconds.
 const XFADE := 0.22
 ## Tiles per second that Walking_A covers at speed 1 for a figure about 1 tile tall.
@@ -62,7 +92,28 @@ static func state_for(job: String, phase: String, gather_kind: String, carrying:
 
 
 static func state_for_unit(u: SimUnit, moving: bool, cheering: bool) -> String:
-	return state_for(u.job, u.phase, u.gather_kind, u.is_carrying(), moving, cheering)
+	if u.kind == "agent":
+		return state_for_agent(u.job, u.phase, u.activity, u.work_tool, u.idle_ticks, moving, cheering)
+	return state_for(u.job, u.phase, u.gather_kind, u.is_carrying() or CourierJob.carrying_scroll(u), moving, cheering)
+
+
+## An agent's state: building, or its work at home (see the table above).
+static func state_for_agent(job: String, phase: String, activity: String, work_tool: String, idle_ticks: int,
+		moving: bool, cheering: bool) -> String:
+	if moving:
+		return WALK
+	if cheering:
+		return CHEER
+	if job == SimConst.JOB_BUILD:
+		return BUILD if phase == BuildJob.BUILDING else IDLE
+	if job != SimConst.JOB_AGENT or phase != AgentJob.AT_SPOT:
+		return IDLE
+	match activity:
+		"working":
+			return String(TOOL_STATES.get(work_tool, CAST))
+		"awaiting_approval":
+			return WAIT
+	return REST if idle_ticks >= REST_AFTER_TICKS else IDLE
 
 
 ## The clip for `state` among the rig's `available` animation names ("" if none fits).
@@ -100,6 +151,10 @@ static func speed_scale(state: String, tiles_per_s: float, height: float = 1.0) 
 			return 0.9
 		BUILD:
 			return 1.0
+		HAMMER:
+			return 0.85
+		STUDY, WRITE:
+			return 0.7
 	return 1.0
 
 

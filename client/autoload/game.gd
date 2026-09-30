@@ -1,16 +1,25 @@
 extends Node
 ## Owns the running town: the SimWorld, its fixed-rate clock and the bridge from simulation
-## notices to toasts, income stats and audio cues.
+## notices to toasts, income stats and audio cues. With a Town Hall running, the town is the
+## Town Hall's (TownLink, a child of this node); without one it is an offline town.
 ##
-## The simulation steps at economy.json tick_rate (20/s) from an accumulator in _process, with
-## the frame delta capped at MAX_FRAME_DELTA. interp_alpha tells views how far they are between
-## the last two ticks.
+## The simulation steps at economy.json tick_rate (20/s) from an accumulator in _process, fed
+## with real elapsed time (capped at MAX_FRAME_DELTA). The engine clamps the delta it reports
+## after a long frame, so a rendering stall (a slow driver, a screen recorder) would otherwise
+## slow the whole town down; with the real clock the town keeps its speed and catches up.
+## interp_alpha tells views how far they are between the last two ticks.
 
 signal world_started(world: SimWorld)
 signal world_stopped()
 
-const MAX_FRAME_DELTA := 0.25
+const MAX_FRAME_DELTA := 1.0
 const SAVE_DIR := "user://saves"
+## How long boot() waits for the Town Hall before starting an offline town.
+const BOOT_WAIT_MS := 3000
+## How long boot() waits for a Town Hall it started itself.
+const LAUNCH_WAIT_MS := 25000
+## How long quitting waits for the final save_town.
+const QUIT_SAVE_WAIT_MS := 2000
 
 var world: SimWorld
 var interp_alpha: float = 0.0
@@ -18,12 +27,74 @@ var paused: bool = false
 ## Debug speed-up; 1.0 in normal play.
 var time_scale: float = 1.0
 var income: IncomeTracker = IncomeTracker.new()
+var link: TownLink
+## True while boot() is still deciding between the Town Hall's town and an offline one.
+var booting: bool = false
 
 var _accumulator: float = 0.0
+var _quitting: bool = false
+var _last_usec: int = 0
+
+
+func _ready() -> void:
+	link = TownLink.new()
+	link.name = "TownLink"
+	add_child(link)
+	get_tree().auto_accept_quit = false
+
+
+## Starts the game: the Town Hall's town when a Town Hall answers within BOOT_WAIT_MS,
+## otherwise an offline town from `map_seed`. `-- --offline` skips the Town Hall.
+func boot(map_seed: int) -> void:
+	booting = true
+	if Net.wanted():
+		Net.enable(true)
+		var deadline := Time.get_ticks_msec() + BOOT_WAIT_MS
+		var launched := false
+		while not Net.is_online() and Time.get_ticks_msec() < deadline:
+			if Net.status == Net.STATUS_BUSY or Net.status == Net.STATUS_REJECTED:
+				break
+			# No Town Hall found: no runtime file, or one whose Town Hall did not answer.
+			var missing := (Net.status == Net.STATUS_SEARCHING and Net.endpoint.is_empty() and Net.attempts > 0) or Net.failures > 0
+			if missing and not launched:
+				if not _start_town_hall():
+					break
+				launched = true
+				deadline = Time.get_ticks_msec() + LAUNCH_WAIT_MS
+			await get_tree().process_frame
+	if Net.is_online() and await link.open_online_town(map_seed):
+		booting = false
+		return
+	booting = false
+	new_town(map_seed)
+
+
+## Starts the Town Hall when the settings allow and it can be found (desktop dev layout).
+func _start_town_hall() -> bool:
+	if not bool(Settings.get_value("townhall/auto_start", true)) or TownHallLauncher.find_dir() == "":
+		return false
+	if TownHallLauncher.start(String(Settings.get_value("townhall/provider", "fake"))) <= 0:
+		Notify.push("Could not start the Town Hall. Is Node.js installed?", "warn", "hall_start", 5000)
+		return false
+	Notify.push("Starting the Town Hall...", "info", "hall_start", 3000)
+	Net.reconnect_now()
+	return true
+
+
+## Leaves the offline town and opens the Town Hall's.
+func switch_to_town_hall(map_seed: int) -> void:
+	if not Net.is_online():
+		Notify.push("The Town Hall is not connected.", "warn")
+		return
+	await link.open_online_town(map_seed)
 
 
 func has_world() -> bool:
 	return world != null
+
+
+func is_online_town() -> bool:
+	return link != null and link.online_town
 
 
 ## Starts a new offline town from `map_seed`.
@@ -52,6 +123,7 @@ func load_town(snapshot: Dictionary, ledger_state: Dictionary = {}) -> SimWorld:
 
 func stop_town() -> void:
 	if world == null:
+		link.online_town = false
 		return
 	if world.notice.is_connected(_on_notice):
 		world.notice.disconnect(_on_notice)
@@ -66,6 +138,11 @@ func issue(cmd: Dictionary) -> void:
 		world.commands.push(cmd)
 
 
+## Runs `w` as the current town (TownLink uses this for the Town Hall's town).
+func start_world(w: SimWorld) -> void:
+	_start(w)
+
+
 func _start(w: SimWorld) -> void:
 	world = w
 	income = IncomeTracker.new(w.tick_rate)
@@ -77,12 +154,14 @@ func _start(w: SimWorld) -> void:
 
 
 func _process(delta: float) -> void:
-	if world == null:
+	if world == null or paused:
+		_last_usec = 0
 		return
-	if paused:
-		return
+	var now := Time.get_ticks_usec()
+	var real := float(now - _last_usec) / 1000000.0 if _last_usec > 0 else delta
+	_last_usec = now
 	var tick_dt := world.dt
-	_accumulator += minf(delta, MAX_FRAME_DELTA) * time_scale
+	_accumulator += minf(maxf(real, 0.0), MAX_FRAME_DELTA) * time_scale
 	var guard := 0
 	while _accumulator >= tick_dt and guard < 64:
 		world.step(1)
@@ -96,6 +175,12 @@ func _process(delta: float) -> void:
 func save_offline(slot: String = "quick") -> bool:
 	if world == null:
 		return false
+	if is_online_town():
+		var req: NetRequest = link.save_now()
+		if req != null:
+			await req.done
+			Notify.push("Town saved to the Town Hall." if req.ok else "Could not save: %s" % req.error_message(), "good" if req.ok else "error")
+		return req != null and req.ok
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
 	var doc := {"format": "aurelhaven-offline", "sim": world.to_dict(), "ledger": Economy.ledger.to_dict()}
 	var f := FileAccess.open("%s/%s.json" % [SAVE_DIR, slot], FileAccess.WRITE)
@@ -109,6 +194,9 @@ func save_offline(slot: String = "quick") -> bool:
 
 
 func load_offline(slot: String = "quick") -> bool:
+	if is_online_town():
+		Notify.push("This town lives in the Town Hall; it saves itself.", "info", "online_load", 2000)
+		return false
 	var path := "%s/%s.json" % [SAVE_DIR, slot]
 	if not FileAccess.file_exists(path):
 		Notify.push("No saved town yet (F5 saves).", "warn")
@@ -122,6 +210,24 @@ func load_offline(slot: String = "quick") -> bool:
 		return false
 	Notify.push("Town loaded.", "good")
 	return true
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_quit_after_save()
+
+
+## Saves the Town Hall's town before closing (waits up to QUIT_SAVE_WAIT_MS).
+func _quit_after_save() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	var req: NetRequest = link.save_now() if is_online_town() else null
+	if req != null:
+		var deadline := Time.get_ticks_msec() + QUIT_SAVE_WAIT_MS
+		while not req.finished and Time.get_ticks_msec() < deadline:
+			await get_tree().process_frame
+	get_tree().quit()
 
 
 # --- notices -------------------------------------------------------------------------------

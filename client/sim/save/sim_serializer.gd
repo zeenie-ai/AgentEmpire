@@ -40,6 +40,7 @@ static func to_dict(w: SimWorld) -> Dictionary:
 		"buildings": buildings,
 		"nodes": {"kinds": kinds, "rows": rows},
 		"regrowing": w.regrowing.duplicate(),
+		"wisps": WispSystem.to_list(w),
 		"path_queue": w.path_service.snapshot(),
 		"pending_commands": w.commands.pending_snapshot(),
 	}
@@ -88,6 +89,7 @@ static func from_dict(d: Dictionary, econ: EconomyData, ledger: Ledger) -> SimWo
 	w.regrowing.clear()
 	for v: Variant in d.get("regrowing", []):
 		w.regrowing.append(int(v))
+	WispSystem.from_list(w, d.get("wisps", []))
 	w.path_service.restore(d.get("path_queue", []))
 	w.commands.restore_pending(d.get("pending_commands", []))
 	return w

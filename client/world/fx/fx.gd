@@ -179,6 +179,30 @@ static func chimney_smoke() -> GeometryInstance3D:
 	})
 
 
+## Dark, heavy smoke over a home whose agent's task failed (an incident, not a fire).
+static func trouble_smoke() -> GeometryInstance3D:
+	var col := Color(0.32, 0.3, 0.29)
+	return particles({
+		"amount": 16, "lifetime": 3.8, "preprocess": 3.0, "direction": Vector3(0.1, 1.0, 0.05), "spread": 14.0,
+		"velocity": Vector2(0.45, 0.7), "gravity": Vector3(0.12, 0.08, 0.04), "damping": Vector2(0.05, 0.12),
+		"scale": Vector2(0.8, 1.2), "size": 0.75, "radius": 0.18,
+		"scale_curve": _curve([Vector2(0, 0.4), Vector2(0.5, 1.1), Vector2(1, 1.9)]),
+		"colors": _gradient([[0.0, Color(col, 0.0)], [0.1, Color(col, 0.7)], [0.6, Color(col, 0.4)], [1.0, Color(col, 0.0)]]),
+	})
+
+
+## A Font Wisp's trail: small cool sparks left behind as it flies.
+static func wisp_trail() -> GeometryInstance3D:
+	var col := Color(0.62, 0.92, 1.0)
+	return particles({
+		"amount": 40, "lifetime": 0.9, "direction": Vector3.UP, "spread": 180.0, "velocity": Vector2(0.02, 0.12),
+		"gravity": Vector3(0, 0.1, 0), "scale": Vector2(0.4, 0.9), "size": 0.16, "radius": 0.08,
+		"texture": WorldTextures.soft_dot(), "additive": true, "local_coords": false,
+		"scale_curve": _curve([Vector2(0, 1.0), Vector2(1, 0.0)]),
+		"colors": _gradient([[0.0, Color(col, 0.9)], [1.0, Color(col, 0.0)]]),
+	})
+
+
 ## Soft motes of pollen drifting in the light (additive; gold by day, cool at night).
 static func motes(extent: Vector3) -> GeometryInstance3D:
 	var col := Color(1.0, 0.86, 0.55)

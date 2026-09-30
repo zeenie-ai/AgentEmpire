@@ -27,6 +27,12 @@ const MODEL_IDS := {
 	"building/scriptorium": "scriptorium",
 	"building/watchhouse": "watchhouse",
 	"building/beacon_tower": "beacon_tower",
+	"building/lectern": "lectern",
+	"building/quillworks": "quillworks",
+	"building/forge": "forge",
+	"building/rookery": "rookery",
+	"building/archive": "archive",
+	"building/waygate": "waygate",
 	"node/tree_conifer": "tree_conifer",
 	"node/tree_broadleaf": "tree_broadleaf",
 	"node/berry_bush": "bush_berries",
@@ -51,9 +57,15 @@ const MODEL_IDS := {
 	"stage/scaffolding": "scaffolding",
 }
 
-## Unit kind -> character ids, picked by unit id.
+## Unit kind -> character ids, picked by unit id. Agents wear their role's figure
+## ("agent_" + role).
 const CHARACTER_IDS := {
 	"townsfolk": ["townsfolk_a", "townsfolk_b", "townsfolk_c", "townsfolk_d"],
+	"agent_artificer": ["agent_artificer"],
+	"agent_scholar": ["agent_scholar"],
+	"agent_scribe": ["agent_scribe"],
+	"agent_warden": ["agent_warden"],
+	"agent_herald": ["agent_herald"],
 }
 
 ## HUD icon name -> icon id, where they differ (resources map to resource_<name>).

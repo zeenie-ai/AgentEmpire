@@ -5,9 +5,12 @@ extends RefCounted
 ## into a GameCommands command. No nodes involved, so the table is unit-tested headless.
 ##
 ## Context:
-##   selection: "units" | "rally_building" | "building" | "none"
-##   target:    "ground" | "tree" | "berry_bush" | "farm" | "site" | "dropoff" | "building" | "unit"
+##   selection: "units" | "rally_building" | "building" | "agent" | "none"
+##   target:    "ground" | "tree" | "berry_bush" | "farm" | "site" | "dropoff" | "building" |
+##              "agent_home" | "unit"
 ##   carrying:  true when a selected unit carries something the target drop-off accepts
+## Agents take no orders (the Town Hall directs them); townsfolk right-clicking an agent's home
+## go to carry its task scroll ("deliver", handled by the input layer through TownLink).
 
 const ACTION_NONE := "none"
 const ACTION_MOVE := "move"
@@ -15,11 +18,13 @@ const ACTION_GATHER := "gather"
 const ACTION_BUILD := "build"
 const ACTION_DEPOSIT := "deposit"
 const ACTION_RALLY := "rally"
+const ACTION_DELIVER := "deliver"
 
 ## Checked top to bottom. "*" matches any target; "when" names a context flag that must be true.
 const TABLE: Array[Dictionary] = [
 	{"selection": "rally_building", "target": "*", "action": ACTION_RALLY},
 	{"selection": "units", "target": "site", "action": ACTION_BUILD},
+	{"selection": "units", "target": "agent_home", "action": ACTION_DELIVER},
 	{"selection": "units", "target": "tree", "action": ACTION_GATHER},
 	{"selection": "units", "target": "berry_bush", "action": ACTION_GATHER},
 	{"selection": "units", "target": "farm", "action": ACTION_GATHER},
@@ -64,6 +69,9 @@ static func selection_kind(w: SimWorld, selection: Array) -> String:
 		var u: SimUnit = w.units.get(int(id))
 		if u != null and u.kind == "townsfolk":
 			return "units"
+	var first: SimUnit = w.units.get(int(selection[0]))
+	if first != null and first.kind == "agent":
+		return "agent"
 	var b: SimBuilding = w.buildings.get(int(selection[0]))
 	if b == null:
 		return "none"
@@ -82,6 +90,8 @@ static func target_kind(w: SimWorld, target: Dictionary) -> String:
 			var b: SimBuilding = w.buildings.get(id)
 			if b == null:
 				return "ground"
+			if b.owner_agent_id != "":
+				return "agent_home" if b.tool_id == "" and b.complete else "building"
 			if not b.complete:
 				return "site"
 			if w.econ.building_is_field(b.type):
