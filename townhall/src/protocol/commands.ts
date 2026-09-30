@@ -240,7 +240,8 @@ export const commands = {
       period: ManaPeriod,
       refill_hour_local: int.min(0).max(23).optional(),
       pool_usd: z.number().min(0).max(100_000),
-      billing: z.object({ claude: Billing, codex: Billing }),
+      /** `pi` was added in 1.2; when a 1.1 client leaves it out, the current pi billing is kept. */
+      billing: z.object({ claude: Billing, codex: Billing, pi: Billing.optional() }),
       confirm_raise: z.boolean().optional(),
     }),
     z.object({ mana: Mana }),

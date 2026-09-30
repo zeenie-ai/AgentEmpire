@@ -20,19 +20,22 @@ export class ProviderRegistry {
 
   async refresh(): Promise<ProviderInfo[]> {
     const before = JSON.stringify(this.cached());
-    for (const id of Object.keys(this.adapters) as Provider[]) {
-      try {
-        this.infos.set(id, await this.adapters[id].probe());
-      } catch (err) {
-        this.infos.set(id, {
-          id,
-          installed: false,
-          logged_in: false,
-          billing_hint: "unknown",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    // Probes start harness processes, so run them side by side.
+    await Promise.all(
+      (Object.keys(this.adapters) as Provider[]).map(async (id) => {
+        try {
+          this.infos.set(id, await this.adapters[id].probe());
+        } catch (err) {
+          this.infos.set(id, {
+            id,
+            installed: false,
+            logged_in: false,
+            billing_hint: "unknown",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }),
+    );
     const after = this.cached();
     if (JSON.stringify(after) !== before) this.bus.emit("providers_updated", { providers: after }, "providers");
     return after;

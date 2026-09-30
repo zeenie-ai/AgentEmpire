@@ -6,6 +6,8 @@ import { loadConfig, type Config } from "../../src/config.js";
 import { TestClock } from "../../src/core/clock.js";
 import { Daemon } from "../../src/daemon.js";
 import { silentLogger } from "../../src/log.js";
+import type { Provider } from "../../src/protocol/objects.js";
+import type { ProviderAdapter } from "../../src/providers/types.js";
 
 export interface Reply {
   v: 1;
@@ -163,6 +165,8 @@ export interface TownOptions {
   root?: string;
   clock?: TestClock;
   config?: Partial<Config>;
+  /** Real (or custom) provider adapters instead of the scripted ones; built once the paths are known. */
+  adapters?: (paths: { root: string; dataDir: string; work: string }) => Record<Provider, ProviderAdapter>;
 }
 
 export class TestTown {
@@ -191,7 +195,8 @@ export class TestTown {
         ...opts.config,
       },
     );
-    const daemon = await Daemon.start({ config, clock, log: silentLogger() });
+    const adapters = opts.adapters?.({ root, dataDir: config.dataDir, work });
+    const daemon = await Daemon.start({ config, clock, log: silentLogger(), ...(adapters ? { adapters } : {}) });
     return new TestTown(daemon, root, work, clock, config);
   }
 
@@ -229,7 +234,8 @@ export class TestTown {
 export interface AgentSetup {
   name?: string;
   role?: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "pi";
+  model?: string;
   workspace: string;
   approval_mode?: string;
   tools?: string[];
@@ -243,7 +249,7 @@ export async function summonAgent(c: TestClient, spec: AgentSetup): Promise<stri
     spec: {
       name: spec.name ?? "Mira",
       provider: spec.provider ?? "claude",
-      model: "fake-claude",
+      model: spec.model ?? (spec.provider === "pi" ? "fake/pi" : "fake-claude"),
       role,
       instructions: "Be careful.",
       approval_mode: spec.approval_mode ?? "trusted_edits",

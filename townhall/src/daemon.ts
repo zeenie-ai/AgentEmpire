@@ -29,10 +29,9 @@ import { openDb } from "./db/db.js";
 import { createLogger, type Logger } from "./log.js";
 import { srcPath } from "./paths.js";
 import { MAX_FRAME_BYTES } from "./protocol/version.js";
-import { ClaudeAdapter } from "./providers/claude/adapter.js";
-import { CodexAdapter } from "./providers/codex/adapter.js";
 import { FakeProvider } from "./providers/fake/adapter.js";
 import { ScenarioLibrary } from "./providers/fake/scenarios.js";
+import { harnessDeps, realAdapters } from "./providers/real.js";
 import { ProviderRegistry } from "./providers/registry.js";
 import type { ProviderAdapter } from "./providers/types.js";
 import type { Provider } from "./protocol/objects.js";
@@ -152,9 +151,16 @@ export class Daemon {
           defaultScenario: config.fakeDefaultScenario,
           microsPerMana: econ.data.mana.micros_per_mana,
         };
-        adapters = { claude: new FakeProvider("claude", fakeOpts), codex: new FakeProvider("codex", fakeOpts) };
+        adapters = {
+          claude: new FakeProvider("claude", fakeOpts),
+          codex: new FakeProvider("codex", fakeOpts),
+          pi: new FakeProvider("pi", fakeOpts),
+        };
       } else {
-        adapters = { claude: new ClaudeAdapter(), codex: new CodexAdapter() };
+        // The installed harnesses: Claude Code, the Codex CLI and pi, each launched as a child process.
+        adapters = realAdapters(
+          harnessDeps({ econ: econ.data, dataDir: config.dataDir, pricingPath: config.pricingPath, log, redactor }),
+        );
       }
     }
     ctx.providers = new ProviderRegistry(adapters, bus);

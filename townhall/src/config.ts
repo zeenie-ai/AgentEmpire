@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { defaultDataDir, defaultEconomyPath, defaultWebDir } from "./paths.js";
+import { defaultDataDir, defaultEconomyPath, defaultPricingPath, defaultWebDir } from "./paths.js";
 
 export type ProviderMode = "fake" | "real";
 
@@ -10,6 +10,8 @@ export interface Config {
   port: number;
   dataDir: string;
   economyPath: string;
+  /** protocol/pricing.json: prices Codex tokens (and Claude usage that carries no cost). */
+  pricingPath: string;
   webDir: string;
   /** Extra origins allowed to open the WebSocket (for example a Godot dev server). */
   devOrigins: string[];
@@ -97,6 +99,7 @@ export function loadConfig(env: Env = process.env, overrides: Partial<Config> = 
     port: intFromEnv(env, "AURELHAVEN_PORT", 0),
     dataDir: path.resolve(env.AURELHAVEN_DATA_DIR ?? defaultDataDir()),
     economyPath: path.resolve(env.AURELHAVEN_ECONOMY_PATH ?? defaultEconomyPath()),
+    pricingPath: path.resolve(env.AURELHAVEN_PRICING_PATH ?? defaultPricingPath()),
     webDir: path.resolve(env.AURELHAVEN_WEB_DIR ?? defaultWebDir()),
     devOrigins: listFromEnv(env, "AURELHAVEN_DEV_ORIGINS", ","),
     crossOriginIsolation: env.AURELHAVEN_CROSS_ORIGIN_ISOLATION === "1",

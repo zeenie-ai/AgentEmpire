@@ -41,6 +41,10 @@ export function defaultEconomyPath(): string {
   return path.resolve(packageRoot(), "..", "protocol", "economy.json");
 }
 
+export function defaultPricingPath(): string {
+  return path.resolve(packageRoot(), "..", "protocol", "pricing.json");
+}
+
 export function defaultDataDir(): string {
   return path.join(packageRoot(), "data");
 }

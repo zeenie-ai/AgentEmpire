@@ -13,9 +13,11 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "gen:gd": "tsx scripts/gen-gd.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
     "better-sqlite3": "13.0.3",
     "pino": "10.3.1",
     "ws": "8.22.0",
