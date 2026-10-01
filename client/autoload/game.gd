@@ -205,10 +205,13 @@ func _switch_to(mode: String) -> void:
 	if TownHallLauncher.find_dir() == "" and (target_runtime == "" or not FileAccess.file_exists(target_runtime)):
 		Notify.push("The %s Town Hall cannot be started from this game." % _mode_name(mode), "error", "hall_switch", 0)
 		return
+	var previous := String(Settings.get_value("townhall/provider", "fake"))
 	Settings.set_value("townhall/provider", mode)
 	if Net.is_online():
 		Notify.push("Closing the %s Town Hall..." % _mode_name(town_hall_mode()), "info", "hall_switch", 0)
 		if not await _shut_down_town_hall():
+			# Nothing was closed: the game stays with the Town Hall it has, and starts it next time.
+			Settings.set_value("townhall/provider", previous)
 			return
 	Notify.push("Opening the %s Town Hall..." % _mode_name(mode), "info", "hall_switch", 0)
 	Net.forget_session()
