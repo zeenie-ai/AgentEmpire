@@ -33,3 +33,28 @@ survey stake, the gold coins, the wheat rows, the anvil, the forge hearth, the l
 writing desk with inkpot and quill, and the flag pole. The same scripts produce the character
 recolours (copies of the KayKit atlases with only the clothing swatches re-dyed), the trimmed farm
 plot and gate arch, and every icon.
+
+## Fonts (SIL Open Font License 1.1)
+
+Bundled in `client/ui/fonts/`, each folder with its `OFL.txt`:
+
+- **Cinzel**, copyright 2020 The Cinzel Project Authors
+  ([github.com/NDISCOVER/Cinzel](https://github.com/NDISCOVER/Cinzel)): titles and buttons.
+- **Cormorant**, copyright 2015 the Cormorant Project Authors
+  ([github.com/CatharsisFonts/Cormorant](https://github.com/CatharsisFonts/Cormorant)): display text.
+- **Spectral**, copyright 2017 The Spectral Project Authors
+  ([github.com/productiontype/Spectral](https://github.com/productiontype/Spectral)): body text.
+- **JetBrains Mono**, copyright 2020 The JetBrains Mono Project Authors
+  ([github.com/JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono)): labels,
+  numbers and diffs.
+
+## Software
+
+- **Godot Engine 4.7.2** (MIT licence), by Juan Linietsky, Ariel Manzur and the Godot Engine
+  contributors ([godotengine.org/license](https://godotengine.org/license)). The engine's
+  third-party notices are listed there.
+- **GUT 9.7.1** (MIT licence), by Tom "Butch" Wesley: the client's test framework, bundled in
+  `client/addons/gut/`.
+- The Town Hall runs on **Node.js** with **better-sqlite3**, **ws**, **zod**, **pino** and the
+  **pi coding agent** (`@earendil-works/pi-coding-agent`), all under the MIT licence; it is
+  written in **TypeScript** (Apache 2.0) and tested with **vitest** (MIT).
