@@ -120,6 +120,36 @@ func _run() -> void:
 		main.camera.set_view(Vector3(g.center.x - 1.5, 0.0, g.center.y + 1.0), 15.0, deg_to_rad(-24.0))
 		await _shot("walls_gate", 140)
 
+	if _wanted("night"):
+		var w := _town(map_seed, 3)
+		_grow(w, 3)
+		main.hud.visible = false
+		game.paused = false
+		await _frames(6)
+		main.world_view.environment_view.set_night(1.0)
+		var g: WallLayout.Piece = w.walls.pieces_of(1, WallLayout.GATE)[0]
+		main.camera.set_view(Vector3(g.center.x, 0.0, g.center.y - 4.0), 26.0, deg_to_rad(-15.0))
+		await _shot("walls_night", 60)
+		main.world_view.environment_view.set_night(0.0)
+
+	if _wanted("fps"):
+		# Every ring standing and a busy town: frames per second at the default zoom and far out.
+		var w := _town(map_seed, 4)
+		_grow(w, 4)
+		main.hud.visible = true
+		game.paused = false
+		await _frames(6)
+		for view: Array in [[30.0, "default zoom"], [70.0, "farthest zoom"]]:
+			main.camera.set_view(Vector3(64.0, 0.0, 70.0), float(view[0]), 0.0)
+			await _seconds(1.5)
+			var frames := 0
+			var start := Time.get_ticks_usec()
+			while Time.get_ticks_usec() - start < 3000000:
+				await process_frame
+				frames += 1
+			var fps := float(frames) / (float(Time.get_ticks_usec() - start) / 1000000.0)
+			print("fps: %s %.1f (%dx%d)" % [view[1], fps, _size.x, _size.y])
+
 	if _wanted("research"):
 		var w := _town(map_seed, 1)
 		_grow(w, 1)

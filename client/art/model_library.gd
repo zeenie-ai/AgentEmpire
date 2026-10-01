@@ -145,7 +145,7 @@ static func mesh(key: String, variant: int = 0) -> Mesh:
 	if AssetCatalog.id_for(key) != "":
 		var art := _make(key, variant)
 		if art != null:
-			m = _single_mesh(art, FOLIAGE_PROFILE if key.begins_with("node/") else {})
+			m = _single_mesh(art, _mesh_profile(key))
 			art.free()
 			if m != null and key == "decor/stake_flag":
 				m = _with_flag(m)
@@ -156,6 +156,16 @@ static func mesh(key: String, variant: int = 0) -> Mesh:
 		m = _meshes[pk]
 	_meshes[ck] = m
 	return m
+
+
+## Kit shader profile for a MultiMesh key: foliage for trees and bushes; the town walls' towers
+## and gates light their windows at night like the Keep (the Lantern Hours).
+static func _mesh_profile(key: String) -> Dictionary:
+	if key.begins_with("node/"):
+		return FOLIAGE_PROFILE
+	if key.begins_with("wall/tower") or key == "wall/gate":
+		return {"glow_cell_a": WINDOW_CELLS["keep"]}
+	return {}
 
 
 ## Every variant mesh of `key` (one procedural mesh when there is no art).

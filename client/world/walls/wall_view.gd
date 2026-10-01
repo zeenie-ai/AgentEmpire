@@ -10,6 +10,8 @@ extends Node3D
 ## ring from its south gate (the one facing the camera) to the far side, with dust at each
 ## piece's foot and the "wall_rise" cue as each gatehouse goes up. A town that loads at Age N
 ## shows walls 1..N standing at once. A piece a building stands on is left out (a gap).
+## At night the walls light up (the handoff's Lantern Hours): tower and gate windows glow like
+## the Keep's, and lanterns burn at every gate.
 
 ## A ring starts rising (after LEAD_S, so a camera glide can frame it first).
 signal rise_started(ring: int, center: Vector3, radius: float, seconds: float)
@@ -38,10 +40,17 @@ const SWEEP_MIN := 1.6
 const SWEEP_MAX := 3.6
 ## Towers stand a moment before the curtains beside them, and gatehouses before both.
 const KIND_LEAD := {WallLayout.CURTAIN: 0.15, WallLayout.TOWER: 0.0, WallLayout.GATE_TOWER: -0.15, WallLayout.GATE: -0.1}
+const LANTERN_COLOR := Color(1.0, 0.7, 0.36)
+const LANTERN_SIZE := 1.1
+## Gate lanterns cast real light where the renderer can afford it (Forward+).
+const LANTERN_LIGHT_RANGE := 4.5
 
 var world: SimWorld
 ## Ring -> RingDraw.
 var rings: Dictionary = {}
+
+var _lantern_material: StandardMaterial3D
+var _time: float = 0.0
 
 
 class RingDraw:
@@ -56,6 +65,8 @@ class RingDraw:
 	## Seconds since the rise began (negative during the lead-in); < -999 when not rising.
 	var clock: float = -1000.0
 	var length: float = 0.0
+	## Lantern halos and lights at the gates (lit at night once the ring stands).
+	var lanterns: Array[Node3D] = []
 
 
 ## Draws every standing ring of `w` at once.
@@ -105,9 +116,11 @@ func on_walls_changed(ring: int, animate: bool) -> void:
 
 
 func _process(delta: float) -> void:
+	_time += delta
 	for d: RingDraw in rings.values():
 		if d.clock > -999.0:
 			_advance(d, delta)
+	_update_lanterns()
 
 
 # --- building a ring ----------------------------------------------------------------------------
@@ -182,10 +195,70 @@ func _make_ring(k: int, animate: bool) -> RingDraw:
 		var mm: MultiMesh = d.groups[String(item["key"])]
 		var shown := bool(item["visible"]) and not animate
 		mm.set_instance_transform(int(item["index"]), item["xform"] if shown else HIDDEN)
+	for item in d.items:
+		if int(item["kind"]) == WallLayout.GATE and bool(item["visible"]):
+			_add_lanterns(d, l.pieces[int(item["piece"])], opening)
 	if animate:
 		d.clock = -LEAD_S
 		rise_started.emit(k, Vector3(l.center.x, 0.0, l.center.y), l.radii[k], LEAD_S + _total(d))
 	return d
+
+
+## Two lanterns either side of a gate's arch on the field side and one over the town side, with
+## a warm light between them.
+func _add_lanterns(d: RingDraw, p: WallLayout.Piece, opening: float) -> void:
+	var t := Vector2(-p.outward.y, p.outward.x)
+	var h := opening * 0.72
+	var spots: Array[Vector2] = [
+		p.center + p.outward * (opening * 0.6) + t * (opening * 0.66),
+		p.center + p.outward * (opening * 0.6) - t * (opening * 0.66),
+		p.center - p.outward * (opening * 0.6),
+	]
+	for spot in spots:
+		var halo := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2.ONE * LANTERN_SIZE
+		halo.mesh = quad
+		halo.material_override = _lantern()
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		halo.position = Vector3(spot.x, h, spot.y)
+		halo.visible = false
+		d.root.add_child(halo)
+		d.lanterns.append(halo)
+	if GraphicsQuality.is_forward_plus():
+		var light := OmniLight3D.new()
+		light.light_color = LANTERN_COLOR
+		light.omni_range = LANTERN_LIGHT_RANGE
+		light.omni_attenuation = 1.4
+		light.shadow_enabled = false
+		var at := p.center + p.outward * (opening * 0.9)
+		light.position = Vector3(at.x, h, at.y)
+		light.visible = false
+		d.root.add_child(light)
+		d.lanterns.append(light)
+
+
+func _lantern() -> StandardMaterial3D:
+	if _lantern_material == null:
+		_lantern_material = (Fx.sprite_material(WorldTextures.soft_dot(), true).duplicate() as StandardMaterial3D)
+		_lantern_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		_lantern_material.albedo_color = Color(LANTERN_COLOR, 0.0)
+	return _lantern_material
+
+
+## Lanterns burn at night on every standing ring (not while it rises).
+func _update_lanterns() -> void:
+	var night := ArtMaterials.night_amount()
+	var lit := night > 0.02
+	var flicker := 0.9 + 0.1 * sin(_time * 7.7) * sin(_time * 3.1)
+	if _lantern_material != null:
+		_lantern_material.albedo_color = Color(LANTERN_COLOR, clampf(night * 0.95 * flicker, 0.0, 1.0))
+	for d: RingDraw in rings.values():
+		var on := lit and d.clock < -999.0
+		for n in d.lanterns:
+			n.visible = on
+			if on and n is OmniLight3D:
+				(n as OmniLight3D).light_energy = night * 1.7 * flicker
 
 
 ## Gatehouse arches stand with their towers: left out only when both towers are gaps.
