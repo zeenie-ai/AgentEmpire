@@ -3,6 +3,8 @@ extends RefCounted
 ## Seeded map generation: grass, forests and starter groves, berry-bush patches, a few
 ## decorative rocks and the 4x4 Keep at the centre. Stone and Gold are not gathered in
 ## Aurelhaven; they come from the agents' work. The same seed always produces the same map.
+## Nothing grows on the town walls' line or their gate roads (SimWorld.walls), and the starter
+## groves stand just outside the Keep Ring beside its gates, so wood stays a short walk away.
 
 ## No trees this close to the map centre (the Keep's clearing).
 const TREE_CLEAR_RADIUS := 11.0
@@ -50,11 +52,16 @@ static func generate(w: SimWorld, seed_value: int) -> void:
 			if (d >= FOREST_START and v > FOREST_THRESHOLD) or rng.randf() < STRAY_TREE_CHANCE:
 				_place(w, rng, "tree", Vector2i(x, y), keep_zone, false)
 
-	# Starter groves between the first two rings, so wood is a short walk from the Keep.
+	# Starter groves between the first two rings, so wood is a short walk from the Keep: beside
+	# the Keep Ring's gates (but off their roads) when the town has walls.
 	var base_angle := rng.randf() * TAU
+	var gates := _grove_gates(w, rng)
 	for i in NEAR_GROVES:
 		var a := base_angle + TAU * float(i) / float(NEAR_GROVES) + rng.randf_range(-0.35, 0.35)
 		var r := rng.randf_range(13.0, 17.0)
+		if i < gates.size():
+			a = gates[i] + (1.0 if rng.randf() < 0.5 else -1.0) * rng.randf_range(0.32, 0.5)
+			r = rng.randf_range(14.0, 16.5)
 		_blob(w, rng, centre + Vector2(cos(a), sin(a)) * r, rng.randf_range(2.3, 3.3), 0.85, "tree", keep_zone, false)
 
 	# Berry patches: two near the Keep, between the groves, and more further out.
@@ -75,14 +82,31 @@ static func generate(w: SimWorld, seed_value: int) -> void:
 		var c := Vector2i(rng.randi_range(2, size - 3), rng.randi_range(2, size - 3))
 		if Vector2(c.x + 0.5, c.y + 0.5).distance_to(centre) < 13.0:
 			continue
-		if w.grid.occupant_at(c) != 0 or w.grid.terrain_at(c) != SimGrid.TERRAIN_GRASS:
+		if w.grid.occupant_at(c) != 0 or w.grid.terrain_at(c) != SimGrid.TERRAIN_GRASS or w.wall_ring_at(c) >= 0:
 			continue
 		w.add_rock(c)
 		placed += 1
 		if rng.randf() < 0.35:
 			var n := c + Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1))
-			if w.grid.in_bounds(n) and w.grid.occupant_at(n) == 0:
+			if w.grid.in_bounds(n) and w.grid.occupant_at(n) == 0 and w.wall_ring_at(n) < 0:
 				w.add_rock(n)
+
+
+## Angles of the Keep Ring gates that get a starter grove (every gate but the south one, which
+## faces the camera and keeps the meadow in front of the Keep open), shuffled by the seed.
+static func _grove_gates(w: SimWorld, rng: RandomNumberGenerator) -> Array[float]:
+	var out: Array[float] = []
+	if w.walls == null or w.walls.ring_count() == 0:
+		return out
+	for a in w.walls.ring_gates[0]:
+		if absf(wrapf(a - PI * 0.5, -PI, PI)) > 0.2:
+			out.append(a)
+	for i in range(out.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t := out[i]
+		out[i] = out[j]
+		out[j] = t
+	return out
 
 
 static func _blob(w: SimWorld, rng: RandomNumberGenerator, centre: Vector2, radius: float,
@@ -99,7 +123,7 @@ static func _blob(w: SimWorld, rng: RandomNumberGenerator, centre: Vector2, radi
 static func _place(w: SimWorld, rng: RandomNumberGenerator, kind: String, c: Vector2i,
 		keep_zone: Rect2i, replace_trees: bool) -> void:
 	var variant := rng.randi() & 0xffff
-	if not w.grid.in_bounds(c) or keep_zone.has_point(c):
+	if not w.grid.in_bounds(c) or keep_zone.has_point(c) or w.wall_ring_at(c) >= 0:
 		return
 	if w.grid.terrain_at(c) != SimGrid.TERRAIN_GRASS:
 		return

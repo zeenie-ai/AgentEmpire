@@ -60,6 +60,9 @@ static func apply(w: SimWorld, cmd: Dictionary) -> void:
 			_revoke_spend(w, cmd)
 		GameCommands.SET_AGE:
 			_set_age(w, cmd)
+		GameCommands.DEBUG_SET_AGE:
+			if w.allow_debug_commands:
+				_set_age(w, cmd)
 		_:
 			w.emit_notice("unknown_command", {"type": String(cmd.get("type", ""))})
 
@@ -458,13 +461,17 @@ static func _revoke_spend(w: SimWorld, cmd: Dictionary) -> void:
 				return
 
 
+## The age changed (the Town Hall finished research, or a debug tool): the walls follow, ring
+## by ring (SimWorld.sync_walls), and the build zone moves out to the next ring.
 static func _set_age(w: SimWorld, cmd: Dictionary) -> void:
-	var age := maxi(int(cmd.get("age", 1)), 1)
+	var age := clampi(int(cmd.get("age", 1)), 1, maxi(w.econ.ages().size(), 1))
 	if age == w.age:
 		return
+	var before := w.age
 	w.age = age
 	w.ledger.set_age(age)
-	w.emit_notice("age_changed", {"age": age})
+	w.sync_walls()
+	w.emit_notice("age_changed", {"age": age, "from": before})
 
 
 static func _buildings_in(w: SimWorld, r: Rect2i) -> bool:

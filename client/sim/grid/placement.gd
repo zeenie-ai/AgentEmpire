@@ -4,8 +4,9 @@ extends RefCounted
 ## changes, and the place_building command checks again when it is applied.
 ##
 ## Checks, in order: known type and age, in bounds, clear of buildings, resources and rocks,
-## inside the build zone, reachable from the Keep without cutting anything off (flood fill),
-## and affordable. The result is {"ok": bool, "code": String, "reason": String}.
+## inside the build zone, off the town walls' line (every ring's cells and gate roads are
+## reserved from the start, standing or not), reachable from the Keep without cutting anything
+## off (flood fill), and affordable. The result is {"ok": bool, "code": String, "reason": String}.
 
 const NODE_LABELS := {"tree": "trees", "berry_bush": "berry bushes"}
 
@@ -35,6 +36,9 @@ static func check(w: SimWorld, type: String, cell: Vector2i, check_cost: bool = 
 				return _fail("resource", "Blocked by %s" % NODE_LABELS.get(n.kind, n.kind.replace("_", " ")))
 	if not w.in_build_zone(r):
 		return _fail("zone", "Outside the build zone")
+	var wall := wall_problem(w, r)
+	if wall != "":
+		return _fail("wall", wall)
 	for plot: Rect2i in w.plots().values():
 		if plot.intersects(r):
 			return _fail("plot", "Inside an agent's plot")
@@ -121,6 +125,9 @@ static func check_plot(w: SimWorld, home_type: String, home_cell: Vector2i) -> D
 				return _fail("resource", "Blocked by %s" % NODE_LABELS.get(n.kind, n.kind.replace("_", " ")))
 	if not w.in_build_zone(plot):
 		return _fail("zone", "Outside the build zone")
+	var wall := wall_problem(w, plot)
+	if wall != "":
+		return _fail("wall", wall)
 	var home := Rect2i(home_cell, econ.building_footprint(home_type))
 	var reach := reach_problem(w, home, false)
 	if reach == "unreachable":
@@ -128,6 +135,20 @@ static func check_plot(w: SimWorld, home_type: String, home_cell: Vector2i) -> D
 	if reach == "cuts_off":
 		return _fail(reach, "Would cut off part of the town")
 	return {"ok": true, "code": "", "reason": ""}
+
+
+## Why the town walls keep `r` free ("" when they do not): a standing wall, a gate's road, or
+## the line a future ring will stand on.
+static func wall_problem(w: SimWorld, r: Rect2i) -> String:
+	var hit := w.wall_reservation_in(r)
+	if hit.is_empty():
+		return ""
+	var ring_name := w.wall_name(int(hit["ring"]))
+	if bool(hit["gate"]):
+		return "The road through the %s's gate must stay clear" % ring_name
+	if bool(hit["standing"]):
+		return "Blocked by the %s" % ring_name
+	return "Reserved for the %s" % ring_name
 
 
 static func format_cost(cost: Dictionary) -> String:
