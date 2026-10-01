@@ -12,9 +12,10 @@ CC0 does not require attribution; we give it gladly. Thank you, Kay.
   [GitHub](https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0), commit `84fa4e9`).
   The keep, cottages, storehouse, workshop, observatory, scriptorium, watchhouse and beacon tower;
   the construction stages and scaffolding; the grain plot and fence of the farm; the tent, crates,
-  barrels, sacks, weapon rack, well and gate arch used by the tools; trees, stumps, rocks, clouds
-  and mountains; the lumber, stone, barrel, crate and flag props; and the shared gradient atlas
-  `hexagons_medieval.png` that colours every static model.
+  barrels, sacks, weapon rack, well and gate arch used by the tools; the straight wall, wall gate
+  and blue towers (base, roofed, spire and catapult) that make up the four town walls; trees,
+  stumps, rocks, clouds and mountains; the lumber, stone, barrel, crate and flag props; and the
+  shared gradient atlas `hexagons_medieval.png` that colours every static model.
 - **KayKit : Character Pack : Adventurers 1.0**
   ([itch.io](https://kaylousberg.itch.io/kaykit-adventurers),
   [GitHub](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), commit `672074b`).
@@ -30,9 +31,10 @@ Everything else is made in-house, procedurally, by the Blender Python (bpy) scri
 `art_src/blender/`. These pieces are modelled in bpy, flat-shaded and low-poly, and coloured
 from the KayKit atlas so they match the kit: the berry bush and bare bush, the rolled scroll, the
 survey stake, the gold coins, the wheat rows, the anvil, the forge hearth, the lectern stand, the
-writing desk with inkpot and quill, and the flag pole. The same scripts produce the character
-recolours (copies of the KayKit atlases with only the clothing swatches re-dyed), the trimmed farm
-plot and gate arch, and every icon.
+writing desk with inkpot and quill, the flag pole, and the battered stone plinth under the outer
+walls. The same scripts produce the character recolours (copies of the KayKit atlases with only
+the clothing swatches re-dyed), the trimmed farm plot and gate arch, the squat wall tower (a kit
+tower with one band of windows cut out), the town gate with its doors swung open, and every icon.
 
 ## Fonts (SIL Open Font License 1.1)
 

@@ -29,6 +29,19 @@ ART_SRC = BLENDER_DIR.parent
 REPO = ART_SRC.parent
 MANIFEST = json.loads((ART_SRC / "manifest.json").read_text(encoding="utf-8"))
 
+
+def source_root(rel: str) -> Path:
+    """A vendored source root (manifest source_roots) under the repo. The vendor folder is
+    git-ignored, so a git worktree (for example .wt/<name> inside the main checkout) has none
+    of its own: the nearest ancestor that has it is used instead."""
+    here = REPO / rel
+    if here.exists():
+        return here
+    for parent in REPO.parents:
+        if (parent / rel).exists():
+            return parent / rel
+    return here
+
 OUT_MODELS = REPO / MANIFEST["outputs"]["models"]
 OUT_CHARACTERS = REPO / MANIFEST["outputs"]["characters"]
 OUT_ICONS = REPO / MANIFEST["outputs"]["icons"]
@@ -38,7 +51,7 @@ OUT_SHEETS = REPO / MANIFEST["outputs"]["contact_sheets"]
 # and the Godot editor never sees a half-written .glb or .png inside client/.
 TMP_DIR = REPO / "out" / "art" / ".tmp"
 
-MEDIEVAL_ROOT = REPO / MANIFEST["source_roots"]["medieval"]
+MEDIEVAL_ROOT = source_root(MANIFEST["source_roots"]["medieval"])
 ATLAS_NAME = "hexagons_medieval"
 ATLAS_PATH = MEDIEVAL_ROOT.parent.parent / "Textures" / "hexagons_medieval.png"
 ATLAS_GRID = (8, 4)  # columns x rows of gradient swatches in every KayKit atlas
@@ -71,7 +84,7 @@ def log(msg: str) -> None:
 def src_path(ref: str) -> Path:
     """'medieval:buildings/red/x.gltf' -> absolute path inside the fetched kit."""
     root_key, rel = ref.split(":", 1)
-    path = REPO / MANIFEST["source_roots"][root_key] / rel
+    path = source_root(MANIFEST["source_roots"][root_key]) / rel
     if not path.exists():
         raise FileNotFoundError(f"{ref} -> {path} (run: node scripts/fetch-assets.mjs)")
     return path

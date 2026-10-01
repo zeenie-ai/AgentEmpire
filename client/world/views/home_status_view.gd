@@ -1,7 +1,9 @@
 class_name HomeStatusView
 extends Node3D
 ## What an agent's home shows the player, readable from across the town:
-## - a name plate (the agent's name, role and rank), tinted by what the agent is doing;
+## - a name plate over the roof (NamePlate, in screen space on WorldView's plate layer): the
+##   agent's name tinted by what the agent is doing, above its role and rank or what needs the
+##   player, sized to stay readable at every zoom;
 ## - a signal post beside the entrance: its hand bell swings and glows and a banner is raised
 ##   while an approval waits (blue once a Mana seal ran out), since approvals are what the
 ##   player must answer;
@@ -12,9 +14,12 @@ extends Node3D
 ## It reads Realm a few times a second; the home's BuildingView knows nothing about it.
 
 const REFRESH_S := 0.25
-const PLATE_PIXEL := 0.0085
+## The name plate sits this far above the roof.
+const PLATE_ABOVE := 0.35
+## How much of the home's width the plate is sized against (tiles either side of its centre).
+const PLATE_SPAN := 1.5
 ## The blocked mark floats above the name plate so no roof hides it.
-const MARKER_ABOVE := 1.75
+const MARKER_ABOVE := 2.6
 ## The chest and the signal post flank the entrance path (home-centre space).
 const CHEST_AT := Vector3(1.05, 0.0, 2.05)
 const POST_AT := Vector3(-1.05, 0.0, 2.0)
@@ -32,8 +37,7 @@ var building_id: int = 0
 
 var _roof: float = 2.0
 var _door: Vector3 = Vector3.ZERO
-var _name: Label3D
-var _sub: Label3D
+var _plate: NamePlate
 var _post: Node3D
 var _bell: Node3D
 var _bell_mat: StandardMaterial3D
@@ -51,13 +55,18 @@ var _flags: Dictionary = {}
 var _work_pos: Variant = null
 
 
-func setup(b: SimBuilding, height: float, door: Vector3) -> void:
+## `plate_layer` holds the name plate (a Control in screen space); without one the home has none.
+func setup(b: SimBuilding, height: float, door: Vector3, plate_layer: Control = null) -> void:
 	agent_id = b.owner_agent_id
 	building_id = b.id
 	position = Vector3(b.center().x, 0.0, b.center().y)
 	_roof = maxf(height, 1.4)
 	_door = door
-	_build_plate()
+	if plate_layer != null:
+		_plate = NamePlate.new()
+		_plate.name = "Plate%d" % b.id
+		_plate.visible = false
+		plate_layer.add_child(_plate)
 	_build_bell()
 	_build_chest()
 	_build_mark()
@@ -71,19 +80,16 @@ func setup(b: SimBuilding, height: float, door: Vector3) -> void:
 	refresh()
 
 
-func _build_plate() -> void:
-	_name = _label(64, UiFonts.cinzel(700, 1))
-	_name.position = Vector3(0, _roof + 1.05, 0)
-	_sub = _label(40, UiFonts.mono(500, 1))
-	_sub.position = Vector3(0, _roof + 0.62, 0)
-	_sub.modulate = Color(1, 1, 1, 0.85)
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and _plate != null and is_instance_valid(_plate):
+		_plate.queue_free()
 
 
 func _label(size: int, font: Font) -> Label3D:
 	var l := Label3D.new()
 	l.font = font
 	l.font_size = size
-	l.pixel_size = PLATE_PIXEL
+	l.pixel_size = 0.0085
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.outline_size = 14
 	l.outline_modulate = Color(0.08, 0.05, 0.03, 0.9)
@@ -263,10 +269,11 @@ func refresh() -> void:
 	var a := Realm.agent(agent_id)
 	if a.is_empty():
 		visible = false
+		if _plate != null:
+			_plate.visible = false
 		return
 	visible = true
 	var role := J.gs(a, "role")
-	_name.text = J.gs(a, "name", "Agent")
 	var status := ""
 	var approvals := Realm.approvals_for(agent_id)
 	var review := false
@@ -298,8 +305,10 @@ func refresh() -> void:
 		color = COLOR_WORKING
 	elif lifecycle == "settling":
 		status = "SETTLING IN"
-	_sub.text = ("%s  RANK %s" % [Economy.data.role_name(role).to_upper(), J.gs(a, "rank", "F")]) + (("  -  " + status) if status != "" else "")
-	_name.modulate = color
+	if _plate != null:
+		var caption := status if status != "" else "%s  ·  RANK %s" % [Economy.data.role_name(role).to_upper(), J.gs(a, "rank", "F")]
+		var caption_color := UiTokens.HUD_SUBTLE if status == "" or color == COLOR_IDLE else color
+		_plate.set_text(J.gs(a, "name", "Agent"), caption, color, caption_color)
 	_flags = {"approval": not approvals.is_empty(), "seal": seal_out, "review": review, "failed": failed,
 		"blocked": activity == "blocked", "working": activity == "working"}
 	var ringing := bool(_flags["approval"])
@@ -347,3 +356,25 @@ func update_visual(time: float, delta: float) -> void:
 		var wp: Vector3 = _work_pos
 		_work_light.global_position = wp + Vector3(0, 1.1, 0)
 		_work_light.light_energy = 0.9 + 0.4 * sin(time * 4.2)
+	_place_plate()
+
+
+## Keeps the name plate over the roof on screen, sized by how wide the home looks.
+func _place_plate() -> void:
+	if _plate == null:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or not visible or not is_inside_tree():
+		_plate.visible = false
+		return
+	var top := global_position + Vector3(0, _roof + PLATE_ABOVE, 0)
+	if cam.is_position_behind(top):
+		_plate.visible = false
+		return
+	var at := cam.unproject_position(top)
+	var right := cam.global_transform.basis.x.normalized() * PLATE_SPAN
+	var span := cam.unproject_position(top - right).distance_to(cam.unproject_position(top + right))
+	var shown := get_viewport().get_visible_rect().grow(120.0).has_point(at)
+	_plate.visible = shown
+	if shown:
+		_plate.place(at, span)

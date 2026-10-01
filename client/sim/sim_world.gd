@@ -19,6 +19,9 @@ signal notice(kind: String, data: Dictionary)
 signal ticked(tick: int)
 ## Solidity or occupancy changed inside rect (minimap, placement ghost).
 signal grid_changed(rect: Rect2i)
+## Town wall ring `ring` rose or fell, or one of its pieces opened (a building stands on it) or
+## closed again. WallView redraws that ring.
+signal walls_changed(ring: int)
 
 const CAT_UNIT := "unit"
 const CAT_BUILDING := "building"
@@ -61,6 +64,21 @@ var keep_id: int = 0
 ## Font Wisps in flight: {"id", "task_id", "agent_id", "building", "pos": Vector2,
 ## "prev": Vector2, "delay": int}. They carry scrolls nobody else could.
 var wisps: Array[Dictionary] = []
+## The town walls (WallLayout): every ring's cells are reserved from the start, and ring k
+## stands from Age k + 1. Null on a sandbox map (create_empty), which has none.
+var walls: WallLayout = null
+## How many rings stand now.
+var walls_up: int = 0
+## Per WallLayout piece: 1 while a building stands on one of its cells (towns laid out before
+## the walls existed). Such a piece is left out of its standing ring: a gap, never solid.
+var wall_gaps: PackedByteArray = PackedByteArray()
+## Wanderers (economy.json anti_deadlock.wanderer): free townsfolk who walk in from the map
+## edge when the town has none left and too little Food to train one. Off on sandbox maps.
+var wanderers_enabled: bool = false
+## Ticks until the next wanderer while a rescue is under way; -1 when there is none.
+var wanderer_wait: int = -1
+## Wanderers who came so far (each enters through the next outer gate).
+var wanderers_sent: int = 0
 
 var _node_chunks: Dictionary = {}
 var _region: PackedByteArray = PackedByteArray()
@@ -82,18 +100,22 @@ func _init(economy: EconomyData, resource_ledger: Ledger) -> void:
 	age = maxi(econ.start_age(), 1)
 
 
-## A new town: generated map, the Keep at the centre and the starting townsfolk.
+## A new town: generated map, the Keep at the centre and the starting townsfolk. The walls are
+## laid out first, so nothing grows on their line, and the current age's rings stand.
 static func create_new(economy: EconomyData, resource_ledger: Ledger, seed_value: int, id: String = "town") -> SimWorld:
 	var w := SimWorld.new(economy, resource_ledger)
 	w.town_id = id
 	w.map_seed = seed_value
 	w.ledger.set_age(w.age)
+	w.wanderers_enabled = true
+	w.enable_walls()
 	MapGenerator.generate(w, seed_value)
 	w.spawn_start_units()
 	return w
 
 
-## An empty map with only the Keep (tests and tools).
+## An empty map with only the Keep (tests and tools): no walls and no wanderers unless a test
+## turns them on (enable_walls(), wanderers_enabled).
 static func create_empty(economy: EconomyData, resource_ledger: Ledger, id: String = "test") -> SimWorld:
 	var w := SimWorld.new(economy, resource_ledger)
 	w.town_id = id
@@ -138,6 +160,7 @@ func _tick_once() -> void:
 	TrainingSystem.tick(self)
 	RegrowSystem.tick(self)
 	WispSystem.tick(self)
+	WandererSystem.tick(self)
 	tick += 1
 	ticked.emit(tick)
 
@@ -196,6 +219,7 @@ func add_building(type: String, cell: Vector2i, complete: bool, spend_op: String
 	_restore_building(b)
 	if not b.walkable:
 		_on_cells_blocked(r)
+	_refresh_wall_gaps(r)
 	entity_spawned.emit(b.id, CAT_BUILDING)
 	grid_changed.emit(r)
 	return b
@@ -221,6 +245,7 @@ func remove_building(id: int) -> void:
 		grid.set_solid(r, false)
 	if keep_id == id:
 		keep_id = 0
+	_refresh_wall_gaps(r)
 	entity_removed.emit(id, CAT_BUILDING)
 	grid_changed.emit(r)
 
@@ -718,6 +743,221 @@ func work_per_tick(type: String, builders: int) -> int:
 	if not _work_cache.has(key):
 		_work_cache[key] = ConstructionMath.work_per_tick(econ, econ.building_build_s(type), builders, tick_rate)
 	return int(_work_cache[key])
+
+
+# --- walls ------------------------------------------------------------------------------------
+
+## Gives the town its walls (new and loaded towns have them; sandbox maps do not). The rings the
+## current age has stand at once.
+func enable_walls() -> void:
+	if walls != null:
+		return
+	walls = WallLayout.for_economy(econ, grid.size)
+	walls_up = 0
+	wall_gaps = PackedByteArray()
+	wall_gaps.resize(walls.pieces.size())
+	sync_walls()
+
+
+func wall_ring_count() -> int:
+	return walls.ring_count() if walls != null else 0
+
+
+## How many rings stand in age `a`: ring k (the Keep Ring is 0) stands from Age k + 1.
+func rings_for_age(a: int) -> int:
+	return clampi(a, 0, wall_ring_count())
+
+
+## Raises or lowers rings until exactly the current age's stand. Raising a ring makes its
+## pieces solid, clears trees and bushes off its line and its gate roads, and moves anyone
+## standing there out of the way. Called whenever the age changes.
+func sync_walls() -> void:
+	if walls == null:
+		return
+	var want := rings_for_age(age)
+	while walls_up < want:
+		_raise_ring(walls_up)
+		walls_up += 1
+		walls_changed.emit(walls_up - 1)
+		emit_notice("wall_raised", {"ring": walls_up - 1})
+	while walls_up > want:
+		walls_up -= 1
+		_lower_ring(walls_up)
+		walls_changed.emit(walls_up)
+		emit_notice("wall_lowered", {"ring": walls_up})
+
+
+## The wall's name for ring `ring` (economy.json ages[].wall): "Keep Ring", "Merchant Ring", ...
+func wall_name(ring: int) -> String:
+	return String(econ.age_def(ring + 1).get("wall", "town wall"))
+
+
+## Ring of the wall reserving cell `c` (standing or not; its gate roads included), or -1.
+func wall_ring_at(c: Vector2i) -> int:
+	return walls.ring_at(c) if walls != null else -1
+
+
+## True when wall piece `piece` stands: its ring has risen and no building leaves a gap there.
+func piece_stands(piece: int) -> bool:
+	if walls == null or piece < 0 or piece >= walls.pieces.size():
+		return false
+	var p := walls.pieces[piece]
+	return p.kind != WallLayout.GATE and p.ring < walls_up and wall_gaps[piece] == 0
+
+
+## True when a standing wall occupies cell `c`.
+func is_wall_cell(c: Vector2i) -> bool:
+	return walls != null and piece_stands(walls.piece_at(c))
+
+
+## The first wall-reserved cell inside `r`, as {"ring": int, "gate": bool, "standing": bool}
+## ({} when the walls leave `r` free).
+func wall_reservation_in(r: Rect2i) -> Dictionary:
+	if walls == null:
+		return {}
+	var clipped := r.intersection(grid.bounds())
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
+			var c := Vector2i(x, y)
+			var ring := walls.ring_at(c)
+			if ring < 0:
+				continue
+			return {"ring": ring, "gate": walls.is_gate_cell(c), "standing": ring < walls_up}
+	return {}
+
+
+func _raise_ring(k: int) -> void:
+	var blocked := PackedByteArray()
+	blocked.resize(grid.size * grid.size)
+	for pi: int in walls.ring_pieces[k]:
+		var p := walls.pieces[pi]
+		# Trees and bushes on the wall's line and its gate roads are cleared for good (maps made
+		# before the walls; new maps leave the line clear).
+		for ci in p.cells:
+			var occ := grid.occupant[ci]
+			if occ != 0 and nodes.has(occ):
+				remove_node(occ)
+		if p.kind == WallLayout.GATE:
+			continue
+		wall_gaps[pi] = 1 if _piece_has_building(p) else 0
+		if wall_gaps[pi] != 0:
+			continue
+		for ci in p.cells:
+			grid.set_solid(Rect2i(walls.cell_of(ci), Vector2i.ONE), true)
+			blocked[ci] = 1
+	_on_wall_blocked(blocked)
+	grid_changed.emit(_ring_rect(k))
+
+
+func _lower_ring(k: int) -> void:
+	for pi: int in walls.ring_pieces[k]:
+		var p := walls.pieces[pi]
+		var was_gap := wall_gaps[pi] != 0
+		wall_gaps[pi] = 0
+		if p.kind == WallLayout.GATE or was_gap:
+			continue
+		for ci in p.cells:
+			var c := walls.cell_of(ci)
+			if not _solid_otherwise(c):
+				grid.set_solid(Rect2i(c, Vector2i.ONE), false)
+	grid_changed.emit(_ring_rect(k))
+
+
+## A building arrived on or left wall cells inside `r`: open or close the pieces it touches.
+func _refresh_wall_gaps(r: Rect2i) -> void:
+	if walls == null or walls_up == 0:
+		return
+	var seen := {}
+	var clipped := r.intersection(grid.bounds())
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
+			var pi := walls.piece_at(Vector2i(x, y))
+			if pi < 0 or seen.has(pi):
+				continue
+			seen[pi] = true
+			var p := walls.pieces[pi]
+			if p.kind == WallLayout.GATE or p.ring >= walls_up:
+				continue
+			var gap := 1 if _piece_has_building(p) else 0
+			if gap == wall_gaps[pi]:
+				continue
+			wall_gaps[pi] = gap
+			var blocked := PackedByteArray()
+			blocked.resize(grid.size * grid.size)
+			for ci in p.cells:
+				var c := walls.cell_of(ci)
+				if gap != 0:
+					if not _solid_otherwise(c):
+						grid.set_solid(Rect2i(c, Vector2i.ONE), false)
+				else:
+					grid.set_solid(Rect2i(c, Vector2i.ONE), true)
+					blocked[ci] = 1
+			if gap == 0:
+				_on_wall_blocked(blocked)
+			walls_changed.emit(p.ring)
+
+
+func _piece_has_building(p: WallLayout.Piece) -> bool:
+	for ci in p.cells:
+		var occ := grid.occupant[ci]
+		if occ != 0 and buildings.has(occ):
+			return true
+	return false
+
+
+## True when something other than a wall makes `c` solid: rock, a live resource node or a
+## building that is not a field.
+func _solid_otherwise(c: Vector2i) -> bool:
+	if grid.terrain_at(c) == SimGrid.TERRAIN_ROCK:
+		return true
+	var occ := grid.occupant_at(c)
+	if occ == 0:
+		return false
+	var n: SimResourceNode = nodes.get(occ)
+	if n != null:
+		return not n.depleted
+	var b: SimBuilding = buildings.get(occ)
+	return b != null and not b.walkable
+
+
+## Cells marked in `blocked` (a byte per cell) just became wall: anyone standing there steps
+## off to their own side of the wall, and routes through them are planned again.
+func _on_wall_blocked(blocked: PackedByteArray) -> void:
+	for u: SimUnit in units.values():
+		var c := u.cell()
+		if grid.in_bounds(c) and blocked[grid.index(c)] != 0:
+			var free := _wall_exit(u.pos)
+			if free != Pathing.NO_CELL:
+				u.pos = Pathing.center_of(free)
+			if u.path_state == SimConst.PATH_READY:
+				repath(u)
+			continue
+		if u.path_state == SimConst.PATH_READY:
+			for i in range(u.path_i, u.path.size()):
+				var pc := u.path[i]
+				if grid.in_bounds(pc) and blocked[grid.index(pc)] != 0:
+					repath(u)
+					break
+
+
+## The nearest walkable cell to a point inside a wall, on the same side of the ring.
+func _wall_exit(p: Vector2) -> Vector2i:
+	var c := Pathing.cell_of(p)
+	var k := walls.ring_at(c)
+	if k >= 0:
+		var rel := p - walls.center
+		var side := 1.0 if rel.length() >= walls.radii[k] else -1.0
+		var probe := Pathing.cell_of(p + rel.normalized() * side * 1.6)
+		var near := Pathing.nearest_walkable(grid, probe, 3)
+		if near != Pathing.NO_CELL:
+			return near
+	return Pathing.nearest_walkable(grid, c, 10)
+
+
+func _ring_rect(k: int) -> Rect2i:
+	var r := int(ceil(walls.radii[k])) + 5
+	var c := Vector2i(walls.center)
+	return Rect2i(c - Vector2i(r, r), Vector2i(r, r) * 2).intersection(grid.bounds())
 
 
 # --- paths ------------------------------------------------------------------------------------

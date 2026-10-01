@@ -30,6 +30,9 @@ const SET_RALLY := "set_rally"
 const SET_GATHER_FOCUS := "set_gather_focus"
 ## Tools only (perf stress, screenshots); ignored unless SimWorld.allow_debug_commands.
 const DEBUG_SPAWN := "debug_spawn"
+## Tools and tests only: sets the age of an offline town (ages need the Town Hall otherwise).
+## Ignored unless SimWorld.allow_debug_commands.
+const DEBUG_SET_AGE := "debug_set_age"
 
 # Agents (TownLink, after the Town Hall agreed).
 ## An agent starts training at the Keep.
@@ -217,6 +220,10 @@ static func revoke_spend(op_id: String) -> Dictionary:
 
 static func set_age(age: int) -> Dictionary:
 	return {"type": SET_AGE, "age": age}
+
+
+static func debug_set_age(age: int) -> Dictionary:
+	return {"type": DEBUG_SET_AGE, "age": age}
 
 
 static func _ids(unit_ids: Array) -> Array:

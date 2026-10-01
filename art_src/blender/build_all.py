@@ -45,10 +45,16 @@ def blender_binary() -> str:
         return os.environ.get("BLENDER", DEFAULT_BLENDER)
 
 
+def has_source(rel: str) -> bool:
+    """The vendor folder is git-ignored: a git worktree inside the main checkout uses the
+    nearest ancestor's copy (as common.source_root does)."""
+    return any((p / rel).is_dir() for p in (REPO, *REPO.parents))
+
+
 def check_sources() -> None:
     import json
     manifest = json.loads((REPO / "art_src" / "manifest.json").read_text(encoding="utf-8"))
-    missing = [k for k, rel in manifest["source_roots"].items() if not (REPO / rel).is_dir()]
+    missing = [k for k, rel in manifest["source_roots"].items() if not has_source(rel)]
     if missing:
         sys.exit(f"KayKit sources missing ({', '.join(missing)}). Run: node scripts/fetch-assets.mjs")
 
@@ -94,7 +100,7 @@ def main() -> None:
     run_group(blender, [("models", "build_models.py", []), ("characters", "build_characters.py", [])])
     run_group(blender, [("icons", "render_icons.py", [])])
     run_group(blender, [("sheets-a", "contact_sheets.py", ["buildings", "construction", "tools"]),
-                        ("sheets-b", "contact_sheets.py", ["nature", "props"]),
+                        ("sheets-b", "contact_sheets.py", ["nature", "props", "walls"]),
                         ("sheets-c", "contact_sheets.py", ["characters"]),
                         ("sheets-d", "contact_sheets.py", ["icons"])])
     run_group(blender, [("verify", "verify.py", [])])

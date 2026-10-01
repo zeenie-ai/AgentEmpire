@@ -7,6 +7,16 @@ extends Node3D
 ## Font Wisps in flight get a WispView.
 ## Graphics quality (Settings "graphics/quality") is applied here to the environment, the grass
 ## and the selection rings (decals on Forward+, a MultiMesh elsewhere).
+## The town walls (WallView) stand for the current age; survey stakes mark the rings to come.
+## While the Town Hall researches the next age, ResearchView shows it at the Keep and at the
+## gates of the ring that will rise.
+## When the age changes a ring rises with the handoff's animation (wall_rise_started lets the
+## camera frame it), then the stakes move out to the next ring.
+## World sounds go to the Audio autoload at their positions: hammering at construction sites,
+## chopping and foraging at gatherers, drop-offs, and Font Wisps setting off.
+
+## A town wall ring starts to rise: `center` and `radius` frame it, `seconds` is how long it takes.
+signal wall_rise_started(ring: int, center: Vector3, radius: float, seconds: float)
 
 const UNIT_RING := 0.42
 const RING_UNIT := Color(0.663, 0.941, 0.816, 0.95)
@@ -15,6 +25,17 @@ const RING_HOVER := Color(1.0, 1.0, 1.0, 0.45)
 const MOTES_EXTENT := Vector3(24.0, 3.5, 18.0)
 const MOTE_DAY := Color(1.0, 0.86, 0.55)
 const MOTE_NIGHT := Color(0.62, 0.9, 1.0)
+## A ring that stands within this many seconds of binding a town appears without a rise (the
+## town was just loaded, or caught up with the Town Hall's age).
+const RISE_AFTER_S := 1.5
+## World sounds: seconds between hammer blows at a site, chops at a tree and handfuls at a bush
+## or field (each with jitter), and how far from the point the camera looks at they are played.
+const HAMMER_S := Vector2(0.5, 0.8)
+const CHOP_S := Vector2(0.85, 1.15)
+const FORAGE_S := Vector2(1.3, 1.9)
+const SOUND_RANGE := 42.0
+## Canvas layer of the agent homes' name plates: over the town, under the HUD (layer 10).
+const PLATE_LAYER := 4
 
 var world: SimWorld
 var selection: Selection
@@ -25,12 +46,18 @@ var environment_view: SkyEnvironment
 var ground: GroundView
 var resources: ResourceFieldView
 var stakes: SurveyStakes
+var walls: WallView
+var research: ResearchView
+## Tools and tests: an age research to show instead of the Town Hall's ({} for none).
+var research_override: Dictionary = {}
 ## SelectionRings or DecalRings: both take set_rings(entries).
 var rings: Node3D
 var ghost: PlacementGhost
 var rally: RallyFlag
 var floating: FloatingText
 var motes: GeometryInstance3D
+## Screen-space name plates of agent homes (NamePlate), under the HUD.
+var plate_root: Control
 
 var unit_views: Dictionary = {}
 var building_views: Dictionary = {}
@@ -43,6 +70,14 @@ var _units_root: Node3D
 var _buildings_root: Node3D
 var _time: float = 0.0
 var _motes_material: StandardMaterial3D
+## Seconds since the current town was bound.
+var _bound_s: float = 0.0
+## Sound clocks: site id or unit id -> seconds to the next sound.
+var _site_sound: Dictionary = {}
+var _unit_sound: Dictionary = {}
+## Wisp id -> true once it has set off (its "wisp" cue played).
+var _wisp_flying: Dictionary = {}
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
@@ -58,6 +93,14 @@ func _ready() -> void:
 	stakes = SurveyStakes.new()
 	stakes.name = "SurveyStakes"
 	add_child(stakes)
+	walls = WallView.new()
+	walls.name = "Walls"
+	add_child(walls)
+	walls.rise_started.connect(_on_rise_started)
+	walls.rise_finished.connect(_on_rise_finished)
+	research = ResearchView.new()
+	research.name = "Research"
+	add_child(research)
 	_buildings_root = Node3D.new()
 	_buildings_root.name = "Buildings"
 	add_child(_buildings_root)
@@ -74,6 +117,15 @@ func _ready() -> void:
 	floating = FloatingText.new()
 	floating.name = "FloatingText"
 	add_child(floating)
+	var plates := CanvasLayer.new()
+	plates.name = "Plates"
+	plates.layer = PLATE_LAYER
+	add_child(plates)
+	plate_root = Control.new()
+	plate_root.name = "PlateRoot"
+	plate_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plates.add_child(plate_root)
+	plate_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	motes = Fx.motes(MOTES_EXTENT)
 	motes.name = "Motes"
 	_motes_material = (Fx.sprite_material(WorldTextures.soft_dot(), true).duplicate() as StandardMaterial3D)
@@ -117,6 +169,8 @@ func bind(w: SimWorld) -> void:
 	ground.build(w)
 	resources.build(w)
 	stakes.build(w)
+	walls.build(w)
+	_bound_s = 0.0
 	for b: SimBuilding in w.buildings.values():
 		_add_building(b)
 	for u: SimUnit in w.units.values():
@@ -125,6 +179,8 @@ func bind(w: SimWorld) -> void:
 	w.entity_removed.connect(_on_removed)
 	w.entity_changed.connect(_on_changed)
 	w.notice.connect(_on_notice)
+	w.walls_changed.connect(_on_walls_changed)
+	research.bind(w, building_views.get(w.keep_id), plate_root)
 
 
 func unbind() -> void:
@@ -133,6 +189,12 @@ func unbind() -> void:
 		world.entity_removed.disconnect(_on_removed)
 		world.entity_changed.disconnect(_on_changed)
 		world.notice.disconnect(_on_notice)
+		world.walls_changed.disconnect(_on_walls_changed)
+	walls.clear()
+	research.clear()
+	_site_sound.clear()
+	_unit_sound.clear()
+	_wisp_flying.clear()
 	for v: Node in unit_views.values():
 		v.queue_free()
 	for v: Node in building_views.values():
@@ -166,7 +228,7 @@ func _add_building(b: SimBuilding) -> void:
 		var hv := HomeStatusView.new()
 		hv.name = "Home%d" % b.id
 		_buildings_root.add_child(hv)
-		hv.setup(b, v.height, v.model.get_meta("door", Vector3(0, 0.3, float(b.size.y) * 0.5)))
+		hv.setup(b, v.height, v.model.get_meta("door", Vector3(0, 0.3, float(b.size.y) * 0.5)), plate_root)
 		home_views[b.id] = hv
 
 
@@ -214,9 +276,18 @@ func _on_changed(id: int, category: String) -> void:
 
 
 func _on_notice(kind: String, data: Dictionary) -> void:
-	if kind != "deposited" or int(data.get("amount", 0)) <= 0:
+	if kind == "wanderer":
+		var notify := get_node_or_null("/root/Notify")
+		if notify != null:
+			notify.call("push", "A wanderer has come to join your town.", "good", "wanderer", 5000)
+		return
+	if kind != "deposited":
 		return
 	var b: SimBuilding = world.buildings.get(int(data.get("building", 0)))
+	if b != null:
+		_sound("drop_off", Vector3(b.center().x, 0.5, b.center().y))
+	if int(data.get("amount", 0)) <= 0:
+		return
 	var at := Vector3.ZERO
 	if b != null:
 		at = Vector3(b.center().x, ModelLibrary.building_height(b.type) * 0.55 + 0.6, b.center().y)
@@ -226,10 +297,40 @@ func _on_notice(kind: String, data: Dictionary) -> void:
 	floating.spawn(at, "+%d" % int(data["amount"]), Palette.resource(String(data.get("res", ""))).lightened(0.25))
 
 
+## A wall ring rose, fell, or opened or closed a gap. A ring that rises while the town runs plays
+## the wall-rise (the stakes move out when it is done); otherwise it simply appears.
+func _on_walls_changed(ring: int) -> void:
+	var animate := _bound_s >= RISE_AFTER_S and ring < world.walls_up and not walls.rings.has(ring)
+	walls.on_walls_changed(ring, animate)
+	if not animate:
+		stakes.build(world)
+		_paint_walls()
+
+
+func _on_rise_started(ring: int, center: Vector3, radius: float, seconds: float) -> void:
+	wall_rise_started.emit(ring, center, radius, seconds)
+
+
+func _on_rise_finished(_ring: int) -> void:
+	if world == null:
+		return
+	stakes.build(world)
+	_paint_walls()
+
+
+func _paint_walls() -> void:
+	if ground.mask == null:
+		return
+	for k in world.walls_up:
+		ground.mask.paint_wall_ring(world, k)
+	ground.mask.flush()
+
+
 func _process(delta: float) -> void:
 	if world == null:
 		return
 	_time += delta
+	_bound_s += delta
 	var alpha := Game.interp_alpha if Game.world == world else 1.0
 	for id: int in unit_views:
 		var u: SimUnit = world.units.get(id)
@@ -246,6 +347,20 @@ func _process(delta: float) -> void:
 	_update_wisps(alpha)
 	_update_rings(alpha)
 	_update_motes()
+	_update_sounds(delta)
+	research.show_research(_research())
+	research.update_visual(Time.get_unix_time_from_system(), delta, _time)
+
+
+## The age research under way: the tools' override, else the Town Hall's (online towns only).
+func _research() -> Dictionary:
+	if not research_override.is_empty():
+		return research_override
+	var game := get_node_or_null("/root/Game")
+	var realm := get_node_or_null("/root/Realm")
+	if game == null or realm == null or not bool(game.call("is_online_town")):
+		return {}
+	return J.d(J.d(realm.get("age")).get("research"))
 
 
 ## Where an agent's add-on in use stands, or null when it works at none.
@@ -271,10 +386,15 @@ func _update_wisps(alpha: float) -> void:
 			v.setup(id)
 			wisp_views[id] = v
 		(wisp_views[id] as WispView).update_visual(wisp, alpha, _time)
+		if int(wisp["delay"]) <= 0 and not _wisp_flying.has(id):
+			_wisp_flying[id] = true
+			var p: Vector2 = wisp["pos"]
+			_sound("wisp", Vector3(p.x, WispView.FLY_HEIGHT, p.y))
 	for id: int in wisp_views.keys():
 		if not live.has(id):
 			(wisp_views[id] as Node).queue_free()
 			wisp_views.erase(id)
+			_wisp_flying.erase(id)
 
 
 ## An agent whose work was accepted cheers.
@@ -298,6 +418,63 @@ func _update_motes() -> void:
 		motes.global_position = Vector3(focus.x, MOTES_EXTENT.y + 0.3, focus.z)
 	var n := ArtMaterials.night_amount()
 	_motes_material.albedo_color = MOTE_DAY.lerp(MOTE_NIGHT, n) * Color(1, 1, 1, lerpf(0.55, 0.9, n))
+
+
+# --- world sounds -----------------------------------------------------------------------------
+
+## Hammering at construction sites while builders work, chopping and foraging at gatherers.
+## Only near where the camera looks, each on its own jittered clock.
+func _update_sounds(delta: float) -> void:
+	var focus: Variant = _camera_focus()
+	if focus == null:
+		return
+	var at: Vector2 = focus
+	var sites := {}
+	for u: SimUnit in world.units.values():
+		if u.pos.distance_to(at) > SOUND_RANGE:
+			continue
+		if u.job == SimConst.JOB_BUILD and u.phase == BuildJob.BUILDING:
+			sites[u.target_id] = true
+		elif u.job == SimConst.JOB_GATHER and u.phase == GatherJob.GATHERING:
+			var left := float(_unit_sound.get(u.id, _rng.randf_range(0.0, 0.6))) - delta
+			if left <= 0.0:
+				var chop := u.gather_kind == "tree"
+				var span := CHOP_S if chop else FORAGE_S
+				left = _rng.randf_range(span.x, span.y)
+				_sound("chop" if chop else "gather_food", Vector3(u.pos.x, 0.6, u.pos.y))
+			_unit_sound[u.id] = left
+		elif _unit_sound.has(u.id):
+			_unit_sound.erase(u.id)
+	for id: int in _site_sound.keys():
+		if not sites.has(id):
+			_site_sound.erase(id)
+	for id: int in sites:
+		var b: SimBuilding = world.buildings.get(id)
+		if b == null or b.complete:
+			continue
+		var left := float(_site_sound.get(id, _rng.randf_range(0.05, 0.3))) - delta
+		if left <= 0.0:
+			left = _rng.randf_range(HAMMER_S.x, HAMMER_S.y)
+			_sound("construct_hit", Vector3(b.center().x, 0.5, b.center().y))
+		_site_sound[id] = left
+
+
+## The ground point at the centre of the view, as a Vector2, or null.
+func _camera_focus() -> Variant:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return null
+	var fwd := -cam.global_transform.basis.z
+	if fwd.y > -0.05:
+		return null
+	var hit := cam.global_position + fwd * (cam.global_position.y / -fwd.y)
+	return Vector2(hit.x, hit.z)
+
+
+func _sound(cue: String, at: Vector3) -> void:
+	var audio := get_node_or_null("/root/Audio")
+	if audio != null and audio.has_method("play_at"):
+		audio.call("play_at", cue, at)
 
 
 ## Order feedback: a ring that shrinks and fades where the order went.

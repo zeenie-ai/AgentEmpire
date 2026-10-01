@@ -5,7 +5,8 @@ extends RefCounted
 
 ## Version of SimWorld.to_dict(); bump when the snapshot layout changes (save_town uses it).
 ## 2: agents (unit role and state, home plots, add-on tool ids) and Font Wisps.
-const SCHEMA_VERSION := 2
+## 3: town walls and wanderers (older towns get both when they load).
+const SCHEMA_VERSION := 3
 
 # Unit jobs.
 const JOB_IDLE := "idle"

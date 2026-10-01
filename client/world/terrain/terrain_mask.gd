@@ -38,6 +38,8 @@ func build(w: SimWorld) -> void:
 	paint_ring(w.map_center(), PLAZA_RADIUS + 0.1, 0.9, 0.55)
 	for b: SimBuilding in w.buildings.values():
 		paint_building(b)
+	for k in w.walls_up:
+		paint_wall_ring(w, k)
 	wear_texture = ImageTexture.create_from_image(wear_image)
 	_dirty = false
 
@@ -119,6 +121,45 @@ func _paint_rect(r: Rect2, reach: float, inner: float) -> void:
 			var v := clampf(1.0 - d / reach, 0.0, 1.0)
 			v = v * v * (3.0 - 2.0 * v) * inner
 			_raise(px, py, v)
+
+
+## Worn ground along the foot of standing wall ring `k`, and a dirt road through each of its
+## gates (WallLayout pieces).
+func paint_wall_ring(w: SimWorld, k: int) -> void:
+	if w.walls == null or k < 0 or k >= w.walls.ring_count():
+		return
+	var l := w.walls
+	for pi: int in l.ring_pieces[k]:
+		var p := l.pieces[pi]
+		match p.kind:
+			WallLayout.CURTAIN:
+				paint_segment(p.a, p.b, WallLayout.thickness(k) * 0.5 + 0.55, 0.4)
+			WallLayout.TOWER, WallLayout.GATE_TOWER:
+				paint_segment(p.center, p.center, p.radius + 0.5, 0.45)
+			WallLayout.GATE:
+				paint_segment(p.center - p.outward * 6.5, p.center + p.outward * 6.5, 1.25, 0.72)
+	_dirty = true
+
+
+## Worn earth within `half_width` of the segment a-b, fading out at its edge.
+func paint_segment(a: Vector2, b: Vector2, half_width: float, strength: float) -> void:
+	var lo := Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2.ONE * half_width
+	var hi := Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2.ONE * half_width
+	var p0 := _to_px(lo)
+	var p1 := _to_px(hi)
+	var ab := b - a
+	var len2 := maxf(ab.length_squared(), 0.000001)
+	for py in range(p0.y, p1.y + 1):
+		for px in range(p0.x, p1.x + 1):
+			if not _in_image(px, py):
+				continue
+			var wp := _to_world(px, py)
+			var t := clampf((wp - a).dot(ab) / len2, 0.0, 1.0)
+			var d := wp.distance_to(a + ab * t)
+			var v := clampf(1.0 - d / half_width, 0.0, 1.0)
+			v = v * v * (3.0 - 2.0 * v) * strength
+			_raise(px, py, v)
+	_dirty = true
 
 
 ## Footsteps: wears the grass a little at a walking unit's position.

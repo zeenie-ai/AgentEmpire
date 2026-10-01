@@ -145,7 +145,7 @@ static func mesh(key: String, variant: int = 0) -> Mesh:
 	if AssetCatalog.id_for(key) != "":
 		var art := _make(key, variant)
 		if art != null:
-			m = _single_mesh(art, FOLIAGE_PROFILE if key.begins_with("node/") else {})
+			m = _single_mesh(art, _mesh_profile(key))
 			art.free()
 			if m != null and key == "decor/stake_flag":
 				m = _with_flag(m)
@@ -156,6 +156,16 @@ static func mesh(key: String, variant: int = 0) -> Mesh:
 		m = _meshes[pk]
 	_meshes[ck] = m
 	return m
+
+
+## Kit shader profile for a MultiMesh key: foliage for trees and bushes; the town walls' towers
+## and gates light their windows at night like the Keep (the Lantern Hours).
+static func _mesh_profile(key: String) -> Dictionary:
+	if key.begins_with("node/"):
+		return FOLIAGE_PROFILE
+	if key.begins_with("wall/tower") or key == "wall/gate":
+		return {"glow_cell_a": WINDOW_CELLS["keep"]}
+	return {}
 
 
 ## Every variant mesh of `key` (one procedural mesh when there is no art).
@@ -412,6 +422,8 @@ static func _build(key: String) -> Mesh:
 		return _plot(Vector2i(int(parts[1]), int(parts[2])))
 	if parts.size() == 3 and parts[0] == "decor" and parts[1] == "mountain":
 		return _mountain(int(parts[2]))
+	if parts.size() == 2 and parts[0] == "wall":
+		return _wall_piece(parts[1])
 	push_warning("ModelLibrary: unknown mesh key %s" % key)
 	var f := MeshFactory.new()
 	f.box(Vector3(0, 0.5, 0), Vector3.ONE, Color.MAGENTA)
@@ -520,6 +532,40 @@ static func _scaffold(size: Vector2i, height: float) -> ArrayMesh:
 static func _plot(size: Vector2i) -> ArrayMesh:
 	var f := MeshFactory.new()
 	f.box(Vector3(0, 0.015, 0), Vector3(float(size.x) - 0.06, 0.03, float(size.y) - 0.06), Palette.SOIL_LIGHT)
+	return f.commit(ArtMaterials.base())
+
+
+# --- town walls ----------------------------------------------------------------------------
+
+## Procedural wall pieces, normalised like the art: curtains 1 thick with battlements on the
+## field side (+Z), towers with a shaft 1 across, the gate with an opening 1 wide.
+static func _wall_piece(kind: String) -> ArrayMesh:
+	var f := MeshFactory.new()
+	var s := Palette.STONE
+	var dark := Palette.STONE_DARK
+	match kind:
+		"curtain", "curtain_tall":
+			var base := 0.35 if kind == "curtain_tall" else 0.0
+			if base > 0.0:
+				f.box(Vector3(0, base * 0.5, 0), Vector3(2.5, base, 1.2), dark)
+			f.box(Vector3(0, base + 0.6, 0), Vector3(2.5, 1.2, 1.0), s, Palette.TERRACOTTA)
+			for i in 4:
+				f.box(Vector3(-0.94 + 0.625 * float(i), base + 1.33, 0.38), Vector3(0.36, 0.26, 0.24), s)
+		"gate":
+			for x in [-0.86, 0.86]:
+				f.box(Vector3(x, 0.75, 0), Vector3(0.5, 1.5, 1.05), s)
+			f.box(Vector3(0, 1.32, 0), Vector3(2.22, 0.36, 1.05), s, Palette.TERRACOTTA)
+			f.box(Vector3(-0.38, 0.45, -0.3), Vector3(0.06, 0.88, 0.5), Palette.WOOD_DARK)
+			f.box(Vector3(0.38, 0.45, -0.3), Vector3(0.06, 0.88, 0.5), Palette.WOOD_DARK)
+		_:
+			var h := {"tower_squat": 1.1, "tower": 1.6, "tower_roofed": 1.75, "tower_spire": 1.9, "tower_catapult": 1.6}.get(kind, 1.6) as float
+			f.cylinder(Vector3.ZERO, 0.52, 0.5, h, 8, s, true, false, Palette.TERRACOTTA)
+			for i in 8:
+				var a := TAU * float(i) / 8.0
+				f.box(Vector3(cos(a) * 0.45, h + 0.09, sin(a) * 0.45), Vector3(0.16, 0.18, 0.16), s)
+			if kind == "tower_roofed" or kind == "tower_spire":
+				f.cone(Vector3(0, h, 0), 0.62, 0.75 if kind == "tower_roofed" else 1.0, 8, Palette.SLATE)
+			f.box(Vector3(0, 0.22, 0.5), Vector3(0.22, 0.44, 0.06), Palette.WOOD_DARK)
 	return f.commit(ArtMaterials.base())
 
 

@@ -544,6 +544,116 @@ def portal_anchor(ob) -> dict:
     return {"portal": {"center": C.to_model_space(centre), "size": [round(width, 4), round(height, 4)]}}
 
 
+# --- town walls ------------------------------------------------------------------------------------
+# The client lays the walls out from WallLayout and scales each piece to the ring it stands in, so
+# these only fix proportions: curtains are normalised to thickness 1, towers to a shaft 1 across
+# and the gate to a door opening 1 wide (art_src/manifest.json, "walls" and "wall_notes").
+
+WALL_DEPTH = 0.8      # the kit curtain's thickness
+TOWER_SHAFT = 0.93    # the kit towers' shaft, flat to flat
+GATE_OPENING = 0.9    # the kit gate's door span
+PLINTH_LIFT = 0.3     # how far the tall curtain stands on its plinth (kit units)
+
+
+def dominant_cell(ob) -> tuple[int, int]:
+    """The atlas swatch covering the most area of a mesh (the stone of a wall)."""
+    me = ob.data
+    uv = me.uv_layers.active.data
+    area: dict[tuple[int, int], float] = {}
+    for poly in me.polygons:
+        idx = range(poly.loop_start, poly.loop_start + poly.loop_total)
+        u = sum(uv[i].uv[0] for i in idx) / poly.loop_total
+        v = sum(uv[i].uv[1] for i in idx) / poly.loop_total
+        cell = C.cell_of_uv(u, v)
+        area[cell] = area.get(cell, 0.0) + poly.area
+    return max(area, key=area.get)
+
+
+def model_plinth(length: float, top: float, foot: float, height: float, swatch) -> bpy.types.Object:
+    """A battered base course: a stone block whose long faces slope out toward the ground."""
+    lp = C.LowPoly(seed=2)
+    faces = lp.box((0, 0, height / 2), (length, top, height), swatch, light=0.35, dark=0.95)
+    for v in {v for f in faces for v in f.verts}:
+        if v.co.z < height / 2:
+            v.co.y = math.copysign(foot / 2, v.co.y)
+    return lp.to_object("Plinth")
+
+
+def build_curtain(tall: bool) -> bpy.types.Object:
+    """The kit's straight wall (battlements on the field side, -Y in Blender), optionally lifted
+    onto a battered plinth, normalised to thickness 1."""
+    ob = kit(MED + "buildings/neutral/wall_straight.gltf")
+    if tall:
+        stone = dominant_cell(ob)
+        ob.data.transform(Matrix.Translation((0, 0, PLINTH_LIFT)))
+        plinth = model_plinth(2.0, WALL_DEPTH + 0.04, WALL_DEPTH + 0.22, PLINTH_LIFT + 0.02, stone)
+        ob = C.join_parts([ob, plinth])
+    ob.data.transform(Matrix.Scale(1.0 / WALL_DEPTH, 4))
+    ob.data.update()
+    return ob
+
+
+def build_wall_tower(ref: str, band: tuple[float, float] | None = None) -> bpy.types.Object:
+    """A kit tower standing on its own centre, normalised to a shaft 1 across. `band` (z0, z1)
+    cuts that slice out of the shaft (one row of windows) for a squatter tower."""
+    ob = kit(ref)
+    if band is not None:
+        cut_band(ob, band[0], band[1])
+    ob.data.transform(Matrix.Scale(1.0 / TOWER_SHAFT, 4))
+    ob.data.update()
+    return ob
+
+
+def cut_band(ob, z0: float, z1: float) -> None:
+    """Remove the slice between heights z0 and z1 and lower everything above it. The cuts should
+    cross the plain shaft, so both cross-sections match and weld together; any loop left open
+    (a banner cut through) is capped."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+    for z in (z0, z1):
+        geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=(0, 0, z), plane_no=(0, 0, 1))
+    kill = [f for f in bm.faces if z0 + 1e-4 < f.calc_center_median().z < z1 - 1e-4]
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    for v in bm.verts:
+        if v.co.z >= z1 - 1e-5:
+            v.co.z -= z1 - z0
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=2e-4)
+    uv_layer = bm.loops.layers.uv.active
+    open_edges = [e for e in bm.edges if e.is_boundary and abs(e.verts[0].co.z - z0) < 1e-3 and abs(e.verts[1].co.z - z0) < 1e-3]
+    if open_edges:
+        res = bmesh.ops.holes_fill(bm, edges=open_edges, sides=0)
+        for f in res["faces"]:
+            f.smooth = False
+            neighbour = next((lf for e in f.edges for lf in e.link_faces if lf is not f), None)
+            uv = neighbour.loops[0][uv_layer].uv.copy() if neighbour is not None else C.atlas_uv("stone", 0.5)
+            for loop in f.loops:
+                loop[uv_layer].uv = uv
+    for f in bm.faces:
+        f.smooth = False
+    canonical_order(bm)
+    bm.to_mesh(ob.data)
+    bm.free()
+    clear_custom_normals(ob)
+
+
+def build_wall_gate() -> bpy.types.Object:
+    """The kit gate with its door leaves swung open into the town (+Y in Blender), normalised to
+    a door opening 1 wide. The leaves hinge on their outer edges (their origins)."""
+    objs = C.import_gltf(C.src_path(MED + "buildings/neutral/wall_straight_gate.gltf"))
+    for o in objs:
+        name = o.name.split(".")[0]
+        if name.endswith("door_left") or name.endswith("door_right"):
+            o.rotation_mode = 'XYZ'
+            o.rotation_euler = (0.0, 0.0, math.radians(-82.0 if name.endswith("door_left") else 82.0))
+    ob = C.join_parts(objs)
+    ob.data.transform(Matrix.Scale(1.0 / GATE_OPENING, 4))
+    ob.data.update()
+    return ob
+
+
 # Extra anchors beyond size/height/door/top, keyed by output stem.
 EXTRA_ANCHORS = {"waygate": portal_anchor}
 
@@ -681,6 +791,17 @@ def model_table() -> list[tuple[str, callable]]:
         ("crates", lambda: build_scaled(props["crates"]["source"], KIT_SCALE)),
         ("flag_blue", lambda: build_flag(props["flag_blue"]["source"], 1.1)),
         ("stake", lambda: model_stake()),
+    ]
+    walls = by_id("walls")
+    table += [
+        ("wall_curtain", lambda: build_curtain(False)),
+        ("wall_curtain_tall", lambda: build_curtain(True)),
+        ("wall_tower_squat", lambda: build_wall_tower(walls["wall_tower_squat"]["source"], (0.47, 0.93))),
+        ("wall_tower", lambda: build_wall_tower(walls["wall_tower"]["source"])),
+        ("wall_tower_roofed", lambda: build_wall_tower(walls["wall_tower_roofed"]["source"])),
+        ("wall_tower_spire", lambda: build_wall_tower(walls["wall_tower_spire"]["source"])),
+        ("wall_tower_catapult", lambda: build_wall_tower(walls["wall_tower_catapult"]["source"])),
+        ("wall_gate", lambda: build_wall_gate()),
     ]
     return table
 

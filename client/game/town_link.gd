@@ -224,7 +224,11 @@ func _on_world_started(w: SimWorld) -> void:
 	w.notice.connect(_on_notice)
 	if ledger != null and not ledger.rejected.is_connected(_on_rejected):
 		ledger.rejected.connect(_on_rejected)
-	Game.issue(GameCommands.set_age(Realm.current_age()))
+	# The Town Hall's age, mirrored into the town: its walls stand for it (a ring that rose while
+	# the game was closed appears at once; one that rises now plays its rise). Without a state yet,
+	# keep the saved age; the state's age_changed brings it in line.
+	if Realm.has_state:
+		Game.issue(GameCommands.set_age(Realm.current_age()))
 	# After the views have bound the new world (they hear world_started after us).
 	reconcile.call_deferred()
 
@@ -436,9 +440,12 @@ func _on_task_progress(task_id: String, _p: Dictionary) -> void:
 			_sync_state(a)
 
 
+## The Town Hall's age changed (research finished) or a full state arrived: the town follows
+## (SimWorld.sync_walls raises the new ring). Research under way changes nothing here; the world
+## shows it from Realm.age.research (ResearchView).
 func _on_age_changed(age: Dictionary) -> void:
 	if online_town and world() != null:
-		Game.issue(GameCommands.set_age(maxi(int(age.get("current", 1)), 1)))
+		Game.issue(GameCommands.set_age(maxi(J.gi(age, "current", 1), 1)))
 
 
 func _on_approval_requested(ap: Dictionary) -> void:

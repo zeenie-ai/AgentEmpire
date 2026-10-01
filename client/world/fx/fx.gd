@@ -167,6 +167,20 @@ static func dust_burst(size: Vector2) -> GeometryInstance3D:
 	return p
 
 
+## The dust a wall piece kicks up as it rises out of the ground: a low, rolling cloud along its
+## foot (`length` along local x, `depth` across), slower and heavier than a building's burst.
+static func wall_dust(length: float, depth: float) -> GeometryInstance3D:
+	var col := Color(0.84, 0.77, 0.66)
+	return particles({
+		"amount": 22 + int(length * 7.0), "lifetime": 2.6, "one_shot": true, "explosiveness": 0.8,
+		"direction": Vector3.UP, "spread": 85.0, "velocity": Vector2(0.5, 1.6), "gravity": Vector3(0, -0.22, 0),
+		"damping": Vector2(0.9, 1.6), "scale": Vector2(0.8, 1.7), "size": 1.25,
+		"scale_curve": _curve([Vector2(0, 0.3), Vector2(0.35, 1.0), Vector2(1, 1.6)]),
+		"colors": _gradient([[0.0, Color(col, 0.0)], [0.07, Color(col, 0.75)], [0.55, Color(col, 0.42)], [1.0, Color(col, 0.0)]]),
+		"box": Vector3(length * 0.5, 0.1, depth * 0.5 + 0.3),
+	})
+
+
 ## Continuous chimney smoke that drifts with the wind.
 static func chimney_smoke() -> GeometryInstance3D:
 	var col := Color(0.94, 0.92, 0.89)

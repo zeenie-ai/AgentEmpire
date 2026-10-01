@@ -81,6 +81,25 @@
     { "id": "stake", "recipe": "A short wooden survey stake with a small cloth tie, about 0.5 tall, for the build-zone ring." }
   ],
 
+  "walls": [
+    { "id": "wall_curtain", "source": "medieval:buildings/neutral/wall_straight.gltf",
+      "note": "A curtain piece of the town walls, normalised to thickness 1 (model z) with its battlements on the field side (+Z). The client scales it uniformly to each ring's thickness (WallLayout.THICKNESS) and stretches it along x to fill the run between two towers." },
+    { "id": "wall_curtain_tall", "source": "medieval:buildings/neutral/wall_straight.gltf",
+      "recipe": "The same piece on a battered stone plinth (a sloped base course), for the grander outer rings. Thickness 1 at the wall, a little more at the foot." },
+    { "id": "wall_tower_squat", "source": "medieval:buildings/blue/building_tower_base_blue.gltf",
+      "recipe": "The crenellated tower with one window band cut out, so it stands just above the Keep Ring's curtain." },
+    { "id": "wall_tower", "source": "medieval:buildings/blue/building_tower_base_blue.gltf" },
+    { "id": "wall_tower_roofed", "source": "medieval:buildings/blue/building_tower_A_blue.gltf" },
+    { "id": "wall_tower_spire", "source": "medieval:buildings/blue/building_tower_B_blue.gltf" },
+    { "id": "wall_tower_catapult", "source": "medieval:buildings/blue/building_tower_catapult_blue.gltf" },
+    { "id": "wall_gate", "source": "medieval:buildings/neutral/wall_straight_gate.gltf",
+      "recipe": "The gate arch with its door leaves swung open into the town (toward -Z), normalised to a door opening 1 wide; the field side faces +Z." }
+  ],
+  "wall_notes": [
+    "Wall towers are normalised to a shaft 1 across, standing on their own centre with the door facing +Z; the client scales them to each ring's tower radius (WallLayout.TOWER_RADIUS, GATE_TOWER_RADIUS) and turns the door toward the town.",
+    "The client lays every piece out from WallLayout (client/sim/grid/wall_layout.gd), so the pieces only fix proportions and look, never positions."
+  ],
+
   "characters": [
     { "id": "townsfolk_a", "source": "adventurers:Characters/gltf/Rogue_Hooded.glb", "hide": ["Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Knife", "Throwable"], "recolor": "earthy peasant tones: brown tunic, tan hood", "height": 0.85 },
     { "id": "townsfolk_b", "source": "adventurers:Characters/gltf/Barbarian.glb", "hide": ["weapons, shields and the horned helmet if it is a separate mesh"], "recolor": "olive and linen worker clothes", "height": 0.85 },
