@@ -33,11 +33,22 @@ export function tempRoot(label: string): string {
   return mkdtempSync(path.join(os.tmpdir(), `aurelhaven-${label}-`));
 }
 
-export function removeRoot(root: string): void {
-  try {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  } catch {
-    // Windows may still hold a handle for a moment; temp folders are cleaned by the OS eventually.
+/**
+ * Removes a test folder. On Windows a folder that a process (a harness, a git child) still uses,
+ * or used a moment ago, cannot be removed for a short while, and rmSync then gives up at once on
+ * the directory itself: retry for up to `waitMs` before leaving it.
+ */
+export function removeRoot(root: string, waitMs = 5_000): void {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") || Date.now() >= deadline) return;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    }
   }
 }
 
