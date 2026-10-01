@@ -55,6 +55,9 @@ the client uses (`protocol/generated/protocol.gd`, copied to `client/net/protoco
 - `request_id` is an idempotency key: repeating a command with the same id returns the first
   result instead of acting twice. The client's economy operations use their operation id as the
   request id.
+- Version 1.3 adds `get_progress` (the town's facts, the next age's cost and milestones, the
+  Quartermaster's current rates), the `progress_updated` event with the same data, and
+  `shutdown`, which lets the game close the Town Hall.
 
 ## The Town Hall
 
@@ -62,7 +65,7 @@ the client uses (`protocol/generated/protocol.gd`, copied to `client/net/protoco
 |---|---|
 | `src/daemon.ts`, `src/main.ts` | Start-up: configuration, database, services, server, the runtime file; clean shutdown on SIGINT, SIGTERM or SIGBREAK |
 | `src/server/` | `http.ts` serves the web build and upgrades `/ws`; `ws.ts` handles connections, `hello` and catch-up; `router.ts` validates and dispatches commands with the idempotency cache; `handlers.ts` implements them; `broadcaster.ts` numbers and fans out events |
-| `src/core/` | The game's real state: `agents`, `tools`, `tasks/` (state machine, scheduler, run supervisor), `approvals`, `incidents`, `mana`, `ledger`, `bounty`, `ranks`, `ages`, `parties`, `workspace`, `economy`, `settings`, `town` |
+| `src/core/` | The game's real state: `agents`, `tools`, `tasks/` (state machine, scheduler, run supervisor), `approvals`, `incidents`, `mana`, `ledger`, `bounty`, `ranks`, `ages`, `progress`, `parties`, `workspace`, `economy`, `settings`, `town` |
 | `src/providers/` | One adapter per harness, plus the scripted `fake` provider |
 | `src/db/` | SQLite in WAL mode with migrations; the event log and the ledger are append-only (enforced by triggers) |
 | `src/security/` | The session token, Host and Origin checks, the work-folder path guard, secret redaction in logs and events |
@@ -111,8 +114,13 @@ harness as a child process and translates its headless interface:
 `AURELHAVEN_PROVIDER` selects `fake` (practice agents for all three harness names) or `real`.
 The add-ons decide which tools each harness gets; the approval mode decides which calls ask the
 player. Cost comes from the harness (Claude Code's cost total) or from token counts priced with
-`protocol/pricing.json` (Codex, pi). The details, flags and known limits are in
-[docs/spikes.md](spikes.md), section S5.
+`protocol/pricing.json` (Codex, pi), and the usage limits the harnesses report (Claude Code's
+rate-limit events, Codex's rate-limit updates) appear in `Mana.provider_windows`.
+
+A Claude agent leading a party also gets the Town Hall's own `town` tools, served by a small MCP
+server, to delegate sub-tasks to its members (Claude, Codex or pi), follow them and collect their
+results. Every member's approval requests still come to the player. The details, flags and known
+limits are in [docs/spikes.md](spikes.md), section S5.
 
 ### Mana and the ledger
 
@@ -139,7 +147,7 @@ player. Cost comes from the harness (Claude Code's cost total) or from token cou
 | `Audio` | Sound cues (a stub until Phase 5) |
 | `Net` | The WebSocket: discovery, connection, requests (`Net.request` returns a `NetRequest`), reconnect with backoff, catch-up |
 | `Realm` | The client's copy of the Town Hall's state (agents, tools, tasks, approvals, incidents, parties, Mana, age, treasury), with signals for every change |
-| `Game` | Boot, the simulation clock, the current `SimWorld`, saves; owns `Game.link` (TownLink) |
+| `Game` | Boot, the simulation clock, the current `SimWorld`, saves, switching between the practice and real Town Halls and closing one; owns `Game.link` (TownLink) |
 
 ### Boot
 
@@ -147,12 +155,17 @@ player. Cost comes from the harness (Claude Code's cost total) or from token cou
    `%APPDATA%\Aurelhaven\runtime.json`, then `townhall/data/runtime.json` next to the project or
    the exported build).
 2. If none answers within 3 seconds and `townhall/auto_start` is on, `TownHallLauncher` runs
-   `townhall/scripts/launch.mjs`, which starts the Town Hall detached, and the game waits up to 25
-   seconds for it.
+   `townhall/scripts/launch.mjs`, which starts the Town Hall detached, in the mode named by the
+   `townhall/provider` setting and on that mode's data folder: `townhall/data/practice/` for
+   practice agents (the default), `townhall/data/` for real ones. The game waits up to 45 seconds
+   for it, or until its log says it could not start.
 3. Online, TownLink loads the town saved in the Town Hall (or makes a new one) and switches the
    ledger to a `RemoteLedger`. Offline, the game plays a local town with a `LocalLedger`.
 
 The Town Hall keeps running after the game quits, so agents can work while the player is away.
+`Game.switch_town_hall_mode(mode)` saves the town, asks the running Town Hall to `shutdown`,
+waits for it to end and opens the other mode's Town Hall and town; `Game.close_town_hall()`
+closes it and carries on offline. Whatever fails, the player keeps a town.
 
 ### The simulation
 
@@ -203,6 +216,7 @@ batches.
 
 | Path | Contents |
 |---|---|
+| `townhall/data/practice/` | The practice town's Town Hall data, with the same layout as `townhall/data/` |
 | `townhall/data/townhall.db` (+ `-wal`, `-shm`) | The Town Hall's database |
 | `townhall/data/runtime.json` | `{pid, port, token, url, data_dir}` of the running Town Hall; removed on a clean stop |
 | `townhall/data/townhall.log` | The log of a Town Hall the game started |

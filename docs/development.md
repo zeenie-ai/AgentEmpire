@@ -71,6 +71,7 @@ screenshot tools need a real window, so leave out `--headless`.
 |---|---|
 | `e2e_client.gd` | The client half of `scripts/e2e-client.mjs` |
 | `boot_check.gd` | Boots like a player and reports whether it reached the Town Hall's town or an offline one, and how long it took |
+| `townhall_mode_check.gd` | Switches between the practice and real Town Halls and closes one, against Town Halls started from this checkout with temporary data (headless) |
 | `agent_showcase.gd` | Screenshots of agents in a real town against a Town Hall (`AURELHAVEN_RUNTIME=<data>\runtime.json`, `-- --work=<git repo>`) |
 | `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png` |
 | `capture_screens.gd`, `snap_main.gd` | Screenshots of a demo town and of the main scene |
@@ -148,21 +149,25 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 | Log | Where |
 |---|---|
 | The game | `%APPDATA%\Godot\app_userdata\Aurelhaven\logs\godot.log` |
-| A Town Hall the game started | `townhall/data/townhall.log` |
+| A Town Hall the game started | `townhall/data/practice/townhall.log` (practice) or `townhall/data/townhall.log` (real) |
 | A Town Hall started with `npm start` | its terminal |
 
 ## Troubleshooting
 
-- **The top bar says OFFLINE.** The game found no Town Hall and could not start one. Check
-  `townhall/data/townhall.log`, that `node` is on PATH, and that `npm ci` has been run in
-  `townhall/`. Once a Town Hall runs (restart the game, or `npm start`), click the Town Hall chip
-  in the top bar to connect.
+- **The top bar says OFFLINE.** The game found no Town Hall and could not start one. Check the
+  `townhall.log` of the mode you play (see Logs), that `node` is on PATH, and that `npm ci` has
+  been run in `townhall/`. Once a Town Hall runs (restart the game, or `npm start`), click the
+  Town Hall chip in the top bar to connect.
 - **The Town Hall refuses to start with "another Town Hall (pid N) is using ...", but none is
-  running.** A Town Hall that was killed left `townhall/data/runtime.json` behind, and Windows
-  has since given its process id to another program. Delete that file and
-  `%APPDATA%\Aurelhaven\runtime.json`.
-- **Stopping a Town Hall the game started.** There is no in-game control yet. End the
-  `node.exe` process whose command line ends in `townhall\src\main.ts`, for example:
+  running.** A Town Hall that was killed left its `runtime.json` behind (in `townhall/data/` or
+  `townhall/data/practice/`), and Windows has since given its process id to another program.
+  Delete that file and `%APPDATA%\Aurelhaven\runtime.json`.
+- **A practice town from before the practice and real towns were split opens as the real
+  town.** The game used to keep its practice town in `townhall/data/`, which is now the real
+  town's folder; practice mode now starts a new town in `townhall/data/practice/`.
+- **Stopping a Town Hall the game started.** The game can close it (`Game.close_town_hall()`),
+  but the menu that offers this is still being built. Until then, end the `node.exe` process
+  whose command line ends in `townhall\src\main.ts`, for example:
   ```powershell
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object CommandLine -match 'townhall\\src\\main\.ts' |

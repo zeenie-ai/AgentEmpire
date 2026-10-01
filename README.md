@@ -37,7 +37,7 @@ Aurelhaven is a game about directing real work, not a visualisation of your code
 | 2 | The offline town: map, camera, units, gathering, construction, HUD | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
 | 4 | Real harnesses: the Claude Code CLI, the Codex CLI (`codex app-server`) and pi | Done |
-| 5 | Progression and polish: ages and walls, onboarding, menus, audio | In progress |
+| 5 | Progression and polish: ages and walls, onboarding, menus, audio | In progress: the Town Hall side is done (protocol 1.3, separate practice and real towns, closing and switching the Town Hall from the game, Claude party leads, provider usage windows) |
 
 Tested on Windows 11, desktop and web (the web build is served by the Town Hall). macOS and
 Linux builds are exported but untested.
@@ -82,9 +82,9 @@ node scripts/build-game.mjs --windows-only
 .\client\export\windows\Aurelhaven.exe
 ```
 
-The game finds a running Town Hall or starts one itself (from `townhall/`, detached, logging to
-`townhall/data/townhall.log`). The Town Hall keeps running after you close the game, so agents
-can finish their work while you are away.
+The game finds a running Town Hall or starts one itself (from `townhall/`, detached, with its
+output in `townhall.log` in its data folder). The Town Hall keeps running after you close the
+game, so agents can finish their work while you are away.
 
 To run from source instead, open `client/project.godot` in Godot 4.7.2 and press Play, or run
 `.tools\godot\Godot_v4.7.2-stable_win64.exe --path client`. Add `-- --offline` to play a town
@@ -92,20 +92,31 @@ without the Town Hall.
 
 ### Practice agents and real agents
 
-A Town Hall the game starts runs **practice agents**: a scripted stand-in that plays through
-tasks, approvals and reviews without running anything or spending Mana. The in-game choice
-between practice and real agents arrives with Phase 5. Until then, run the Town Hall yourself
-with real agents:
+The game keeps two towns, each with its own Town Hall and data folder:
 
-1. Close the game and stop any Town Hall it started (the `node.exe` process running
-   `townhall\src\main.ts`; Task Manager, Details tab, shows the command line).
-2. Start it with real agents and leave the window open:
-   ```powershell
-   cd townhall
-   $env:AURELHAVEN_PROVIDER = "real"
-   npm start
-   ```
-3. Open the game; it connects to that Town Hall. Press Ctrl+C in the window to stop it.
+- **Practice** (`townhall/data/practice/`): a scripted stand-in plays the agents' part, through
+  tasks, approvals and reviews, without running anything or spending Mana. The game starts this
+  one by default.
+- **Real** (`townhall/data/`): your installed Claude Code, Codex or pi, working in your folders.
+
+The game can already switch between the two and close a Town Hall, but the menu that offers it
+is still being built (Phase 5). Until then, choose real agents in either of two ways:
+
+- Close the game and stop any Town Hall it started (the `node.exe` process running
+  `townhall\src\main.ts`; Task Manager's Details tab shows the command line). In
+  `%APPDATA%\Godot\app_userdata\Aurelhaven\settings.cfg` (create it if needed), set:
+  ```ini
+  [townhall]
+  provider="real"
+  ```
+  The game then starts the real Town Hall when it opens.
+- Or start the real Town Hall yourself and leave its window open; the game connects to it:
+  ```powershell
+  cd townhall
+  $env:AURELHAVEN_PROVIDER = "real"
+  npm start
+  ```
+  Press Ctrl+C in that window to stop it.
 
 Real agents use your own Claude Code, Codex or pi sign-in. Every task has a Mana seal (a cost
 cap), the Mana pool caps each day (or week, or month), and an agent can only use the tools its

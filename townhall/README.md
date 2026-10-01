@@ -10,7 +10,9 @@ on 127.0.0.1; see [../protocol/PROTOCOL.md](../protocol/PROTOCOL.md) and
 ## Running it
 
 The game starts a Town Hall by itself when none is running (`scripts/launch.mjs`: detached, no
-console, output in `data/townhall.log`). To run one yourself:
+console, output in `townhall.log` in its data folder). It keeps two towns apart: practice agents
+in `data/practice/`, real ones in `data/`. The game can also ask a Town Hall to stop (the
+`shutdown` command). To run one yourself:
 
 ```powershell
 npm ci           # once
@@ -99,7 +101,7 @@ npm test                    # unit and integration tests, no network and no real
 - `test/smoke/`: opt-in runs against the real harnesses, each capped at $0.10 of real usage:
 
   ```powershell
-  $env:AURELHAVEN_SMOKE_CLAUDE = "1"   # or _CODEX, _PI
+  $env:AURELHAVEN_SMOKE_CLAUDE = "1"   # or _CODEX, _PI, or _PARTY (a Claude lead and member)
   npm run test:smoke
   ```
 
