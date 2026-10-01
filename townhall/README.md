@@ -1,6 +1,6 @@
 # Town Hall
 
-The Town Hall is Aurelhaven's local service. It owns everything real: agents and their add-ons,
+The Town Hall is AgentEmpire's local service. It owns everything real: agents and their add-ons,
 tasks and their workspaces, approvals, Mana, the resource ledger, ranks, ages and saved towns. It
 runs each agent on an existing harness (the Claude Code CLI, the Codex CLI or pi) as a child
 process and sends every permission request to the player. The game talks to it over a WebSocket
@@ -40,7 +40,7 @@ Environment variables, all optional:
 | `AURELHAVEN_PROVIDER` | `fake` | `fake` (practice agents) or `real` (the installed harnesses) |
 | `AURELHAVEN_DATA_DIR` | `townhall/data` | Database, runtime file, log, plain-folder copies |
 | `AURELHAVEN_PORT` | `0` (any free port) | The HTTP and WebSocket port on 127.0.0.1 |
-| `AURELHAVEN_DISCOVERY_FILE` | `%APPDATA%\Aurelhaven\runtime.json` | Where to write the copy of the runtime file the game looks for first; `off` writes none |
+| `AURELHAVEN_DISCOVERY_FILE` | `%APPDATA%\AgentEmpire\runtime.json` | Where to write the copy of the runtime file the game looks for first; `off` writes none |
 | `AURELHAVEN_WORK_ROOTS` | your home folder and every non-system fixed drive | Folders under which agents may be given a work folder, separated by `;` |
 | `AURELHAVEN_WEB_DIR` | `client/export/web` | The web build to serve |
 | `AURELHAVEN_ECONOMY_PATH` | `protocol/economy.json` | Game constants |

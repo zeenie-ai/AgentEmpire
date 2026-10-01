@@ -121,8 +121,8 @@ A release package is one zip per platform (`windows`, `linux`, `macos-arm64`, `m
 a player unzips and starts, with nothing else to install:
 
 ```
-Aurelhaven-<version>-<target>/
-  Aurelhaven.exe | Aurelhaven.x86_64 | Aurelhaven.app   the game (macOS: universal, ad-hoc signed)
+AgentEmpire-<version>-<target>/
+  AgentEmpire.exe | AgentEmpire.x86_64 | AgentEmpire.app   the game (macOS: universal, ad-hoc signed)
   townhall/      the compiled Town Hall (dist/), its run-time files (src/), its packages for that
                  platform, and release.json, which marks it as a release
   runtime/node/  Node.js 22 for that platform, which runs the Town Hall
@@ -130,17 +130,17 @@ Aurelhaven-<version>-<target>/
   README.txt, CREDITS.md, licenses/
 ```
 
-In a release the game finds `townhall/` next to itself (or next to `Aurelhaven.app`), starts it
+In a release the game finds `townhall/` next to itself (or next to `AgentEmpire.app`), starts it
 with `runtime/node`, and keeps the towns in the player's data folder
-(`%APPDATA%\Aurelhaven\townhall`, `~/Library/Application Support/Aurelhaven/townhall`,
-`~/.local/share/Aurelhaven/townhall`). A development checkout keeps using `townhall/data`.
+(`%APPDATA%\AgentEmpire\townhall`, `~/Library/Application Support/AgentEmpire/townhall`,
+`~/.local/share/AgentEmpire/townhall`). A development checkout keeps using `townhall/data`.
 
 | What | Command |
 |---|---|
 | Godot, the templates for this computer, the Town Hall packages | `node scripts/setup.mjs` (`--all-templates` for every platform) |
 | A package for this computer, also unzipped in `dist/` | `node scripts/package-release.mjs --unpacked` |
 | Every package | `node scripts/package-release.mjs --targets all` |
-| Start an unzipped package the way a player would | `node scripts/smoke-package.mjs dist/Aurelhaven-<version>-<target>` |
+| Start an unzipped package the way a player would | `node scripts/smoke-package.mjs dist/AgentEmpire-<version>-<target>` |
 
 `build.cmd` (Windows), `build.command` (macOS) and `build.sh` (Linux) run the first two for
 people who don't use a terminal.
@@ -181,7 +181,7 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 
 | Log | Where |
 |---|---|
-| The game | `%APPDATA%\Godot\app_userdata\Aurelhaven\logs\godot.log` |
+| The game | `%APPDATA%\Godot\app_userdata\AgentEmpire\logs\godot.log` |
 | A Town Hall the game started | `townhall/data/practice/townhall.log` (practice) or `townhall/data/townhall.log` (real) |
 | A Town Hall started with `npm start` | its terminal |
 
@@ -194,7 +194,7 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 - **The Town Hall refuses to start with "another Town Hall (pid N) is using ...", but none is
   running.** A Town Hall that was killed left its `runtime.json` behind (in `townhall/data/` or
   `townhall/data/practice/`), and Windows has since given its process id to another program.
-  Delete that file and `%APPDATA%\Aurelhaven\runtime.json`.
+  Delete that file and `%APPDATA%\AgentEmpire\runtime.json`.
 - **A practice town from before the practice and real towns were split opens as the real
   town.** The game used to keep its practice town in `townhall/data/`, which is now the real
   town's folder; practice mode now starts a new town in `townhall/data/practice/`.

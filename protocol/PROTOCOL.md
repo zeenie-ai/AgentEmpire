@@ -18,7 +18,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 ## Connection
 
 - The endpoint is `ws://127.0.0.1:<port>/ws`, and the server listens on 127.0.0.1 only. The port and token are written to `runtime.json` in the Town Hall data folder, as `{pid, port, token, url, data_dir}`.
-- The desktop client finds a running Town Hall through a copy of that file in the per-user config folder: `<config dir>/Aurelhaven/runtime.json`, where the config dir is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` elsewhere (Godot's `OS.get_config_dir()`). `AURELHAVEN_DISCOVERY_FILE` moves it (`off` disables it). The client also honours `AURELHAVEN_RUNTIME`, a path to any runtime file. The web client gets the token in the page's `#t=` fragment instead.
+- The desktop client finds a running Town Hall through a copy of that file in the per-user config folder: `<config dir>/AgentEmpire/runtime.json`, where the config dir is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` elsewhere (Godot's `OS.get_config_dir()`). `AURELHAVEN_DISCOVERY_FILE` moves it (`off` disables it). The client also honours `AURELHAVEN_RUNTIME`, a path to any runtime file. The web client gets the token in the page's `#t=` fragment instead.
 - The server rejects the upgrade unless:
   - the `Host` header is `127.0.0.1:<port>` or `localhost:<port>`;
   - the `Origin` header is absent (the desktop client), the Town Hall's own origin, or a configured development origin. A `null` Origin is rejected.

@@ -113,7 +113,7 @@ export class CodexCliAdapter implements ProviderAdapter {
       void proc.exited.then(() => finish(null));
       void (async () => {
         try {
-          await rpc.request("initialize", { clientInfo: { name: "aurelhaven_townhall", title: "Aurelhaven Town Hall", version: DAEMON_VERSION }, capabilities: null });
+          await rpc.request("initialize", { clientInfo: { name: "aurelhaven_townhall", title: "AgentEmpire Town Hall", version: DAEMON_VERSION }, capabilities: null });
           rpc.notify("initialized");
           const out: CodexModel[] = [];
           let cursor: string | null = null;

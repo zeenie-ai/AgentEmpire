@@ -1,4 +1,4 @@
-# Aurelhaven: notes for coding agents
+# AgentEmpire: notes for coding agents
 
 [README.md](README.md) explains the game, [docs/architecture.md](docs/architecture.md) how the
 Town Hall and the client work, and [docs/development.md](docs/development.md) every command.
@@ -23,7 +23,7 @@ Town Hall and the client work, and [docs/development.md](docs/development.md) ev
 - **Test Town Halls stay isolated:** a temporary `AURELHAVEN_DATA_DIR`,
   `AURELHAVEN_DISCOVERY_FILE=off` and `AURELHAVEN_PORT=0`; point the client at them with
   `AURELHAVEN_RUNTIME=<data>\runtime.json`, and stop them when done. Never touch the main
-  checkout's `townhall/data` or `%APPDATA%\Aurelhaven`.
+  checkout's `townhall/data` or `%APPDATA%\AgentEmpire`.
 - **Real harness runs spend real usage.** Smoke tests are opt-in and capped at $0.10 each.
 - No emojis in code, logs or output.
 

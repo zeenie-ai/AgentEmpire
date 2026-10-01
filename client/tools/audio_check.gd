@@ -179,7 +179,7 @@ func _measure(path: String) -> Dictionary:
 
 func _report(takes: Array[Dictionary], out: String) -> int:
 	var lines: PackedStringArray = []
-	lines.append("Aurelhaven sound cues through the game mixer (every slider at 1). Loudness in LUFS (EBU R128):")
+	lines.append("AgentEmpire sound cues through the game mixer (every slider at 1). Loudness in LUFS (EBU R128):")
 	lines.append("M = peak momentary (400 ms), I = integrated, TP = true peak (dBTP). target = cue_table.gd lufs.")
 	lines.append("")
 	lines.append("%-24s %-6s %6s %7s %7s %7s %7s  %s" % ["take", "bus", "sec", "target", "M", "I", "TP", "check"])

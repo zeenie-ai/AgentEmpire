@@ -1,4 +1,4 @@
-# Builds Aurelhaven's release packages (Windows, Linux, macOS for Apple Silicon and for Intel),
+# Builds AgentEmpire's release packages (Windows, Linux, macOS for Apple Silicon and for Intel),
 # checks each one on its own kind of computer, and publishes them on the GitHub release for a
 # version tag such as v0.5.0. Started by hand (Actions > Release > Run workflow) it builds and
 # checks the packages without publishing them; they stay attached to the run for two weeks.
@@ -84,14 +84,14 @@ jobs:
       - name: Unzip the package
         shell: bash
         run: |
-          zip=$(ls dist/Aurelhaven-*-${{ matrix.target }}.zip)
+          zip=$(ls dist/AgentEmpire-*-${{ matrix.target }}.zip)
           mkdir unpacked
           if [ "$RUNNER_OS" = "Windows" ]; then
             pwsh -NoProfile -Command "Expand-Archive -Path '$zip' -DestinationPath unpacked"
           else
             unzip -q "$zip" -d unpacked
           fi
-          package=$(ls -d "$PWD"/unpacked/Aurelhaven-*)
+          package=$(ls -d "$PWD"/unpacked/AgentEmpire-*)
           # The next step runs in PowerShell on Windows: give it a Windows path, not Git Bash's.
           if [ "$RUNNER_OS" = "Windows" ]; then package=$(cygpath -w "$package"); fi
           echo "PACKAGE=$package" >> "$GITHUB_ENV"
@@ -117,6 +117,6 @@ jobs:
         run: |
           if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease \
-              --title "Aurelhaven ${GITHUB_REF_NAME#v}" --notes-file dist/RELEASE_NOTES.md
+              --title "AgentEmpire ${GITHUB_REF_NAME#v}" --notes-file dist/RELEASE_NOTES.md
           fi
           gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS.txt --clobber

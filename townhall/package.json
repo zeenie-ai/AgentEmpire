@@ -1,7 +1,7 @@
 {
   "name": "aurelhaven-townhall",
   "version": "0.1.0",
-  "description": "Aurelhaven Town Hall: local service that runs AI coding agents for the Aurelhaven town game",
+  "description": "AgentEmpire Town Hall: local service that runs AI coding agents for the AgentEmpire town game",
   "private": true,
   "type": "module",
   "engines": {

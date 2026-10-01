@@ -28,7 +28,7 @@ export interface Config {
   plainFolderMaxBytes: number;
   /**
    * A copy of runtime.json in the per-user config folder, where the desktop client looks for the
-   * Town Hall (Godot's OS.get_config_dir() + "/Aurelhaven/runtime.json"). null writes none.
+   * Town Hall (Godot's OS.get_config_dir() + "/AgentEmpire/runtime.json"). null writes none.
    */
   discoveryFile: string | null;
 }
@@ -71,7 +71,7 @@ export function defaultWorkRoots(): string[] {
 
 /**
  * Where the desktop client looks for a running Town Hall: `AURELHAVEN_DISCOVERY_FILE` ("off"
- * disables it), else <config dir>/Aurelhaven/runtime.json with the same config dir Godot uses
+ * disables it), else <config dir>/AgentEmpire/runtime.json with the same config dir Godot uses
  * (%APPDATA% on Windows, ~/Library/Application Support on macOS, $XDG_CONFIG_HOME or ~/.config
  * elsewhere). Only the given environment is consulted, so tests that pass `{}` write none.
  */
@@ -85,7 +85,7 @@ export function defaultDiscoveryFile(env: Env): string | null {
   if (process.platform === "win32") base = env.APPDATA;
   else if (process.platform === "darwin") base = env.HOME ? path.join(env.HOME, "Library", "Application Support") : undefined;
   else base = env.XDG_CONFIG_HOME || (env.HOME ? path.join(env.HOME, ".config") : undefined);
-  return base ? path.join(base, "Aurelhaven", "runtime.json") : null;
+  return base ? path.join(base, "AgentEmpire", "runtime.json") : null;
 }
 
 export function loadConfig(env: Env = process.env, overrides: Partial<Config> = {}): Config {

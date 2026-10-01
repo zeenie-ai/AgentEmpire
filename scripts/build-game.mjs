@@ -16,7 +16,7 @@ const godot = findGodot(root);
 const args = new Set(process.argv.slice(2));
 
 const targets = [
-  { preset: "Windows Desktop", dir: join(client, "export", "windows"), file: "Aurelhaven.exe", skip: args.has("--web-only") },
+  { preset: "Windows Desktop", dir: join(client, "export", "windows"), file: "AgentEmpire.exe", skip: args.has("--web-only") },
   { preset: "Web", dir: join(client, "export", "web"), file: "index.html", skip: args.has("--windows-only") },
 ];
 

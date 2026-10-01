@@ -5,8 +5,8 @@
     { "op": "emit", "text": "Reading the task." },
     { "op": "tool_start", "tool": "Read", "input": { "file_path": "README.md" }, "text": "Read README.md" },
     { "op": "tool_end", "tool": "Read", "text": "Read README.md" },
-    { "op": "write_file", "path": "aurelhaven-note.md", "content": "Notes from a fake agent.\n" },
+    { "op": "write_file", "path": "agentempire-note.md", "content": "Notes from a fake agent.\n" },
     { "op": "usage", "cost_mana": 5 },
-    { "op": "end", "summary": "Added aurelhaven-note.md." }
+    { "op": "end", "summary": "Added agentempire-note.md." }
   ]
 }

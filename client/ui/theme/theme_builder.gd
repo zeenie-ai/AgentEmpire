@@ -1,6 +1,6 @@
 class_name ThemeBuilder
 extends RefCounted
-## Builds the Aurelhaven UI Theme from the handoff tokens (UiTokens), with crafted, layered
+## Builds the AgentEmpire UI Theme from the handoff tokens (UiTokens), with crafted, layered
 ## panels (CraftedBox: gradient body, wood grain, bevel, inner shadow, gold trim and studs):
 ## - HUD panels: dark wood #1b140e with gold #e0b560 trim; insets are sunken into the wood;
 ## - documents and tooltips: parchment #f7ecd8 with ink #2a1d14;

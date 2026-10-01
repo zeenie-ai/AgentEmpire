@@ -21,12 +21,15 @@ if (!process.argv[2] || !existsSync(join(pkg, 'townhall', 'release.json'))) {
 
 const win = process.platform === 'win32';
 const node = join(pkg, 'runtime', 'node', win ? 'node.exe' : join('bin', 'node'));
+/** The game: the package's .exe (Windows), .x86_64 (Linux) or the program inside its .app (macOS). */
 const game = (() => {
-  if (existsSync(join(pkg, 'Aurelhaven.exe'))) return join(pkg, 'Aurelhaven.exe');
-  if (existsSync(join(pkg, 'Aurelhaven.x86_64'))) return join(pkg, 'Aurelhaven.x86_64');
-  const app = join(pkg, 'Aurelhaven.app', 'Contents', 'MacOS');
-  const names = existsSync(app) ? readdirSync(app) : [];
-  return names.length > 0 ? join(app, names[0]) : null;
+  const top = readdirSync(pkg);
+  const exe = top.find((n) => n.endsWith('.exe') || n.endsWith('.x86_64'));
+  if (exe) return join(pkg, exe);
+  const app = top.find((n) => n.endsWith('.app'));
+  const macos = app ? join(pkg, app, 'Contents', 'MacOS') : '';
+  const names = macos && existsSync(macos) ? readdirSync(macos) : [];
+  return names.length > 0 ? join(macos, names[0]) : null;
 })();
 const tmp = mkdtempSync(join(os.tmpdir(), 'aurelhaven-smoke-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

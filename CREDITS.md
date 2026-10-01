@@ -2,7 +2,7 @@
 
 ## KayKit art by Kay Lousberg (CC0)
 
-Aurelhaven's buildings, props, nature, characters and animations are built from two asset packs
+AgentEmpire's buildings, props, nature, characters and animations are built from two asset packs
 by **Kay Lousberg** ([www.kaylousberg.com](https://www.kaylousberg.com)), released under
 [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
 CC0 does not require attribution; we give it gladly. Thank you, Kay.

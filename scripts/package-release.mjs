@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds Aurelhaven's release packages. Each is one zip with everything a player needs:
+// Builds AgentEmpire's release packages. Each is one zip with everything a player needs:
 //   - the game, exported by Godot;
 //   - the Town Hall, compiled, with its packages installed for that platform;
 //   - its own Node.js, so players don't have to install it;
@@ -15,7 +15,7 @@
 //
 // Run `node scripts/setup.mjs` first (Godot, its export templates, the Town Hall's packages);
 // packages for other platforms need their templates too (setup.mjs --all-templates).
-// Output: dist/Aurelhaven-<version>-<target>.zip, dist/SHA256SUMS.txt and dist/RELEASE_NOTES.md.
+// Output: dist/AgentEmpire-<version>-<target>.zip, dist/SHA256SUMS.txt and dist/RELEASE_NOTES.md.
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
@@ -31,25 +31,25 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const client = join(root, 'client');
 const townhall = join(root, 'townhall');
 const dist = join(root, 'dist');
-const REPO_URL = 'https://github.com/zeenie-ai/agent_game';
+const REPO_URL = 'https://github.com/zeenie-ai/AgentEmpire';
 /** The Node.js every package carries (an LTS release, checked against nodejs.org's SHA-256 list). */
 const NODE_VERSION = '22.20.0';
 
 const TARGETS = {
   windows: {
-    label: 'Windows (64-bit)', preset: 'Windows Desktop', exported: 'export/windows/Aurelhaven.exe', game: 'Aurelhaven.exe',
+    label: 'Windows (64-bit)', preset: 'Windows Desktop', exported: 'export/windows/AgentEmpire.exe', game: 'AgentEmpire.exe',
     os: 'win32', cpu: 'x64', node: 'win-x64', nodeArchive: 'zip',
   },
   linux: {
-    label: 'Linux (64-bit)', preset: 'Linux', exported: 'export/linux/Aurelhaven.x86_64', game: 'Aurelhaven.x86_64',
+    label: 'Linux (64-bit)', preset: 'Linux', exported: 'export/linux/AgentEmpire.x86_64', game: 'AgentEmpire.x86_64',
     os: 'linux', cpu: 'x64', node: 'linux-x64', nodeArchive: 'tar.gz',
   },
   'macos-arm64': {
-    label: 'macOS (Apple Silicon)', preset: 'macOS', exported: 'export/macos/Aurelhaven.zip', game: 'Aurelhaven.app',
+    label: 'macOS (Apple Silicon)', preset: 'macOS', exported: 'export/macos/AgentEmpire.zip', game: 'AgentEmpire.app',
     os: 'darwin', cpu: 'arm64', node: 'darwin-arm64', nodeArchive: 'tar.gz',
   },
   'macos-x64': {
-    label: 'macOS (Intel)', preset: 'macOS', exported: 'export/macos/Aurelhaven.zip', game: 'Aurelhaven.app',
+    label: 'macOS (Intel)', preset: 'macOS', exported: 'export/macos/AgentEmpire.zip', game: 'AgentEmpire.app',
     os: 'darwin', cpu: 'x64', node: 'darwin-x64', nodeArchive: 'tar.gz',
   },
 };
@@ -226,32 +226,32 @@ https://godotengine.org/license.
 function readme(t, version) {
   const start = {
     windows: [
-      'Double-click Aurelhaven.exe.',
+      'Double-click AgentEmpire.exe.',
       '',
       'If Windows says "Windows protected your PC", click "More info" and then "Run anyway".',
       'The game is not signed with a paid certificate, so Windows does not recognise it yet.',
     ],
     linux: [
-      'Double-click Aurelhaven.x86_64, or run it from a terminal in this folder:',
-      '    ./Aurelhaven.x86_64',
+      'Double-click AgentEmpire.x86_64, or run it from a terminal in this folder:',
+      '    ./AgentEmpire.x86_64',
       'If it does not start, make it runnable first:',
-      '    chmod +x Aurelhaven.x86_64 runtime/node/bin/node',
+      '    chmod +x AgentEmpire.x86_64 runtime/node/bin/node',
     ],
     macos: [
       'macOS blocks apps from developers it does not know. Before the first start, open',
       'Terminal (in Applications > Utilities), type the line below with a space at the end,',
       'drag this folder onto the Terminal window, and press Return:',
       '    xattr -dr com.apple.quarantine',
-      'Then double-click Aurelhaven.app.',
+      'Then double-click AgentEmpire.app.',
     ],
   }[t.os === 'win32' ? 'windows' : t.os === 'darwin' ? 'macos' : 'linux'];
   const data = {
-    win32: '%APPDATA%\\Aurelhaven\\townhall',
-    darwin: '~/Library/Application Support/Aurelhaven/townhall',
-    linux: '~/.local/share/Aurelhaven/townhall',
+    win32: '%APPDATA%\\AgentEmpire\\townhall',
+    darwin: '~/Library/Application Support/AgentEmpire/townhall',
+    linux: '~/.local/share/AgentEmpire/townhall',
   }[t.os];
   return [
-    `AURELHAVEN ${version} for ${t.label}`,
+    `AgentEmpire ${version} for ${t.label}`,
     '',
     'A town-building game in which your agents are real AI coding agents.',
     `Website and help: ${REPO_URL}`,
@@ -310,8 +310,8 @@ function zipFolder(stage, out, top, modes, t) {
 }
 
 function releaseNotes(version, targets) {
-  const rows = targets.map((t) => `| ${t.label} | \`Aurelhaven-${version}-${t.id}.zip\` |`).join('\n');
-  return `Aurelhaven ${version} is an early preview: the town, agents as villagers, practice agents, real
+  const rows = targets.map((t) => `| ${t.label} | \`AgentEmpire-${version}-${t.id}.zip\` |`).join('\n');
+  return `AgentEmpire ${version} is an early preview: the town, agents as villagers, practice agents, real
 agents on Claude Code, Codex and pi, the town walls, and sound and music. The menus, the onboarding
 and the windows for advancing an age and for trading are still being built.
 
@@ -339,7 +339,7 @@ async function main() {
     throw new Error(`Godot not found at ${godot}. Run: node scripts/setup.mjs`);
   }
   if (!existsSync(join(townhall, 'node_modules', 'typescript'))) throw new Error('the Town Hall packages are missing. Run: node scripts/setup.mjs');
-  console.log(`Aurelhaven ${version}: ${targets.map((t) => t.id).join(', ')}`);
+  console.log(`AgentEmpire ${version}: ${targets.map((t) => t.id).join(', ')}`);
 
   step('Sync the shared files into the client');
   run(process.execPath, [join(root, 'scripts', 'sync-economy.mjs')]);
@@ -364,7 +364,7 @@ async function main() {
   mkdirSync(dist, { recursive: true });
   const zips = [];
   for (const t of targets) {
-    const name = `Aurelhaven-${version}-${t.id}`;
+    const name = `AgentEmpire-${version}-${t.id}`;
     step(`Package ${name}`);
     const stage = join(root, 'build', 'release', name);
     rmSync(stage, { recursive: true, force: true });

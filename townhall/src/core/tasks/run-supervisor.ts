@@ -655,7 +655,7 @@ export class RunSupervisor {
     try {
       if (!workspace) throw new Error("the task has no workspace");
       this.emitPhase(taskId, "finishing");
-      const snap = await this.ctx.workspace.snapshot(workspace, `Aurelhaven snapshot: ${task.title} (attempt ${task.attempt})`);
+      const snap = await this.ctx.workspace.snapshot(workspace, `AgentEmpire snapshot: ${task.title} (attempt ${task.attempt})`);
       workspace.snapshot_sha = snap.snapshot_sha;
       let rite: TaskResult["rite"] = null;
       if (task.rite) {

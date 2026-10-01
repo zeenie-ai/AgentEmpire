@@ -1,5 +1,5 @@
 @echo off
-rem Builds Aurelhaven for this Windows PC. Double-click this file.
+rem Builds AgentEmpire for this Windows PC. Double-click this file.
 rem It downloads Godot (the game engine) the first time, then builds the game into the dist folder.
 setlocal
 cd /d "%~dp0"
@@ -7,7 +7,7 @@ cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo Aurelhaven needs Node.js to build.
+  echo AgentEmpire needs Node.js to build.
   echo Install the LTS version from https://nodejs.org and then double-click build.cmd again.
   echo.
   pause
@@ -33,7 +33,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done. Open the Aurelhaven folder inside "dist" and double-click Aurelhaven.exe.
+echo Done. Open the AgentEmpire folder inside "dist" and double-click AgentEmpire.exe.
 start "" "%~dp0dist"
 echo.
 pause

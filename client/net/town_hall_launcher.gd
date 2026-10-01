@@ -4,7 +4,7 @@ extends RefCounted
 ## is enough. It looks for the townhall/ folder the way TownHallDiscovery looks for its runtime
 ## file (AURELHAVEN_TOWNHALL_DIR; next to the client project; next to the game in a release
 ## package; three folders up from an exported build in client/export/<platform>/, which is also
-## next to Aurelhaven.app in a macOS package) and runs townhall/scripts/launch.mjs, which
+## next to AgentEmpire.app in a macOS package) and runs townhall/scripts/launch.mjs, which
 ## starts the Town Hall detached (no console, no handles inherited from the game, output to
 ## <data dir>/townhall.log) and exits at once. The Town Hall keeps running after the game quits
 ## (agents work while the player is away); it writes its runtime file, which Net then finds.
@@ -56,7 +56,7 @@ static func _candidates() -> PackedStringArray:
 	if OS.has_feature("template") and exe_dir != "":
 		# A release package (Windows, Linux): townhall/ next to the game.
 		candidates.append(exe_dir.path_join("townhall").simplify_path())
-		# client/export/<platform>/ in a checkout, or Aurelhaven.app/Contents/MacOS in a macOS
+		# client/export/<platform>/ in a checkout, or AgentEmpire.app/Contents/MacOS in a macOS
 		# package: townhall/ three folders up.
 		candidates.append(exe_dir.path_join("../../../townhall").simplify_path())
 	return candidates
@@ -69,7 +69,7 @@ static func normalize_mode(mode: String) -> String:
 
 ## Where the Town Halls keep their data: AURELHAVEN_DATA_ROOT; for a release package the player's
 ## data folder (%APPDATA%, ~/Library/Application Support or ~/.local/share, then
-## Aurelhaven/townhall), so towns survive updates and a read-only install; else <townhall>/data.
+## AgentEmpire/townhall), so towns survive updates and a read-only install; else <townhall>/data.
 ## "" when unknown.
 static func data_root() -> String:
 	var env := OS.get_environment(DATA_ROOT_ENV)
@@ -78,7 +78,7 @@ static func data_root() -> String:
 	for dir in _candidates():
 		if FileAccess.file_exists(dir.path_join("scripts/launch.mjs")):
 			if FileAccess.file_exists(dir.path_join("release.json")):
-				return OS.get_data_dir().replace("\\", "/").path_join("Aurelhaven/townhall")
+				return OS.get_data_dir().replace("\\", "/").path_join("AgentEmpire/townhall")
 			return dir.path_join("data")
 	return ""
 

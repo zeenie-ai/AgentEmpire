@@ -54,7 +54,7 @@ describe("the shutdown command (protocol 1.3)", () => {
     const root = tempRoot("shutdown-proc");
     const dataDir = path.join(root, "data");
     const runtimeFile = path.join(dataDir, "runtime.json");
-    const discovery = path.join(root, "config", "Aurelhaven", "runtime.json");
+    const discovery = path.join(root, "config", "AgentEmpire", "runtime.json");
     const child = spawn(process.execPath, ["--import", "tsx", path.join("src", "main.ts")], {
       cwd: packageRoot(),
       env: {

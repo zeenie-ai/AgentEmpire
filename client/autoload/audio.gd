@@ -1,5 +1,5 @@
 extends Node
-## Aurelhaven's sound.
+## AgentEmpire's sound.
 ##
 ## Buses: Master, Music, SFX, UI and Ambience (res://default_bus_layout.tres), their volumes
 ## from the Settings keys audio/master, audio/music, audio/sfx, audio/ui and audio/ambience

@@ -1,6 +1,6 @@
 # Architecture
 
-Aurelhaven has two programs that talk over a local WebSocket:
+AgentEmpire has two programs that talk over a local WebSocket:
 
 - the **Town Hall** (`townhall/`), a TypeScript service on Node 22, which owns everything real;
 - the **client** (`client/`), a Godot 4.7.2 game in GDScript, which owns the simulated town.
@@ -152,7 +152,7 @@ limits are in [docs/spikes.md](spikes.md), section S5.
 ### Boot
 
 1. `Game.boot` looks for a Town Hall (`TownHallDiscovery`: the `AURELHAVEN_RUNTIME` file, then
-   `%APPDATA%\Aurelhaven\runtime.json`, then `townhall/data/runtime.json` next to the project or
+   `%APPDATA%\AgentEmpire\runtime.json`, then `townhall/data/runtime.json` next to the project or
    the exported build).
 2. If none answers within 3 seconds and `townhall/auto_start` is on, `TownHallLauncher` runs
    `townhall/scripts/launch.mjs`, which starts the Town Hall detached, in the mode named by the
@@ -222,5 +222,5 @@ batches.
 | `townhall/data/townhall.log` | The log of a Town Hall the game started |
 | `townhall/data/wt/` | Task worktrees of the player's repositories |
 | `townhall/data/mirrors/` | Versioned copies of plain (non-git) work folders |
-| `%APPDATA%\Aurelhaven\runtime.json` | A copy of the runtime file, where the game looks first |
-| `%APPDATA%\Godot\app_userdata\Aurelhaven\` | The game's `settings.cfg`, offline saves and `logs/godot.log` |
+| `%APPDATA%\AgentEmpire\runtime.json` | A copy of the runtime file, where the game looks first |
+| `%APPDATA%\Godot\app_userdata\AgentEmpire\` | The game's `settings.cfg`, offline saves and `logs/godot.log` |

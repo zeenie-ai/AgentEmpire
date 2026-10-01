@@ -198,7 +198,7 @@ static func patch() -> String:
 		"index 3f1c2aa..8d04e71 100644",
 		"--- a/README.md",
 		"+++ b/README.md",
-		"@@ -12,12 +12,14 @@ Aurelhaven is a town-builder where the villagers are real AI agents.",
+		"@@ -12,12 +12,14 @@ AgentEmpire is a town-builder where the villagers are real AI agents.",
 		" ## Documentation",
 		" ",
 		"-- `protocol/PROTOCOL.md`: the Town Hall protocol.",

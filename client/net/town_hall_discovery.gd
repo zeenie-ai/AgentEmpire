@@ -7,7 +7,7 @@ extends RefCounted
 ## 2. the runtime file of the preferred mode's Town Hall (TownHallLauncher: <data root> for real
 ##    agents, <data root>/practice for practice), so the game finds the town it means to open;
 ## 3. the copy the Town Hall writes for clients: AURELHAVEN_DISCOVERY_FILE ("off" skips it), else
-##    <config dir>/Aurelhaven/runtime.json (%APPDATA% on Windows, ~/Library/Application Support
+##    <config dir>/AgentEmpire/runtime.json (%APPDATA% on Windows, ~/Library/Application Support
 ##    on macOS, ~/.config elsewhere);
 ## 4. the other mode's runtime file.
 ## A mode switch pins one runtime file instead (find(pinned)), so it waits for that Town Hall only.
@@ -59,7 +59,7 @@ static func discovery_copy() -> String:
 		return ""
 	if env != "":
 		return env
-	return OS.get_config_dir().path_join("Aurelhaven").path_join(FILE_NAME)
+	return OS.get_config_dir().path_join("AgentEmpire").path_join(FILE_NAME)
 
 
 static func _add(out: PackedStringArray, path: String) -> void:

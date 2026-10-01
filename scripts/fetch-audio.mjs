@@ -1,4 +1,4 @@
-// Builds Aurelhaven's sound: downloads the CC0 sources (Kenney audio packs, OpenGameArt music,
+// Builds AgentEmpire's sound: downloads the CC0 sources (Kenney audio packs, OpenGameArt music,
 // Freesound field recordings) into .tools/vendor/audio, synthesises the bells, chimes and
 // magic, then trims, layers, normalises and encodes everything into client/audio/.
 //
@@ -127,7 +127,7 @@ async function fetchPinned(url, sha, file) {
   if (existsSync(file) && sha256(readFileSync(file)) === sha) return file;
   if (OFFLINE) throw new Error(`${file} is missing or changed and --offline was given`);
   console.log(`  downloading ${url}`);
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Aurelhaven fetch-audio)" } });
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (AgentEmpire fetch-audio)" } });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const got = sha256(buf);

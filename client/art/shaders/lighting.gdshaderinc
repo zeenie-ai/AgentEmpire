@@ -1,4 +1,4 @@
-// Shared by every stylised Aurelhaven material (kit models, ground, grass).
+// Shared by every stylised AgentEmpire material (kit models, ground, grass).
 // Global parameters are declared in project.godot [shader_globals] and driven by SkyEnvironment.
 global uniform float night_amount;
 global uniform vec2 cloud_offset;

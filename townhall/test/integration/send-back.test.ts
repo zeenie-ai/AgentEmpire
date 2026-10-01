@@ -75,7 +75,7 @@ describe("send back", () => {
     expect(noConfirm.error?.code).toBe("BAD_REQUEST");
     await c.ok("discard_workspace", { task_id: taskId, confirm: true });
     const ws = JSON.parse(town.ctx.tasks.row(taskId).workspace_json!);
-    expect(ws.archived_ref).toBe(`refs/aurelhaven/archive/${taskId}`);
+    expect(ws.archived_ref).toBe(`refs/agentempire/archive/${taskId}`);
     expect(ws.removed).toBe(true);
   });
 });

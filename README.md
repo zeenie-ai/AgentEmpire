@@ -1,17 +1,17 @@
-# Aurelhaven
+# AgentEmpire
 
 **A town-building game where your villagers are real AI agents.**
 
-Aurelhaven plays like Age of Empires, in a fantasy world. The difference: the agents you summon
+AgentEmpire plays like Age of Empires, in the fantasy world of Aurelhaven. The difference: the agents you summon
 at the Keep are real AI coding agents (Claude Code, Codex, or any other model through pi). They
 build their homes and workshops, your townsfolk carry their tasks to them, a bell rings when they
 need your permission, and the town grows on the work you accept.
 
 ![The town: the Keep, an agent's workshop with its add-ons, and the game's controls](docs/images/town.jpg)
 
-| Summoning an agent | Reviewing its work |
-|---|---|
-| ![The Summoning Font](docs/images/summon.jpg) | ![The review window](docs/images/review.jpg) |
+| Summoning an agent | Answering its request | Reviewing its work |
+|---|---|---|
+| ![The Summoning Font](docs/images/summon.jpg) | ![An agent asks to run a command](docs/images/approval.jpg) | ![The review window](docs/images/review.jpg) |
 
 - [Download and play](#download-and-play)
 - [Real agents](#real-agents)
@@ -21,15 +21,15 @@ need your permission, and the town grows on the work you accept.
 
 ## Download and play
 
-Get the newest version from the **[Releases page](https://github.com/zeenie-ai/agent_game/releases)**
+Get the newest version from the **[Releases page](https://github.com/zeenie-ai/AgentEmpire/releases)**
 and download the file for your computer:
 
 | Your computer | File |
 |---|---|
-| Windows 10 or 11 | `Aurelhaven-<version>-windows.zip` |
-| Mac with Apple Silicon (M1 or newer) | `Aurelhaven-<version>-macos-arm64.zip` |
-| Mac with an Intel processor | `Aurelhaven-<version>-macos-x64.zip` |
-| Linux (64-bit) | `Aurelhaven-<version>-linux.zip` |
+| Windows 10 or 11 | `AgentEmpire-<version>-windows.zip` |
+| Mac with Apple Silicon (M1 or newer) | `AgentEmpire-<version>-macos-arm64.zip` |
+| Mac with an Intel processor | `AgentEmpire-<version>-macos-x64.zip` |
+| Linux (64-bit) | `AgentEmpire-<version>-linux.zip` |
 
 Not sure which Mac you have? Open the Apple menu and choose **About This Mac**: "Chip: Apple M..."
 means Apple Silicon, "Processor: ... Intel" means Intel.
@@ -37,7 +37,7 @@ means Apple Silicon, "Processor: ... Intel" means Intel.
 **Windows**
 
 1. Right-click the downloaded file and choose **Extract All**, then **Extract**.
-2. Open the new folder and double-click **Aurelhaven.exe**.
+2. Open the new folder and double-click **AgentEmpire.exe**.
 3. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. The game
    is not signed with a paid certificate yet, so Windows does not recognise it.
 
@@ -46,14 +46,14 @@ means Apple Silicon, "Processor: ... Intel" means Intel.
 1. Double-click the downloaded file to unzip it.
 2. macOS blocks apps from developers it does not know. Open **Terminal** (in Applications, then
    Utilities), type `xattr -dr com.apple.quarantine ` (with the space at the end), drag the
-   unzipped Aurelhaven folder onto the Terminal window, and press Return.
-3. Double-click **Aurelhaven.app** in that folder.
+   unzipped AgentEmpire folder onto the Terminal window, and press Return.
+3. Double-click **AgentEmpire.app** in that folder.
 
 **Linux**
 
-1. Unzip the file: `unzip Aurelhaven-*-linux.zip`
-2. Start the game: double-click **Aurelhaven.x86_64** in the new folder, or run
-   `./Aurelhaven.x86_64` in it.
+1. Unzip the file: `unzip AgentEmpire-*-linux.zip`
+2. Start the game: double-click **AgentEmpire.x86_64** in the new folder, or run
+   `./AgentEmpire.x86_64` in it.
 
 Keep the unzipped folder together: the game needs the `townhall`, `runtime` and `protocol`
 folders next to it. There is nothing else to install.
@@ -61,8 +61,8 @@ folders next to it. There is nothing else to install.
 The first start takes a few seconds while the game starts its **Town Hall**, the part that runs
 the agents. You begin with **practice agents**: a stand-in plays the agents' part through tasks,
 approvals and reviews, so you can learn the game while nothing real runs and nothing is spent.
-Your towns are kept in your user folder (`%APPDATA%\Aurelhaven` on Windows,
-`~/Library/Application Support/Aurelhaven` on macOS, `~/.local/share/Aurelhaven` on Linux), so
+Your towns are kept in your user folder (`%APPDATA%\AgentEmpire` on Windows,
+`~/Library/Application Support/AgentEmpire` on macOS, `~/.local/share/AgentEmpire` on Linux), so
 deleting or updating the game folder does not touch them.
 
 ## Real agents
@@ -147,7 +147,7 @@ Packages for every platform at once: `node scripts/setup.mjs --all-templates`, t
 
 ## Status
 
-Aurelhaven is an early preview. Tested on Windows 11; every release package is also started
+AgentEmpire is an early preview. Tested on Windows 11; every release package is also started
 automatically on Windows, Linux and macOS (Apple Silicon) before it is published.
 
 | Phase | Scope | State |
