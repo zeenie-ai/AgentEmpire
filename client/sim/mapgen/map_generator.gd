@@ -8,8 +8,10 @@ extends RefCounted
 
 ## No trees this close to the map centre (the Keep's clearing).
 const TREE_CLEAR_RADIUS := 11.0
-## Noise forests start this far out; starter groves sit between here and the clearing.
-const FOREST_START := 15.0
+## Noise forests start this far out: just past the first age's build zone (the Merchant Ring,
+## 22 tiles), so the meadow between the Keep Ring and it has room for the agents' 7 x 7 plots,
+## cottages and farms. The starter groves sit in that meadow, beside the Keep Ring's gates.
+const FOREST_START := 23.0
 const FOREST_THRESHOLD := 0.2
 const FOREST_FREQUENCY := 0.045
 ## Forests thicken within this many tiles of the map edge.
@@ -39,7 +41,8 @@ static func generate(w: SimWorld, seed_value: int) -> void:
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	noise.fractal_octaves = 3
 
-	# Forests: noise blobs beyond FOREST_START, thickening toward the map edge, plus strays.
+	# Forests: noise blobs beyond FOREST_START, thickening toward the map edge, plus strays, all
+	# outside the first age's build zone (a lone tree there would block every plot over it).
 	for y in size:
 		for x in size:
 			var d := Vector2(x + 0.5, y + 0.5).distance_to(centre)
@@ -49,7 +52,8 @@ static func generate(w: SimWorld, seed_value: int) -> void:
 			var edge := mini(mini(x, y), mini(size - 1 - x, size - 1 - y))
 			if edge < EDGE_BAND:
 				v += float(EDGE_BAND - edge) * EDGE_BOOST
-			if (d >= FOREST_START and v > FOREST_THRESHOLD) or rng.randf() < STRAY_TREE_CHANCE:
+			var stray := rng.randf() < STRAY_TREE_CHANCE
+			if d >= FOREST_START and (v > FOREST_THRESHOLD or stray):
 				_place(w, rng, "tree", Vector2i(x, y), keep_zone, false)
 
 	# Starter groves between the first two rings, so wood is a short walk from the Keep: beside
@@ -74,13 +78,13 @@ static func generate(w: SimWorld, seed_value: int) -> void:
 		var r := rng.randf_range(20.0, 52.0)
 		_blob(w, rng, centre + Vector2(cos(a), sin(a)) * r, rng.randf_range(1.4, 1.9), 0.8, "berry_bush", keep_zone, true)
 
-	# Decorative rocks: solid, not gatherable.
+	# Decorative rocks: solid, not gatherable; outside the first age's build zone, like the forests.
 	var placed := 0
 	var tries := 0
 	while placed < ROCKS and tries < ROCKS * 30:
 		tries += 1
 		var c := Vector2i(rng.randi_range(2, size - 3), rng.randi_range(2, size - 3))
-		if Vector2(c.x + 0.5, c.y + 0.5).distance_to(centre) < 13.0:
+		if Vector2(c.x + 0.5, c.y + 0.5).distance_to(centre) < FOREST_START:
 			continue
 		if w.grid.occupant_at(c) != 0 or w.grid.terrain_at(c) != SimGrid.TERRAIN_GRASS or w.wall_ring_at(c) >= 0:
 			continue
