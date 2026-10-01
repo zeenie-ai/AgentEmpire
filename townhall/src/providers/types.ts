@@ -4,12 +4,14 @@ import type {
   ApprovalCategory,
   ApprovalDecision,
   ApprovalMode,
+  DiffStat,
   ModelInfo,
   Provider,
   ProviderInfo,
   Risk,
   Role,
   TaskSize,
+  TaskState,
   ToolType,
 } from "../protocol/objects.js";
 
@@ -94,12 +96,42 @@ export interface ApprovalAnswer {
 }
 
 export interface DelegateRequest {
-  /** An agent id, "member:<index>", or "any" (the first idle member). */
+  /** A member's agent id or name, "member:<index>", or "any" (the first idle member). */
   to: string;
   title: string;
   prompt: string;
   size: TaskSize;
+  /** Mana carved out of the parent's seal. Left out: the member's seal for the size, at most half of what is left. */
+  budgetMana?: number | undefined;
+}
+
+/** How a party sub-task is doing, in the words a lead needs. */
+export type SubtaskStatus = "queued" | "working" | "waiting_for_player" | "paused" | "done" | "failed" | "cancelled";
+
+/** One sub-task of a party task, as the lead sees it. */
+export interface SubtaskInfo {
+  taskId: string;
+  memberId: string;
+  memberName: string;
+  title: string;
+  size: TaskSize;
+  state: TaskState;
+  status: SubtaskStatus;
+  /** Why it is paused or failed, when it is. */
+  reason: string | null;
   budgetMana: number;
+  spentMana: number;
+  /** The member's closing summary, once the sub-task is done. */
+  summary: string | null;
+  diffStat: DiffStat | null;
+  /** Changed files (at most 50), filled in by waitSubtasks for finished sub-tasks. */
+  files?: string[];
+}
+
+/** A party task's sub-tasks and the Mana its seal still has for more. */
+export interface PartyStatus {
+  sealLeftMana: number;
+  subtasks: SubtaskInfo[];
 }
 
 export interface ChildResult {
@@ -124,6 +156,13 @@ export interface RunHost {
   requestApproval(req: ApprovalRequest): Promise<ApprovalAnswer>;
   /** Party leads only: creates a sub-task on a member's queue. */
   delegate(req: DelegateRequest): Promise<DelegateHandle>;
+  /** Party leads only: this task's sub-tasks, oldest first, and what its seal has left. */
+  partyStatus(): PartyStatus;
+  /**
+   * Party leads only: waits until every listed sub-task (null: every unfinished one) has finished
+   * (done, failed or cancelled), the timeout passes or the run stops; then reports them all.
+   */
+  waitSubtasks(taskIds: string[] | null, timeoutMs: number): Promise<PartyStatus>;
   /** Persists adapter state so a later attempt can resume from it. */
   checkpoint(state: unknown): void;
 }

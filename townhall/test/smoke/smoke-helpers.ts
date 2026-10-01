@@ -7,6 +7,7 @@ import type {
   ApprovalAnswer,
   ApprovalRequest,
   DelegateHandle,
+  PartyStatus,
   ProviderAdapter,
   RunEvent,
   RunHandle,
@@ -60,7 +61,15 @@ class SmokeHost implements RunHost {
   }
 
   async delegate(): Promise<DelegateHandle> {
-    throw new Error("no parties in smoke runs");
+    throw new Error("no parties in these smoke runs");
+  }
+
+  partyStatus(): PartyStatus {
+    return { sealLeftMana: 0, subtasks: [] };
+  }
+
+  async waitSubtasks(): Promise<PartyStatus> {
+    return this.partyStatus();
   }
 
   checkpoint(state: unknown): void {

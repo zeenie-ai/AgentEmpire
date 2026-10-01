@@ -10,6 +10,28 @@ export interface FramingOptions {
   names: FramingNames;
   /** Extra lines under "How you work", such as the shell the harness uses on this platform. */
   notes?: string[];
+  /** A party lead's town tools, as the harness names them; without them the lead has no party section. */
+  partyTools?: { delegate: string; status: string; collect: string };
+}
+
+/** The "Your party" section for a lead whose harness offers the town tools. */
+function partySection(req: RunRequest, opts: FramingOptions): string[] {
+  const tools = opts.partyTools;
+  if (!req.party || req.depth > 0 || !tools) return [];
+  const members = req.party.members.map((m) => {
+    const role = opts.names.roles[m.role];
+    return `- ${m.name}: ${role ? `${role.name}${role.plain ? ` (${role.plain})` : ""}` : m.role}, on ${m.provider}`;
+  });
+  return [
+    "",
+    "## Your party",
+    "You lead a party for this task. Its members:",
+    ...(members.length > 0 ? members : ["- (none right now)"]),
+    `- Hand a part of the task to a member with ${tools.delegate}: give a title and a prompt with everything they need, because they cannot see this conversation or your folder. It returns at once; carry on with your own part meanwhile.`,
+    `- ${tools.status} shows how their sub-tasks are doing; ${tools.collect} waits for them and returns each member's summary and changed files.`,
+    "- Each member works in their own folder and asks the player before acting, as you do. Their Mana comes out of this task's Mana Seal. Their changes are merged when the player accepts this task.",
+    "- Before you finish, collect every sub-task's result, then end with one summary of the whole party's work.",
+  ];
 }
 
 /**
@@ -29,7 +51,11 @@ export function systemPromptFor(req: RunRequest, opts: FramingOptions): string {
     "- The Town Hall checks every action against the player's approval rules, and some actions wait for the player. When an action is denied, respect the reason: find another way within the rules, or stop and explain.",
     "- Do not push to remotes, and never throw work away or rewrite git history (no hard resets, forced checkouts, stashes, cleans or force pushes). The Town Hall records your changes when you finish.",
     "- When the task is done, end with a short summary of what you changed and anything the player should check.",
+    ...(req.depth > 0
+      ? ["- This is a sub-task your party lead delegated to you: do this part only. Your summary goes back to the lead, who combines the party's work."]
+      : []),
     ...(opts.notes ?? []).map((n) => `- ${n}`),
+    ...partySection(req, opts),
     "",
     `## Task: ${req.title}`,
     `Size: ${size}.`,

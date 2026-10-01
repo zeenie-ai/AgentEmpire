@@ -12,6 +12,8 @@ import type {
   ApprovalAnswer,
   ApprovalRequest,
   DelegateHandle,
+  DelegateRequest,
+  PartyStatus,
   RunEvent,
   RunHost,
   RunOutcome,
@@ -51,8 +53,25 @@ export class MockHost implements RunHost {
     return this.decide(req);
   }
 
-  async delegate(): Promise<DelegateHandle> {
+  /** Party leads: what was delegated, the party as partyStatus reports it, and how waits end. */
+  readonly delegations: DelegateRequest[] = [];
+  party: PartyStatus = { sealLeftMana: 0, subtasks: [] };
+  onDelegate: (req: DelegateRequest) => DelegateHandle | Promise<DelegateHandle> = () => {
     throw new Error("parties are not part of these tests");
+  };
+  onWait: (taskIds: string[] | null, timeoutMs: number) => PartyStatus | Promise<PartyStatus> = () => this.party;
+
+  async delegate(req: DelegateRequest): Promise<DelegateHandle> {
+    this.delegations.push(req);
+    return this.onDelegate(req);
+  }
+
+  partyStatus(): PartyStatus {
+    return this.party;
+  }
+
+  async waitSubtasks(taskIds: string[] | null, timeoutMs: number): Promise<PartyStatus> {
+    return this.onWait(taskIds, timeoutMs);
   }
 
   checkpoint(state: unknown): void {
