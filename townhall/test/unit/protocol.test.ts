@@ -220,7 +220,10 @@ describe("protocol round trips", () => {
         level: "normal",
         by_provider: { claude: 0, codex: 0, pi: 0 },
         estimates: true,
-        provider_windows: [{ provider: "codex", used_percent: 12.5, resets_at: "2026-09-28T12:00:00.000Z" }],
+        provider_windows: [
+          { provider: "claude", window: "five_hour", window_minutes: 300, used_percent: 41.5, resets_at: "2026-09-28T12:00:00.000Z" },
+          { provider: "codex", window: "seven_day", window_minutes: 10080, used_percent: 12.5, resets_at: null },
+        ],
       },
     ],
     ["Party", Party, { id: "pty_1", lead_agent_id: "agt_01", member_ids: ["agt_02"], created_at: "2026-09-28T10:00:00.000Z" }],

@@ -279,11 +279,19 @@ export const Incident = z.object({
 });
 export type Incident = z.infer<typeof Incident>;
 
+/**
+ * One of a provider's own usage windows, as its harness reports it (Claude Code's
+ * rate_limit_event, Codex's account/rateLimits/updated). `window` and `window_minutes` were
+ * added in 1.3: "five_hour", "seven_day", ... and the window's length when known.
+ */
 export const ProviderWindow = z.object({
   provider: Provider,
-  used_percent: z.number(),
+  window: z.string(),
+  window_minutes: nonNegInt.nullable(),
+  used_percent: z.number().min(0).max(100),
   resets_at: isoTime.nullable(),
 });
+export type ProviderWindow = z.infer<typeof ProviderWindow>;
 
 export const Mana = z.object({
   period: ManaPeriod,

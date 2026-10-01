@@ -55,13 +55,26 @@ export interface RunParty {
   members: Array<{ agentId: string; name: string; provider: Provider; role: Role }>;
 }
 
+/** One usage window of the provider's own limits (a subscription's five-hour or weekly window). */
+export interface RateWindow {
+  /** "five_hour", "seven_day", ... (stable per provider: a new report replaces the old one). */
+  window: string;
+  /** 0 to 100. */
+  usedPercent: number;
+  /** ISO time, or null when the harness did not say. */
+  resetsAt: string | null;
+  windowMinutes: number | null;
+}
+
 export type RunEvent =
   | { kind: "activity"; activity: "message" | "system" | "error"; text: string }
   | { kind: "tool_start"; tool: string; input?: unknown; text?: string }
   | { kind: "tool_end"; tool: string; ok: boolean; text?: string }
   | { kind: "usage"; costMicros: number; inputTokens?: number; outputTokens?: number; estimate?: boolean }
   | { kind: "session"; sessionId: string }
-  | { kind: "files_touched"; paths: string[] };
+  | { kind: "files_touched"; paths: string[] }
+  /** The provider's usage windows as the harness last reported them (Mana.provider_windows). */
+  | { kind: "rate_limits"; windows: RateWindow[] };
 
 export interface ApprovalRequest {
   tool: string;

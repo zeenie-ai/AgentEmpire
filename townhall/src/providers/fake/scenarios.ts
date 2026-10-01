@@ -28,6 +28,10 @@ export type Step =
       onDeny: Step[];
     }
   | { op: "delegate"; to: string; title: string; prompt: string; size: z.infer<typeof TaskSize>; budget_mana: number; wait: boolean }
+  | {
+      op: "rate_limits";
+      windows: Array<{ window: string; used_percent: number; resets_in_s?: number | undefined; window_minutes?: number | undefined }>;
+    }
   | { op: "sleep"; ms: number }
   | { op: "hang"; until: "interrupt" | "nudge" }
   | { op: "fail"; code: string; message: string; transient: boolean }
@@ -67,6 +71,17 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
       size: TaskSize.default("S"),
       budget_mana: z.number().positive(),
       wait: z.boolean().default(true),
+    }),
+    z.object({
+      op: z.literal("rate_limits"),
+      windows: z.array(
+        z.object({
+          window: z.string().min(1).max(64),
+          used_percent: z.number().min(0).max(100),
+          resets_in_s: z.number().min(0).optional(),
+          window_minutes: z.number().int().min(0).optional(),
+        }),
+      ),
     }),
     z.object({ op: z.literal("sleep"), ms: z.number().int().min(0) }),
     z.object({ op: z.literal("hang"), until: z.enum(["interrupt", "nudge"]).default("interrupt") }),

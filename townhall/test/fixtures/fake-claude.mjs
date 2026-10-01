@@ -212,6 +212,9 @@ async function runStep(step, state) {
       });
       if (decision.interrupt) interrupted = true;
     }
+  } else if (step.rate_limit !== undefined) {
+    // As Claude Code 2.1.281 reports the subscription's usage windows.
+    out({ type: "rate_limit_event", rate_limit_info: step.rate_limit, uuid: `rl-${++toolSeq}`, session_id: sessionId });
   } else if (step.cost !== undefined) {
     totalCost += step.cost;
   } else if (step.sleep !== undefined) {

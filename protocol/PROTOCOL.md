@@ -7,6 +7,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 - `shutdown`: the client asks the Town Hall to stop. It replies, sends `daemon_shutdown`, pauses running tasks (they resume on its next start), closes, removes its runtime files and exits.
 - The Quartermaster prices each kind of trade separately: selling Food or Wood worsens only the basic rate, selling Stone or Gold only the precious rate. `trade` returns the rate of the kind just traded.
 - `hello_result.features` lists `progress` and `shutdown`.
+- `Mana.provider_windows` is filled from the harnesses' own usage reports, and each entry names its `window` and `window_minutes`.
 
 **Changes in 1.2** (all backward compatible; a 1.1 client keeps working):
 - A third provider, `pi`, runs agents on any other model provider through the pi coding agent. It appears in `Agent.provider`, `check_providers`, `list_models`, `Mana.by_provider` and `set_budget` billing.
@@ -135,7 +136,15 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "cap_micros": 5000000, "spent_micros": 0, "reserved_micros": 0, "remaining_micros": 5000000,
   "level": "normal|dim|warning|depleted",
   "by_provider": { "claude": 0, "codex": 0, "pi": 0 }, "estimates": true,   // pi: added in 1.2
-  "provider_windows": [ { "provider": "codex", "used_percent": 12.5, "resets_at": "..." } ] }
+  "provider_windows": [ { "provider": "codex", "window": "five_hour", "window_minutes": 300,
+                          "used_percent": 12.5, "resets_at": "..." } ] }
+// provider_windows: each provider's own usage limits, as its harness last reported them
+// (Claude Code's rate_limit_event on a subscription, Codex's account/rateLimits/updated):
+// one entry per provider and window, by provider then shortest window first. used_percent is
+// 0-100; resets_at is null when unknown; a window disappears once its resets_at has passed.
+// window (1.3): "five_hour", "seven_day", and for Claude also "seven_day_opus", "seven_day_sonnet",
+// "seven_day_overage_included" or "overage"; Codex windows of another length keep "primary" or
+// "secondary". window_minutes (1.3) is the window's length, or null when unknown.
 
 // Party
 { "id": "pty_...", "lead_agent_id": "agt_...", "member_ids": ["agt_..."], "created_at": "..." }

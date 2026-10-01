@@ -1,0 +1,16 @@
+{
+  "name": "rate_limits",
+  "description": "Reports the provider's own usage windows (five-hour and weekly), makes one edit and finishes.",
+  "steps": [
+    {
+      "op": "rate_limits",
+      "windows": [
+        { "window": "five_hour", "used_percent": 42.5, "resets_in_s": 7200, "window_minutes": 300 },
+        { "window": "seven_day", "used_percent": 12, "resets_in_s": 345600, "window_minutes": 10080 }
+      ]
+    },
+    { "op": "write_file", "path": "limits.md", "content": "Within the provider's limits.\n" },
+    { "op": "usage", "cost_mana": 2 },
+    { "op": "end", "summary": "Wrote limits.md." }
+  ]
+}

@@ -8,6 +8,7 @@ import type { Launch } from "../common/exec.js";
 import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { RunningTotal } from "../common/pricing.js";
 import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { claudeRateWindows } from "../common/rate-limits.js";
 import {
   asNumber,
   asString,
@@ -386,6 +387,12 @@ export class ClaudeRun implements RunHandle {
         case "control_request":
           this.onControlRequest(record);
           break;
+        case "rate_limit_event": {
+          // The subscription's own usage windows (five-hour, weekly): Mana.provider_windows.
+          const windows = claudeRateWindows(record.rate_limit_info);
+          if (windows.length > 0) this.emit({ kind: "rate_limits", windows });
+          break;
+        }
         default:
           break;
       }

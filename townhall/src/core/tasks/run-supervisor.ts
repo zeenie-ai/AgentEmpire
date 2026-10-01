@@ -337,6 +337,9 @@ export class RunSupervisor {
           for (const p of ev.paths) run.filesTouched.add(p);
           this.progress(run, run.phase);
           break;
+        case "rate_limits":
+          this.ctx.mana.updateProviderWindows(run.provider, ev.windows);
+          break;
       }
     } catch (err) {
       this.ctx.log.error({ taskId: run.taskId, err: String(err) }, "run event failed");
