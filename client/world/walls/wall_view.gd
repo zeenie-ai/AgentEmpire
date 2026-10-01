@@ -245,17 +245,18 @@ func _advance(d: RingDraw, delta: float) -> void:
 		rise_finished.emit(d.ring)
 
 
-## A piece begins to rise: dust at its foot, and the rumble of the wall at each gatehouse.
+## A piece begins to rise: dust rolls out along its foot, and the wall rumbles at each gatehouse.
 func _on_piece_starts(item: Dictionary) -> void:
 	var kind := int(item["kind"])
 	var pos: Vector3 = item["pos"]
 	var size := float(item["size"])
-	if kind != WallLayout.CURTAIN or int(item["index"]) % 2 == 0:
-		var dust := Fx.dust_burst(Vector2(size, size * 0.6))
-		dust.position = pos
-		add_child(dust)
-		(dust as Node).set("emitting", true)
-		Fx.free_after(dust, 3.0)
+	var xf: Transform3D = item["xform"]
+	var dust := Fx.wall_dust(size, size * 0.5 if kind != WallLayout.CURTAIN else 1.2)
+	dust.position = pos
+	dust.basis = Basis(xf.basis.x.normalized(), Vector3.UP, xf.basis.z.normalized())
+	add_child(dust)
+	(dust as Node).set("emitting", true)
+	Fx.free_after(dust, 3.2)
 	if kind == WallLayout.GATE:
 		var audio := get_node_or_null("/root/Audio")
 		if audio != null and audio.has_method("play_at"):

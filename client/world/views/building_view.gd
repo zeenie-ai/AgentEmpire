@@ -22,6 +22,8 @@ var type: String = ""
 var model: Node3D
 var height: float = 2.0
 var complete: bool = false
+## How fast the Keep's Font spins (faster while an age is researched).
+var font_speed: float = 1.0
 
 var _size: Vector2i = Vector2i.ONE
 var _scaffold: MeshInstance3D
@@ -35,6 +37,8 @@ var _settle: float = 0.0
 var _smoke: GeometryInstance3D
 var _light: OmniLight3D
 var _field: bool = false
+var _font_spin: float = 0.0
+var _font_rate: float = 1.0
 
 
 ## The handoff's easeOutCubic.
@@ -178,7 +182,9 @@ func update_visual(b: SimBuilding, time: float, delta: float) -> void:
 		var s := 1.0 + sin(_settle * PI) * 0.06
 		model.scale = Vector3(s, 1.0 / s, s)
 	if _font != null:
-		_font.rotation = Vector3(time * 0.8, time * 0.5, 0.0)
+		_font_rate = lerpf(_font_rate, font_speed, clampf(delta * 1.5, 0.0, 1.0))
+		_font_spin += delta * _font_rate
+		_font.rotation = Vector3(_font_spin * 0.8, _font_spin * 0.5, 0.0)
 	if _light != null:
 		var n := ArtMaterials.night_amount()
 		_light.visible = n > 0.02

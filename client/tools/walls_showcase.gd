@@ -3,10 +3,13 @@ extends SceneTree
 ## the debug_set_age command). Saves into out/phase5/ at the repository root:
 ##   walls_age1_opening.png  a new Age I town in the opening view, with the HUD
 ##   walls_age1.png .. walls_age4.png   towns grown to each age, their walls standing
-##   walls_rise.png          the Merchant Ring half way through its rise
+##   walls_rise.png          the Merchant Ring half way through its rise, close to its east gate
+##   walls_rise_overview.png the same rise as the player sees it (the camera framing the ring)
 ##   walls_gate.png          a close look at a gatehouse with townsfolk passing through
 ##   walls_plates.png, walls_plates_close.png   agent homes' name plates at the default zoom and
 ##                           close up (needs fake agents in Realm, set up here)
+##   walls_research.png, walls_research_yard.png   the Market Age being researched: the Keep, and
+##                           a masons' yard at a gate of the Merchant Ring
 ## Needs a window, so do not pass --headless:
 ##   <godot> --path client -s res://tools/walls_showcase.gd
 ## Options after "--": --out=<dir> --seed=<n> --size=1920x1080 --only=age1,age2,rise,...
@@ -77,14 +80,32 @@ func _run() -> void:
 		await _shot("walls_age%d" % age, 90)
 
 	if _wanted("rise"):
+		# As the player sees it: the camera glides out and the Merchant Ring rises round from the
+		# south gate.
 		var w := _town(map_seed, 1)
 		_grow(w, 1)
 		main.hud.visible = false
 		game.paused = false
 		await _seconds(2.0)
 		game.issue(GameCommands.debug_set_age(2))
-		# The camera glides out (LEAD_S) and the rise sweeps round from the south gate.
-		await _seconds(WallView.LEAD_S + 1.5)
+		await _seconds(WallView.LEAD_S + 1.6)
+		await _shot("walls_rise_overview", 1)
+		await _seconds(6.0)
+		# Close up on the front of the rise, at the Merchant Ring's east gate.
+		w = _town(map_seed, 1)
+		_grow(w, 1)
+		game.paused = false
+		await _seconds(2.0)
+		var g: WallLayout.Piece = w.walls.pieces_of(1, WallLayout.GATE)[5]
+		var at := g.center + g.outward * 1.0
+		game.issue(GameCommands.debug_set_age(2))
+		while w.walls_up < 2:
+			await _frames(1)
+		await _frames(2)
+		main.camera.end_cinema(false)
+		# From the field, looking back at the gate as it rises with the town behind it.
+		main.camera.set_view(Vector3(at.x, 0.0, at.y), 21.0, atan2(g.outward.x, g.outward.y) + 0.35)
+		await _seconds(WallView.LEAD_S + 1.2)
 		await _shot("walls_rise", 1)
 		await _seconds(6.0)
 
@@ -99,6 +120,23 @@ func _run() -> void:
 		main.camera.set_view(Vector3(g.center.x - 1.5, 0.0, g.center.y + 1.0), 15.0, deg_to_rad(-24.0))
 		await _shot("walls_gate", 140)
 
+	if _wanted("research"):
+		var w := _town(map_seed, 1)
+		_grow(w, 1)
+		main.hud.visible = true
+		game.paused = false
+		var started := int(Time.get_unix_time_from_system()) - 38
+		main.world_view.research_override = {"target": 2, "duration_ms": 90000,
+			"started_at": Time.get_datetime_string_from_unix_time(started) + ".000Z"}
+		await _seconds(1.5)
+		main.frame_town()
+		await _shot("walls_research", 30)
+		var g: WallLayout.Piece = w.walls.pieces_of(1, WallLayout.GATE)[0]
+		main.hud.visible = false
+		main.camera.set_view(Vector3(g.center.x + 1.0, 0.0, g.center.y - 1.5), 17.0, deg_to_rad(-20.0))
+		await _shot("walls_research_yard", 30)
+		main.world_view.research_override = {}
+
 	if _wanted("plates"):
 		var w := _town(map_seed, 2)
 		_grow(w, 2)
@@ -106,6 +144,10 @@ func _run() -> void:
 		main.hud.visible = true
 		game.paused = false
 		await _seconds(1.0)
+		if homes.is_empty():
+			printerr("walls_showcase: no room for the agents' plots")
+			quit(1)
+			return
 		var h: SimBuilding = homes[0]
 		main.camera.set_view(Vector3(h.center().x + 2.5, 0.0, h.center().y + 1.5), 30.0, deg_to_rad(-12.0))
 		main.camera.focus(Vector3(h.center().x + 3.0, 0.0, h.center().y), true)
@@ -191,11 +233,12 @@ func _agents(w: SimWorld) -> Array[SimBuilding]:
 		{"id": "a1", "name": "Mira", "role": "artificer", "rank": "F", "activity": "working", "lifecycle": "active", "created_at": "2026-09-30T10:00:00.000Z"},
 		{"id": "a2", "name": "Odo", "role": "scribe", "rank": "E", "activity": "idle", "lifecycle": "active", "created_at": "2026-09-30T10:01:00.000Z"},
 	]
-	var approvals := [{"id": "ap1", "agent_id": "a1", "status": "pending", "summary": "Run the tests", "created_at": "2026-09-30T10:05:00.000Z"}]
+	var approvals := [{"id": "ap1", "agent_id": "a1", "status": "pending", "summary": "Run: npm test", "tool": "Bash",
+		"category": "command", "risk": "medium", "input_preview": "{\"command\": \"npm test\"}", "created_at": "2026-09-30T10:05:00.000Z"}]
 	realm.call("apply_state", {"agents": agents, "approvals": approvals, "tools": [], "tasks": [], "age": {"current": w.age, "research": null}})
 	var homes: Array[SimBuilding] = []
-	var c := Vector2i(w.map_center())
-	var spots := [c + Vector2i(-9, 3), c + Vector2i(6, -9)]
+	var c := w.map_center()
+	var spots := [Vector2i(c + Vector2(cos(2.55), sin(2.55)) * 16.0), Vector2i(c + Vector2(cos(0.35), sin(0.35)) * 16.0)]
 	for i in agents.size():
 		var a: Dictionary = agents[i]
 		var home_type := w.econ.role_home(String(a["role"]))
@@ -220,7 +263,7 @@ func _agents(w: SimWorld) -> Array[SimBuilding]:
 
 
 func _plot_near(w: SimWorld, home_type: String, near: Vector2i) -> Vector2i:
-	for r in range(0, 8):
+	for r in range(0, 14):
 		for dy in range(-r, r + 1):
 			for dx in range(-r, r + 1):
 				if maxi(absi(dx), absi(dy)) != r:

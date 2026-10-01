@@ -24,7 +24,8 @@ const OPENING_MAX_DISTANCE := 48.0
 ## player has moved the camera), so a window that maximises late still opens on the Keep.
 const REFRAME_FOR_MS := 4000
 ## How tall the walls stand, for framing a ring while it rises.
-const WALL_FRAME_HEIGHT := 4.0
+const WALL_FRAME_HEIGHT := 5.5
+const WALL_FRAME_OUT := 2.5
 
 var world_view: WorldView
 var camera: RtsCamera
@@ -156,7 +157,8 @@ func _on_viewport_resized() -> void:
 
 
 func _on_wall_rise_started(_ring: int, center: Vector3, radius: float, seconds: float) -> void:
-	camera.frame_ring(center, radius, seconds, WALL_FRAME_HEIGHT)
+	# The towers stand a little outside the ring's line.
+	camera.frame_ring(center, radius + WALL_FRAME_OUT, seconds, WALL_FRAME_HEIGHT)
 
 
 ## `--age=N` starts an offline town at that age; `--advance-age-after=S` advances it one age
