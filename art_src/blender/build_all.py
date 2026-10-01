@@ -100,7 +100,7 @@ def main() -> None:
     run_group(blender, [("models", "build_models.py", []), ("characters", "build_characters.py", [])])
     run_group(blender, [("icons", "render_icons.py", [])])
     run_group(blender, [("sheets-a", "contact_sheets.py", ["buildings", "construction", "tools"]),
-                        ("sheets-b", "contact_sheets.py", ["nature", "props"]),
+                        ("sheets-b", "contact_sheets.py", ["nature", "props", "walls"]),
                         ("sheets-c", "contact_sheets.py", ["characters"]),
                         ("sheets-d", "contact_sheets.py", ["icons"])])
     run_group(blender, [("verify", "verify.py", [])])

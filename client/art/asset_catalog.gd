@@ -55,6 +55,16 @@ const MODEL_IDS := {
 	"stage/b": "stage_b",
 	"stage/c": "stage_c",
 	"stage/scaffolding": "scaffolding",
+	# Town walls (art_src/manifest.json "walls"): curtains normalised to thickness 1, towers to a
+	# shaft 1 across, the gate to a door opening 1 wide.
+	"wall/curtain": "wall_curtain",
+	"wall/curtain_tall": "wall_curtain_tall",
+	"wall/tower_squat": "wall_tower_squat",
+	"wall/tower": "wall_tower",
+	"wall/tower_roofed": "wall_tower_roofed",
+	"wall/tower_spire": "wall_tower_spire",
+	"wall/tower_catapult": "wall_tower_catapult",
+	"wall/gate": "wall_gate",
 }
 
 ## Unit kind -> character ids, picked by unit id. Agents wear their role's figure

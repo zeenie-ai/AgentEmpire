@@ -2,7 +2,7 @@
 
     blender --background --factory-startup --python art_src/blender/contact_sheets.py -- [category ...]
 
-Categories: buildings construction tools nature props characters icons (default: all).
+Categories: buildings construction tools nature props walls characters icons (default: all).
 Every tile re-imports the exported GLB (not the Blender build scene), stands it on a grid of
 1-unit tiles (its footprint in light green, a one-tile margin in dark green) and, for scale,
 places townsfolk_a at the front-left corner. Camera: orthographic, yaw 45, pitch 30, the same
@@ -34,7 +34,7 @@ GREEN_DARK = [(0.30, 0.40, 0.22), (0.27, 0.37, 0.20)]
 def section_stems() -> dict[str, list[tuple[str, tuple[int, int] | None]]]:
     """category -> [(model stem, footprint or None)] in manifest order."""
     out: dict[str, list] = {}
-    for section in ("buildings", "construction", "tools", "nature", "props"):
+    for section in ("buildings", "construction", "tools", "nature", "props", "walls"):
         items = []
         for e in C.MANIFEST[section]:
             fp = tuple(e["footprint"]) if "footprint" in e else None
@@ -264,7 +264,7 @@ def main() -> None:
         i = args.index("--tile")
         TILE = int(args[i + 1])
         args = args[:i] + args[i + 2:]
-    wanted = args or ["buildings", "construction", "tools", "nature", "props", "characters", "icons"]
+    wanted = args or ["buildings", "construction", "tools", "nature", "props", "walls", "characters", "icons"]
     C.reset_scene()
     C.setup_studio(TILE, TILE, transparent=True, samples=32)
     stems = section_stems()
