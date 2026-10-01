@@ -133,7 +133,7 @@ func paint_wall_ring(w: SimWorld, k: int) -> void:
 		var p := l.pieces[pi]
 		match p.kind:
 			WallLayout.CURTAIN:
-				paint_segment(p.a, p.b, WallLayout._param(WallLayout.THICKNESS, k) * 0.5 + 0.55, 0.4)
+				paint_segment(p.a, p.b, WallLayout.thickness(k) * 0.5 + 0.55, 0.4)
 			WallLayout.TOWER, WallLayout.GATE_TOWER:
 				paint_segment(p.center, p.center, p.radius + 0.5, 0.45)
 			WallLayout.GATE:

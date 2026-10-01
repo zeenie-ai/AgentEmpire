@@ -161,6 +161,11 @@ func pieces_of(k: int, kind: int) -> Array[Piece]:
 	return out
 
 
+## How thick ring `k`'s curtains are, in tiles (the views scale the wall art to it).
+static func thickness(k: int) -> float:
+	return _param(THICKNESS, k)
+
+
 ## Point on ring `k`'s circle at `angle`, `out` tiles outside it.
 func ring_point(k: int, angle: float, out: float = 0.0) -> Vector2:
 	return center + Vector2(cos(angle), sin(angle)) * (radii[k] + out)

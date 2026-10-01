@@ -134,7 +134,7 @@ func _make_ring(k: int, animate: bool) -> RingDraw:
 	d.root.name = "Ring%d" % k
 	add_child(d.root)
 	rings[k] = d
-	var thickness := WallLayout._param(WallLayout.THICKNESS, k)
+	var thickness := WallLayout.thickness(k)
 	var curtain_key := String(style["curtain"])
 	var curtain_len := maxf(ModelLibrary.mesh(curtain_key).get_aabb().size.x, 0.1)
 	var tower_keys: Array = style["towers"]
