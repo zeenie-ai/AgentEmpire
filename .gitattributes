@@ -1,0 +1,4 @@
+# Line endings for the build launchers, whatever the cloning computer's git settings are.
+*.cmd     text eol=crlf
+*.sh      text eol=lf
+*.command text eol=lf

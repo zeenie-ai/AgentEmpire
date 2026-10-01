@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+// Smoke test for an unzipped release package: does it work the way a player would use it?
+//   1. Its bundled Node.js runs its compiled Town Hall, which answers on its port.
+//   2. Its game, started headless, launches its own Town Hall (practice agents) with that
+//      Node.js and connects to it.
+// Everything runs in a temporary data folder with the shared discovery file off, so nothing a
+// player or another Town Hall uses is touched; every process started here is stopped.
+//
+// Usage: node scripts/smoke-package.mjs <unzipped package folder>
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import { join, resolve } from 'node:path';
+
+const pkg = resolve(process.argv[2] ?? '');
+if (!process.argv[2] || !existsSync(join(pkg, 'townhall', 'release.json'))) {
+  console.error('Usage: node scripts/smoke-package.mjs <unzipped package folder>');
+  process.exit(2);
+}
+
+const win = process.platform === 'win32';
+const node = join(pkg, 'runtime', 'node', win ? 'node.exe' : join('bin', 'node'));
+const game = (() => {
+  if (existsSync(join(pkg, 'Aurelhaven.exe'))) return join(pkg, 'Aurelhaven.exe');
+  if (existsSync(join(pkg, 'Aurelhaven.x86_64'))) return join(pkg, 'Aurelhaven.x86_64');
+  const app = join(pkg, 'Aurelhaven.app', 'Contents', 'MacOS');
+  const names = existsSync(app) ? readdirSync(app) : [];
+  return names.length > 0 ? join(app, names[0]) : null;
+})();
+const tmp = mkdtempSync(join(os.tmpdir(), 'aurelhaven-smoke-'));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const children = [];
+let failed = false;
+
+function check(ok, text) {
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${text}`);
+  if (!ok) failed = true;
+  return ok;
+}
+
+function readJson(file) {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Stops a process tree started here (taskkill on Windows; the process group elsewhere). */
+function stop(child) {
+  if (!child || child.exitCode !== null) return;
+  if (win) spawn(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  else {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
+  }
+}
+
+function stopPid(pid) {
+  if (!pid) return;
+  try {
+    if (win) spawn(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+    else process.kill(pid, 'SIGKILL');
+  } catch {
+    // already gone
+  }
+}
+
+async function waitFor(cond, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (cond()) return true;
+    await sleep(250);
+  }
+  return cond();
+}
+
+const env = {
+  ...process.env,
+  AURELHAVEN_DISCOVERY_FILE: 'off',
+  AURELHAVEN_PORT: '0',
+  AURELHAVEN_LOG_LEVEL: 'info',
+};
+
+async function townHallAlone() {
+  const data = join(tmp, 'alone');
+  const out = [];
+  const child = spawn(node, [join(pkg, 'townhall', 'dist', 'main.js')], {
+    cwd: join(pkg, 'townhall'),
+    env: { ...env, AURELHAVEN_DATA_DIR: data, AURELHAVEN_PROVIDER: 'fake' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: !win,
+  });
+  children.push(child);
+  child.stdout.on('data', (d) => out.push(String(d)));
+  child.stderr.on('data', (d) => out.push(String(d)));
+  const ready = await waitFor(() => out.join('').includes('Town Hall is ready'), 30_000);
+  if (!check(ready, 'the bundled Node.js runs the compiled Town Hall')) console.log(out.join('').slice(-2000));
+  const info = readJson(join(data, 'runtime.json'));
+  if (check(Boolean(info?.port), 'it writes its runtime file')) {
+    const res = await fetch(`http://127.0.0.1:${info.port}/`).catch(() => null);
+    check(res !== null, `it answers HTTP on port ${info.port}`);
+  }
+  stop(child);
+}
+
+async function gameStartsItsTownHall() {
+  if (!check(game !== null && existsSync(game), 'the package has the game')) return;
+  const root = join(tmp, 'game');
+  const child = spawn(game, ['--headless'], {
+    cwd: pkg,
+    env: { ...env, AURELHAVEN_DATA_ROOT: root },
+    stdio: 'ignore',
+    detached: !win,
+  });
+  children.push(child);
+  const log = join(root, 'practice', 'townhall.log');
+  const connected = await waitFor(() => existsSync(log) && readFileSync(log, 'utf8').includes('client connected'), 90_000);
+  check(connected, 'the game starts its own practice Town Hall and connects to it');
+  if (!connected && existsSync(log)) console.log(readFileSync(log, 'utf8').slice(-2000));
+  stop(child);
+  stopPid(readJson(join(root, 'practice', 'runtime.json'))?.pid);
+}
+
+try {
+  await townHallAlone();
+  await gameStartsItsTownHall();
+} finally {
+  for (const c of children) stop(c);
+  await sleep(1500);
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+}
+console.log(failed ? '\nThe package failed its smoke test.' : '\nThe package passed its smoke test.');
+process.exit(failed ? 1 : 0);

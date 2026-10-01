@@ -1,16 +1,18 @@
-// Builds the playable game: syncs economy.json into the client, imports the Godot project,
-// then exports the Windows desktop build and the web build.
+// Development build: syncs economy.json into the client, imports the Godot project, then exports
+// the Windows desktop build and the web build into client/export/ (run from this checkout, they
+// use its townhall/). Release packages for every platform: scripts/package-release.mjs.
 //
 // Usage: node scripts/build-game.mjs [--windows-only | --web-only]
-// Godot is taken from the GODOT environment variable, or the self-contained copy in .tools/godot.
+// Godot is taken from the GODOT environment variable, or the copy in .tools/godot (scripts/setup.mjs).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findGodot } from "./lib/godot.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const client = join(root, "client");
-const godot = process.env.GODOT ?? join(root, ".tools", "godot", "Godot_v4.7.2-stable_win64_console.exe");
+const godot = findGodot(root);
 const args = new Set(process.argv.slice(2));
 
 const targets = [
