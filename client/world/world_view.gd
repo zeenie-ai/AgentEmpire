@@ -281,13 +281,16 @@ func _on_notice(kind: String, data: Dictionary) -> void:
 		if notify != null:
 			notify.call("push", "A wanderer has come to join your town.", "good", "wanderer", 5000)
 		return
-	if kind != "deposited" or int(data.get("amount", 0)) <= 0:
+	if kind != "deposited":
 		return
 	var b: SimBuilding = world.buildings.get(int(data.get("building", 0)))
+	if b != null:
+		_sound("drop_off", Vector3(b.center().x, 0.5, b.center().y))
+	if int(data.get("amount", 0)) <= 0:
+		return
 	var at := Vector3.ZERO
 	if b != null:
 		at = Vector3(b.center().x, ModelLibrary.building_height(b.type) * 0.55 + 0.6, b.center().y)
-		_sound("drop_off", Vector3(b.center().x, 0.5, b.center().y))
 	var u: SimUnit = world.units.get(int(data.get("unit", 0)))
 	if u != null:
 		at = Vector3(u.pos.x, 1.4, u.pos.y)
