@@ -1,4 +1,4 @@
-"""Rebuilds all Aurelhaven art from the KayKit sources, in order:
+"""Rebuilds all AgentEmpire art from the KayKit sources, in order:
 
   1. build_models.py      client/art/models/*.glb and anchors.json      } in parallel
      build_characters.py  client/art/characters/*.glb                   }

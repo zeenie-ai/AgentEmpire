@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Sets up everything needed to build and run Aurelhaven from source, on Windows, macOS or Linux:
+// Sets up everything needed to build and run AgentEmpire from source, on Windows, macOS or Linux:
 //   1. Godot 4.7.2, the game engine, into .tools/godot/ (from Godot's official GitHub release,
 //      checked against its published SHA-512 list);
 //   2. the export templates this computer's build needs, or every platform's with --all-templates
@@ -28,7 +28,7 @@ function step(text) {
 function checkNode() {
   const [major, minor] = process.versions.node.split('.').map(Number);
   if (major < 22 || (major === 22 && minor < 12)) {
-    console.error(`Aurelhaven needs Node.js 22.12 or newer; this computer has ${process.versions.node}.`);
+    console.error(`AgentEmpire needs Node.js 22.12 or newer; this computer has ${process.versions.node}.`);
     console.error('Install the LTS version from https://nodejs.org and run this again.');
     process.exit(1);
   }

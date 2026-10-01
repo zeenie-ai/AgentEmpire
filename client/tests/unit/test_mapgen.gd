@@ -74,3 +74,34 @@ func test_the_town_comes_alive() -> void:
 			working += 1
 	assert_eq(working, w.units.size(), "idle townsfolk found work on their own")
 	assert_gt(w.ledger.amount("food") + w.ledger.amount("wood"), food + wood)
+
+
+func test_room_for_agent_homes_in_the_first_age() -> void:
+	# Agents' 7 x 7 plots must fit between the Keep Ring and the edge of the first age's build
+	# zone; forests, strays and rocks once left room for a single home.
+	for seed_value: int in [4127, 9]:
+		var w := SimFixture.generated_world(seed_value)
+		var plots := _plots_that_fit(w, "workshop")
+		gut.p("seed %d: %d agent plots fit at once" % [seed_value, plots])
+		assert_gte(plots, 4, "seed %d: room for at least four agent homes at once" % seed_value)
+
+
+## How many plots for `home_type` fit at once in the build zone (greedy, without overlaps).
+func _plots_that_fit(w: SimWorld, home_type: String) -> int:
+	var taken: Array[Rect2i] = []
+	var c := Vector2i(w.map_center())
+	var r := w.build_radius() + 1
+	for y in range(c.y - r, c.y + r):
+		for x in range(c.x - r, c.x + r):
+			var cell := Vector2i(x, y)
+			if not bool(Placement.check_plot(w, home_type, cell)["ok"]):
+				continue
+			var plot := Rect2i(cell, Vector2i(HomeLayout.PLOT, HomeLayout.PLOT))
+			var free := true
+			for t: Rect2i in taken:
+				if t.intersects(plot):
+					free = false
+					break
+			if free:
+				taken.append(plot)
+	return taken.size()

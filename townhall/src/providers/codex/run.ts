@@ -223,7 +223,7 @@ export class CodexRun implements RunHandle {
     if (this.stop === "kill") this.stopping = proc.kill();
 
     try {
-      await rpc.request("initialize", { clientInfo: { name: "aurelhaven_townhall", title: "Aurelhaven Town Hall", version: DAEMON_VERSION }, capabilities: null }, 60_000);
+      await rpc.request("initialize", { clientInfo: { name: "aurelhaven_townhall", title: "AgentEmpire Town Hall", version: DAEMON_VERSION }, capabilities: null }, 60_000);
       rpc.notify("initialized");
       const resumed = await this.openThread(rpc);
       if (this.stop) {

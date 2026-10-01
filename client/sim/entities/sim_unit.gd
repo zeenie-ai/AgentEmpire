@@ -86,7 +86,7 @@ func to_dict() -> Dictionary:
 	return {
 		"id": id, "kind": kind, "agent_id": agent_id, "home_id": home_id,
 		"role": role, "activity": activity, "work_tool": work_tool,
-		"pos": [pos.x, pos.y], "prev": [prev_pos.x, prev_pos.y], "facing": facing,
+		"pos": [pos.x, pos.y], "prev": [prev_pos.x, prev_pos.y], "facing": _f32(facing),
 		"job": job, "phase": phase, "hold": hold, "idle_ticks": idle_ticks,
 		"target_id": target_id, "gather_kind": gather_kind, "drop_id": drop_id,
 		"resume_id": resume_id, "carry_res": carry_res, "carry_m": carry_m,
@@ -96,6 +96,13 @@ func to_dict() -> Dictionary:
 		"path_retries": path_retries, "stuck_ticks": stuck_ticks,
 		"bad_targets": bad_targets.duplicate(), "payload": payload.duplicate(true),
 	}
+
+
+## Facing (only the views read it) is saved at 32-bit precision, like positions: a 64-bit float
+## does not always come back from JSON bit for bit (Godot's parser can land one bit off), and
+## a 32-bit value survives that.
+static func _f32(x: float) -> float:
+	return PackedFloat32Array([x])[0]
 
 
 static func from_dict(d: Dictionary) -> SimUnit:
@@ -111,7 +118,7 @@ static func from_dict(d: Dictionary) -> SimUnit:
 	u.pos = Vector2(float(p[0]), float(p[1]))
 	var pp: Array = d.get("prev", p)
 	u.prev_pos = Vector2(float(pp[0]), float(pp[1]))
-	u.facing = float(d.get("facing", 0.0))
+	u.facing = _f32(float(d.get("facing", 0.0)))
 	u.job = String(d.get("job", SimConst.JOB_IDLE))
 	u.phase = String(d.get("phase", ""))
 	u.hold = bool(d.get("hold", false))

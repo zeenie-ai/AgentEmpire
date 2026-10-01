@@ -1,4 +1,4 @@
-"""Shared helpers for the Aurelhaven art pipeline (Blender 5.1, run headless).
+"""Shared helpers for the AgentEmpire art pipeline (Blender 5.1, run headless).
 
 Every build script is run as
     blender --background --factory-startup --python art_src/blender/<script>.py -- [args]

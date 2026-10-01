@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const log = createLogger(config.logLevel);
   // The `shutdown` command stops the daemon (tasks pause, runtime files go) and then exits here.
   const daemon = await Daemon.start({ config, log, onShutdown: () => process.exit(0) });
-  process.stdout.write(`Aurelhaven Town Hall is ready.\nWeb client: ${daemon.url}\nruntime.json: ${daemon.runtimeFile}\n`);
+  process.stdout.write(`AgentEmpire Town Hall is ready.\nWeb client: ${daemon.url}\nruntime.json: ${daemon.runtimeFile}\n`);
 
   let stopping = false;
   const shutdown = async (signal: string) => {

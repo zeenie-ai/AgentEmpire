@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Aurelhaven approval server for Claude Code's `--permission-prompt-tool`.
+// AgentEmpire approval server for Claude Code's `--permission-prompt-tool`.
 //
 // A dependency-free MCP server (JSON-RPC 2.0 over stdio, one message per line) with a single
 // tool, `approve`. Claude Code calls it whenever a tool call needs permission. Each call is
@@ -23,7 +23,7 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const APPROVE_TOOL = {
   name: "approve",
   description:
-    "Asks the Aurelhaven Town Hall whether a tool call may run. Used by Claude Code as its permission prompt tool; the model should not call it directly.",
+    "Asks the AgentEmpire Town Hall whether a tool call may run. Used by Claude Code as its permission prompt tool; the model should not call it directly.",
   inputSchema: {
     type: "object",
     properties: {

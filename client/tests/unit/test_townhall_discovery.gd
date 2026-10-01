@@ -75,7 +75,7 @@ func test_the_shared_copy_can_be_turned_off() -> void:
 	assert_eq(TownHallDiscovery.discovery_copy(), "")
 	assert_eq(Array(TownHallDiscovery.candidate_paths("fake")), [_tmp.path_join("practice/runtime.json"), _tmp.path_join("runtime.json")])
 	OS.unset_environment("AURELHAVEN_DISCOVERY_FILE")
-	assert_true(TownHallDiscovery.discovery_copy().ends_with("Aurelhaven/runtime.json"))
+	assert_true(TownHallDiscovery.discovery_copy().ends_with("AgentEmpire/runtime.json"))
 
 
 func test_finds_the_preferred_town_hall_and_only_the_pinned_one_when_pinned() -> void:
@@ -112,7 +112,7 @@ func test_reads_a_launch_failure_from_the_new_part_of_the_log() -> void:
 	assert_eq(TownHallLauncher.launch_failure("fake", offset), "")
 	var f := FileAccess.open(log_path, FileAccess.READ_WRITE)
 	f.seek_end()
-	f.store_string("Aurelhaven Town Hall is starting\nThe Town Hall could not start: AURELHAVEN_PORT must be a non-negative integer\n")
+	f.store_string("AgentEmpire Town Hall is starting\nThe Town Hall could not start: AURELHAVEN_PORT must be a non-negative integer\n")
 	f.close()
 	assert_eq(TownHallLauncher.launch_failure("fake", offset), "AURELHAVEN_PORT must be a non-negative integer")
 	# Another Town Hall on that data folder is the one to connect to, not a failure.

@@ -274,7 +274,7 @@ func _on_hello(req: NetRequest) -> void:
 		_close(1000, "hello failed")
 		match req.error_code():
 			Protocol.ERR_SESSION_BUSY:
-				last_problem = "Another Aurelhaven window is connected."
+				last_problem = "Another AgentEmpire window is connected."
 				_parked = true
 				_set_status(STATUS_BUSY)
 			Protocol.ERR_AUTH_FAILED:
@@ -337,7 +337,7 @@ func _on_closed(code: int, reason: String) -> void:
 	_teardown()
 	match code:
 		Protocol.CLOSE_REPLACED:
-			last_problem = "Another Aurelhaven window took over."
+			last_problem = "Another AgentEmpire window took over."
 			_parked = true
 			_set_status(STATUS_BUSY)
 		Protocol.CLOSE_BAD_TOKEN:
@@ -432,7 +432,7 @@ func _on_event(ev: Dictionary) -> void:
 	var type := String(ev.get("type", ""))
 	if type in TRANSIENT_EVENTS:
 		if type == "session_revoked":
-			last_problem = "Another Aurelhaven window took over."
+			last_problem = "Another AgentEmpire window took over."
 			_parked = true
 		event_received.emit(ev)
 		return

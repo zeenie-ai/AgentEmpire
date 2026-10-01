@@ -5,9 +5,9 @@ param([int]$Seconds = 12, [string]$Exe = "")
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$exe = if ($Exe) { $Exe } else { Join-Path $root "client/export/windows/Aurelhaven.exe" }
+$exe = if ($Exe) { $Exe } else { Join-Path $root "client/export/windows/AgentEmpire.exe" }
 $out = Join-Path $root "out/exe-check.png"
-$log = Join-Path $env:APPDATA "Godot/app_userdata/Aurelhaven/logs/godot.log"
+$log = Join-Path $env:APPDATA "Godot/app_userdata/AgentEmpire/logs/godot.log"
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 if (Test-Path $log) { Remove-Item $log -Force }
 

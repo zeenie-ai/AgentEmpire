@@ -21,7 +21,7 @@ import type { AgentRow } from "./agents.js";
 import type { Ctx } from "./context.js";
 import { shortRandom } from "./ids.js";
 
-export const TOWN_HALL_IDENTITY = ["-c", "user.name=Aurelhaven Town Hall", "-c", "user.email=townhall@aurelhaven.invalid"];
+export const TOWN_HALL_IDENTITY = ["-c", "user.name=AgentEmpire Town Hall", "-c", "user.email=townhall@agentempire.invalid"];
 const RITE_OUTPUT_TAIL_BYTES = 2 * 1024;
 const RITE_BUFFER_BYTES = 64 * 1024;
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
@@ -309,7 +309,7 @@ export class WorkspaceService {
           "--allow-empty",
           "-q",
           "-m",
-          "Aurelhaven: sync from the work folder",
+          "AgentEmpire: sync from the work folder",
         ]);
       }
     });
@@ -386,7 +386,7 @@ export class WorkspaceService {
     if (plain) await this.syncMirror(agent.workspace_path, repo);
 
     return this.ctx.locks.run(`repo:${repo}`, async () => {
-      const branch = `aurelhaven/${agent.id}/${task.id}`;
+      const branch = `agentempire/${agent.id}/${task.id}`;
       const branchExists =
         (await this.git.run(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true })).code === 0;
       let baseSha = existing?.base_sha ?? "";
@@ -401,7 +401,7 @@ export class WorkspaceService {
       mkdirSync(path.dirname(worktree), { recursive: true });
       if (branchExists) await this.git.run(repo, ["worktree", "add", worktree, branch]);
       else await this.git.run(repo, ["worktree", "add", "-b", branch, worktree, baseSha]);
-      await this.git.run(repo, ["worktree", "lock", "--reason", `Aurelhaven task ${task.id}`, worktree]);
+      await this.git.run(repo, ["worktree", "lock", "--reason", `AgentEmpire task ${task.id}`, worktree]);
       const cwd = path.join(worktree, plain ? "" : agent.workspace_sub);
       mkdirSync(cwd, { recursive: true });
       return {
@@ -530,7 +530,7 @@ export class WorkspaceService {
       const identity = email.code === 0 && email.stdout.trim() ? [] : TOWN_HALL_IDENTITY;
       const merged = await this.git.run(
         ws.repo,
-        [...identity, "merge", "--no-ff", "--no-edit", "-m", `Aurelhaven: ${title} (${taskId})`, ws.branch],
+        [...identity, "merge", "--no-ff", "--no-edit", "-m", `AgentEmpire: ${title} (${taskId})`, ws.branch],
         { allowFail: true },
       );
       if (merged.code !== 0) {
@@ -600,19 +600,19 @@ export class WorkspaceService {
     return true;
   }
 
-  /** Archives the branch tip under refs/aurelhaven/archive/<task>, then removes the workspace. */
+  /** Archives the branch tip under refs/agentempire/archive/<task>, then removes the workspace. */
   async discard(ws: TaskWorkspace, taskId: string, title: string): Promise<void> {
     await this.ctx.locks.run(`repo:${ws.repo}`, async () => {
       if (existsSync(ws.worktree) && !ws.removed) {
         await this.git.run(ws.worktree, ["add", "-A"]);
         const status = await this.git.run(ws.worktree, ["status", "--porcelain", "-z"]);
         if (status.stdout.length > 0) {
-          await this.git.run(ws.worktree, [...TOWN_HALL_IDENTITY, "commit", "--no-verify", "-q", "-m", `Aurelhaven archive: ${title}`]);
+          await this.git.run(ws.worktree, [...TOWN_HALL_IDENTITY, "commit", "--no-verify", "-q", "-m", `AgentEmpire archive: ${title}`]);
         }
       }
       const tip = await this.git.run(ws.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${ws.branch}`], { allowFail: true });
       if (tip.code === 0) {
-        const ref = `refs/aurelhaven/archive/${taskId}`;
+        const ref = `refs/agentempire/archive/${taskId}`;
         await this.git.run(ws.repo, ["update-ref", ref, tip.stdout.trim()]);
         ws.archived_ref = ref;
       }

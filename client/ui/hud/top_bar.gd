@@ -42,7 +42,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 24)
 	add_child(row)
 	var mark := Label.new()
-	mark.text = "AURELHAVEN"
+	mark.text = "AgentEmpire"
 	mark.theme_type_variation = "TitleLabel"
 	mark.add_theme_font_size_override("font_size", 18)
 	mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -144,7 +144,7 @@ The town plays offline meanwhile."
 		Net.STATUS_BUSY:
 			text = "TAKE OVER"
 			color = UiTokens.WARN
-			tip = "Another Aurelhaven window is connected to the Town Hall. Click to take over."
+			tip = "Another AgentEmpire window is connected to the Town Hall. Click to take over."
 		Net.STATUS_REJECTED:
 			text = "TOWN HALL REFUSED"
 			color = UiTokens.BAD

@@ -51,7 +51,7 @@ describe("the main checkout is protected", () => {
     expect(treeHashes(repo)).toEqual(hashes);
     expect(git(repo, "rev-parse", "HEAD")).toBe(head);
     expect(git(repo, "status", "--porcelain")).toBe("");
-    expect(git(repo, "branch", "--list", `aurelhaven/${agentId}/${taskId}`)).toContain(taskId);
+    expect(git(repo, "branch", "--list", `agentempire/${agentId}/${taskId}`)).toContain(taskId);
     const ws = JSON.parse(town.ctx.tasks.row(taskId).workspace_json!);
     expect(path.basename(ws.worktree)).toHaveLength(8);
     expect(git(repo, "worktree", "list", "--porcelain")).toContain("locked");
@@ -64,7 +64,7 @@ describe("the main checkout is protected", () => {
     await c.waitEvent((e) => e.type === "incident_opened" && e.payload.incident.kind === "merge_blocked");
     expect(town.ctx.tasks.row(taskId).state).toBe("accepting");
     expect(readFileSync(path.join(repo, "README.md"), "utf8")).toBe("# App, edited by the player\n");
-    expect(existsSync(path.join(repo, "aurelhaven-note.md"))).toBe(false);
+    expect(existsSync(path.join(repo, "agentempire-note.md"))).toBe(false);
 
     // Being on another branch blocks it too.
     writeFileSync(path.join(repo, "README.md"), "# App\n");
@@ -76,7 +76,7 @@ describe("the main checkout is protected", () => {
 
     const merged = await c.ok("accept_result", { task_id: taskId, integrate: "merge" });
     expect(merged.merge.commit).toMatch(/^[0-9a-f]{40}$/);
-    expect(readFileSync(path.join(repo, "aurelhaven-note.md"), "utf8")).toBe("Notes from a fake agent.\n");
+    expect(readFileSync(path.join(repo, "agentempire-note.md"), "utf8")).toBe("Notes from a fake agent.\n");
     await c.waitTask(taskId, "accepted");
     await c.waitEvent((e) => e.type === "incident_resolved");
     // A run shorter than bounty.min_run_s pays nothing.
@@ -110,7 +110,7 @@ describe("the main checkout is protected", () => {
     expect(merge.merge.blocked_reason).toBe("not_a_repo");
     const exported = await c2.ok("accept_result", { task_id: taskId, integrate: "export" });
     expect(exported.rewards).not.toBeNull();
-    expect(readFileSync(path.join(folder, "aurelhaven-note.md"), "utf8")).toBe("Notes from a fake agent.\n");
+    expect(readFileSync(path.join(folder, "agentempire-note.md"), "utf8")).toBe("Notes from a fake agent.\n");
     expect(readFileSync(path.join(folder, "todo.txt"), "utf8")).toBe("buy bread\n");
     expect(existsSync(path.join(folder, ".git"))).toBe(false);
   });

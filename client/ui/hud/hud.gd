@@ -1,7 +1,7 @@
 class_name Hud
 extends CanvasLayer
 ## The HUD: top resource bar, bottom panel (minimap, selection, command card), toasts, the
-## drag box, the placement hint and an optional FPS readout. Built in code on the Aurelhaven
+## drag box, the placement hint and an optional FPS readout. Built in code on the AgentEmpire
 ## theme (ThemeBuilder).
 ##
 ## Agents: the approval tray (top right), and modal windows opened over a dimmed town

@@ -40,7 +40,7 @@ const dataDir = join(tmp, 'data');
 const workRoot = join(tmp, 'work');
 const repo = join(workRoot, 'app');
 mkdirSync(join(repo, 'src'), { recursive: true });
-writeFileSync(join(repo, 'README.md'), '# App\n\nA test project for the Aurelhaven end-to-end check.\n');
+writeFileSync(join(repo, 'README.md'), '# App\n\nA test project for the AgentEmpire end-to-end check.\n');
 git(repo, 'init', '-q', '-b', 'main');
 git(repo, 'add', '-A');
 git(repo, '-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', 'commit', '-q', '-m', 'initial');

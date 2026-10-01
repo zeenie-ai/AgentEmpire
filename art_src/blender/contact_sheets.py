@@ -181,7 +181,7 @@ def sheet_models(category: str, items) -> None:
         tiles.append(label_tile(img, stem, f"{size}  {tris} tris  [{names}] fp {fp[0]}x{fp[1]}"))
     if tiles:
         dest = C.OUT_SHEETS / f"{category}.png"
-        C.save_png(compose(tiles, f"Aurelhaven - {category}"), dest)
+        C.save_png(compose(tiles, f"AgentEmpire - {category}"), dest)
         C.log(f"wrote {dest}")
 
 
@@ -224,7 +224,7 @@ def sheet_characters() -> None:
         # pad the wide line-up tile into the grid by splitting columns
         normal = [t for t in tiles if t.shape[1] == TILE]
         wide = [t for t in tiles if t.shape[1] != TILE]
-        sheet = compose(normal, "Aurelhaven - characters")
+        sheet = compose(normal, "AgentEmpire - characters")
         if wide:
             w = wide[0]
             extra = np.empty((w.shape[0] + 10, sheet.shape[1], 4), dtype=np.float32)
@@ -248,7 +248,7 @@ def sheet_icons() -> None:
         tiles.append(label_tile(tile, p.stem, f"{img.shape[1]}x{img.shape[0]}"))
     if tiles:
         dest = C.OUT_SHEETS / "icons.png"
-        C.save_png(compose(tiles, "Aurelhaven - icons", cols=7), dest)
+        C.save_png(compose(tiles, "AgentEmpire - icons", cols=7), dest)
         C.log(f"wrote {dest}")
 
 

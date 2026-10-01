@@ -106,7 +106,7 @@ export type Scenario = z.infer<typeof ScenarioSchema>;
 
 export const DEFAULT_FOLLOWUP: Step[] = [
   { op: "emit", kind: "message", text: "Working on the feedback." },
-  { op: "write_file", path: "aurelhaven-feedback.md", content: "Feedback applied:\n{feedback}\n", append: true },
+  { op: "write_file", path: "agentempire-feedback.md", content: "Feedback applied:\n{feedback}\n", append: true },
   { op: "usage", cost_mana: 2 },
   { op: "end", summary: "Applied the feedback." },
 ];

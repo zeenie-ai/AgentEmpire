@@ -30,7 +30,7 @@
 
   "buildings": [
     { "id": "keep", "footprint": [4, 4], "fit": 0.95, "source": "medieval:buildings/blue/building_castle_blue.gltf",
-      "note": "Town Center. Blue slate roofs match the Aurelhaven keep." },
+      "note": "Town Center. Blue slate roofs match the AgentEmpire keep." },
     { "id": "cottage", "footprint": [2, 2], "variants": ["medieval:buildings/red/building_home_A_red.gltf", "medieval:buildings/red/building_home_B_red.gltf"] },
     { "id": "farm", "footprint": [3, 3], "fit": 1.0, "source": "medieval:buildings/neutral/building_grain.gltf",
       "note": "Crop field. Trim or scale it to a square 3x3 plot and add a low wooden fence (medieval:buildings/neutral/fence_wood_straight.gltf) around the edge with a gap on the front side." },

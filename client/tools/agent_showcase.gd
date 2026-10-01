@@ -83,9 +83,20 @@ func _play() -> bool:
 	var spot_a := _plot(w, link.home_type(mira), Vector2i(k.center()) + Vector2i(8, -2))
 	var req: NetRequest = link.place_home(mira, spot_a)
 	await req.done
-	var spot_b := _plot(w, link.home_type(odo), Vector2i(k.center()) + Vector2i(-9, 1))
+	if not req.ok:
+		print("showcase: Mira's plot at %s was refused: %s" % [spot_a, req.error_message()])
+		return false
+	# Mira's plot must be in the town before Odo's is chosen, or both get the same one.
+	if not await _wait(func() -> bool: return w.agent_home(mira) != null, 15.0, "Mira's plot in the town"):
+		return false
+	# Next to Mira's, so both homes share the shots (the Keep Ring's gate roads leave little room
+	# elsewhere close to the Keep).
+	var spot_b := _plot(w, link.home_type(odo), Vector2i(k.center()) + Vector2i(8, -2))
 	req = link.place_home(odo, spot_b)
 	await req.done
+	if not req.ok:
+		print("showcase: Odo's plot at %s was refused: %s" % [spot_b, req.error_message()])
+		return false
 	if not await _wait(func() -> bool: return _settled(w, mira, 3) and _settled(w, odo, 2), 240.0, "homes and add-ons"):
 		_dump(w, [mira, odo])
 		return false
@@ -210,9 +221,10 @@ func _courier(w: SimWorld) -> SimUnit:
 	return null
 
 
-## The valid plot nearest to `near`.
+## The valid plot nearest to `near`. The search reaches past the Keep Ring, whose wall tiles
+## plots may not cover.
 func _plot(w: SimWorld, type: String, near: Vector2i) -> Vector2i:
-	for r in range(0, 14):
+	for r in range(0, 30):
 		for dy in range(-r, r + 1):
 			for dx in range(-r, r + 1):
 				if maxi(absi(dx), absi(dy)) != r:
