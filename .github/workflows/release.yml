@@ -1,0 +1,119 @@
+# Builds Aurelhaven's release packages (Windows, Linux, macOS for Apple Silicon and for Intel),
+# checks each one on its own kind of computer, and publishes them on the GitHub release for a
+# version tag such as v0.5.0. Started by hand (Actions > Release > Run workflow) it builds and
+# checks the packages without publishing them; they stay attached to the run for two weeks.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build the packages
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Godot and its export templates
+        uses: actions/cache@v4
+        with:
+          path: .tools/godot
+          key: godot-4.7.2-windows-all-templates-1
+
+      - name: Set up Godot, its export templates and the Town Hall packages
+        run: node scripts/setup.mjs --all-templates
+
+      - name: Build every package
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            node scripts/package-release.mjs --targets all --version "${GITHUB_REF_NAME#v}"
+          else
+            node scripts/package-release.mjs --targets all
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+            dist/RELEASE_NOTES.md
+          retention-days: 14
+          compression-level: 0
+
+  check:
+    name: Check the ${{ matrix.target }} package
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows
+            runner: windows-latest
+          - target: linux
+            runner: ubuntu-24.04
+          - target: macos-arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      # The way players unzip: Expand-Archive on Windows, unzip (which applies the zip's Unix
+      # permissions) on Linux and macOS.
+      - name: Unzip the package
+        shell: bash
+        run: |
+          zip=$(ls dist/Aurelhaven-*-${{ matrix.target }}.zip)
+          mkdir unpacked
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -NoProfile -Command "Expand-Archive -Path '$zip' -DestinationPath unpacked"
+          else
+            unzip -q "$zip" -d unpacked
+          fi
+          echo "PACKAGE=$(ls -d "$PWD"/unpacked/Aurelhaven-*)" >> "$GITHUB_ENV"
+
+      - name: Start it the way a player would
+        run: node scripts/smoke-package.mjs "${{ env.PACKAGE }}"
+
+  publish:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package, check]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease \
+              --title "Aurelhaven ${GITHUB_REF_NAME#v}" --notes-file dist/RELEASE_NOTES.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS.txt --clobber

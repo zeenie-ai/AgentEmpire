@@ -1,48 +1,165 @@
 # Aurelhaven
 
-Aurelhaven is a town-building game in the style of Age of Empires, set in an isekai fantasy
-world, in which the work is real. Every agent you summon is a real AI coding agent (Claude Code,
-Codex, or any other model through pi) working on your own projects.
+**A town-building game where your villagers are real AI agents.**
 
-- **Agents are villagers.** You summon them at the Keep the way Age of Empires trains villagers:
-  a queue, a progress bar and a full options dialog (harness, model, role, oath, work folder,
-  approval mode, budget seals, starting tools).
-- **Agents build their own homes.** Each agent walks out, builds a home for its role, then builds
-  small add-on buildings, and each add-on is a real capability. A Lectern lets it read files, a
-  Quillworks lets it write them and a Forge lets it run commands. A Rookery adds web access, an
-  Archive adds instructions and skills, and a Waygate adds an MCP server.
-- **Townsfolk keep the town running.** Your human townsfolk gather food and wood, build cottages,
-  and carry task scrolls from the Keep to the agents' homes. A task starts when its scroll
-  arrives.
-- **You stay in control.** When an agent needs permission, a bell rings at its home. When it
-  finishes, you review the diff and accept, send back or abandon the work. Accepted work pays the
-  town in resources and the agent in experience.
-- **Real money is separate.** Mana is your real budget (1 Mana = $0.01) with a hard cap; it can
-  never be earned or bought in the game.
+Aurelhaven plays like Age of Empires, in a fantasy world. The difference: the agents you summon
+at the Keep are real AI coding agents (Claude Code, Codex, or any other model through pi). They
+build their homes and workshops, your townsfolk carry their tasks to them, a bell rings when they
+need your permission, and the town grows on the work you accept.
 
-Aurelhaven is a game about directing real work, not a visualisation of your code.
-
-![The town: the Keep, an Artificer's workshop with its add-ons, and the HUD](docs/images/town.jpg)
+![The town: the Keep, an agent's workshop with its add-ons, and the game's controls](docs/images/town.jpg)
 
 | Summoning an agent | Reviewing its work |
 |---|---|
-| ![The Summoning Font dialog](docs/images/summon.jpg) | ![The Review window with the agent's diff](docs/images/review.jpg) |
+| ![The Summoning Font](docs/images/summon.jpg) | ![The review window](docs/images/review.jpg) |
+
+- [Download and play](#download-and-play)
+- [Real agents](#real-agents)
+- [How to play](#how-to-play)
+- [Build it yourself](#build-it-yourself)
+- [For developers](#for-developers)
+
+## Download and play
+
+Get the newest version from the **[Releases page](https://github.com/zeenie-ai/agent_game/releases)**
+and download the file for your computer:
+
+| Your computer | File |
+|---|---|
+| Windows 10 or 11 | `Aurelhaven-<version>-windows.zip` |
+| Mac with Apple Silicon (M1 or newer) | `Aurelhaven-<version>-macos-arm64.zip` |
+| Mac with an Intel processor | `Aurelhaven-<version>-macos-x64.zip` |
+| Linux (64-bit) | `Aurelhaven-<version>-linux.zip` |
+
+Not sure which Mac you have? Open the Apple menu and choose **About This Mac**: "Chip: Apple M..."
+means Apple Silicon, "Processor: ... Intel" means Intel.
+
+**Windows**
+
+1. Right-click the downloaded file and choose **Extract All**, then **Extract**.
+2. Open the new folder and double-click **Aurelhaven.exe**.
+3. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. The game
+   is not signed with a paid certificate yet, so Windows does not recognise it.
+
+**macOS**
+
+1. Double-click the downloaded file to unzip it.
+2. macOS blocks apps from developers it does not know. Open **Terminal** (in Applications, then
+   Utilities), type `xattr -dr com.apple.quarantine ` (with the space at the end), drag the
+   unzipped Aurelhaven folder onto the Terminal window, and press Return.
+3. Double-click **Aurelhaven.app** in that folder.
+
+**Linux**
+
+1. Unzip the file: `unzip Aurelhaven-*-linux.zip`
+2. Start the game: double-click **Aurelhaven.x86_64** in the new folder, or run
+   `./Aurelhaven.x86_64` in it.
+
+Keep the unzipped folder together: the game needs the `townhall`, `runtime` and `protocol`
+folders next to it. There is nothing else to install.
+
+The first start takes a few seconds while the game starts its **Town Hall**, the part that runs
+the agents. You begin with **practice agents**: a stand-in plays the agents' part through tasks,
+approvals and reviews, so you can learn the game while nothing real runs and nothing is spent.
+Your towns are kept in your user folder (`%APPDATA%\Aurelhaven` on Windows,
+`~/Library/Application Support/Aurelhaven` on macOS, `~/.local/share/Aurelhaven` on Linux), so
+deleting or updating the game folder does not touch them.
+
+## Real agents
+
+1. Install at least one agent program and sign in to it once:
+   - **Claude Code** ([how to install](https://docs.claude.com/en/docs/claude-code/setup)): then
+     run `claude` in a terminal and sign in.
+   - **Codex CLI** ([how to install](https://github.com/openai/codex)): then run `codex login`.
+   - **pi** comes with the game and works with many other model providers; it needs a sign-in
+     with the provider you choose.
+2. In the game, click **PRACTICE TOWN** in the top bar and choose **Real agents**. The game closes
+   the practice Town Hall and opens your real town; practice and real towns are kept apart.
+3. Summon an agent at the Keep (select the Keep with H, then press W), choose its work folder, and
+   send it a task.
+
+What keeps real agents in check:
+
+- **Tools come from buildings.** An agent can only read files once it has a Lectern, write them
+  with a Quillworks, run commands with a Forge, and so on.
+- **You approve what matters.** Anything outside the agent's trusted rules waits for you: a bell
+  rings at its home and a card appears at the top right.
+- **Your files stay yours until you accept.** In a git project each task works on its own branch;
+  your checkout changes only when you accept the work, and only if it is clean.
+- **Mana is your real budget.** 1 Mana = $0.01. Set it with F4; every task has its own cap, and
+  agents pause when the budget runs out. Your controls never cost anything.
+
+The Town Hall keeps running after you close the game, so agents can finish their tasks. To stop
+it, click the Town Hall chip in the top bar and choose **Close the Town Hall**.
+
+## How to play
+
+- **Grow the town.** Townsfolk gather food and wood and build cottages (more population), farms and
+  storehouses. Select them and right-click a bush or a tree, or press Q, W or E to build.
+- **Summon agents** at the Keep, the way you train villagers. Each one walks out, builds its home
+  on a plot you choose, then builds its add-on buildings, the tools it is allowed to use.
+- **Give tasks.** Select an agent and press Q to write a task. A townsperson carries the scroll
+  from the Keep to the agent's home; the work starts when it arrives.
+- **Answer the bells.** When an agent asks to do something, approve it once, for the task, or
+  always for that agent, or deny it. Space jumps to the oldest bell.
+- **Review and accept.** When a task is done, read the changes and accept, send back with notes,
+  or abandon it. Accepted work pays the town in food, wood, stone and gold, and the agent gains
+  experience and rank.
+
+| Input | Action |
+|---|---|
+| Left click, drag | Select, box-select (Shift adds) |
+| Double-click | Select everything of that type on screen |
+| Right click | Move, gather, build, carry a scroll to an agent's home, set a rally point |
+| Q W E R T, A S D F G, Z X C V B | The 5 x 3 command card at the bottom right |
+| Ctrl+1 to 9, then 1 to 9 | Assign and recall control groups (double tap to centre the camera) |
+| . (period) | Next idle townsperson |
+| H | Select the Keep |
+| Space | Jump to the oldest ringing bell |
+| F4 | Mana budget |
+| Delete | Cancel the selected construction or the last unit in training |
+| Arrow keys, screen edge, middle-drag | Move the camera |
+| Mouse wheel | Zoom |
+| Ctrl+Left / Right, Alt+middle-drag | Rotate the camera |
+| F2, F3 | Toggle night, show frames per second |
+| F5, F9 | Save, load an offline town |
+| Pause | Pause |
+| Esc | Cancel, or close the top window |
+
+## Build it yourself
+
+You can build the game from this project's files without any programming:
+
+1. Install **Node.js**, the LTS version, from [nodejs.org](https://nodejs.org).
+2. Download this project: click the green **Code** button at the top of this page, choose
+   **Download ZIP**, and unzip it.
+3. Start the build:
+   - **Windows**: double-click **build.cmd**.
+   - **macOS**: double-click **build.command**. The first time, macOS may refuse it; right-click it
+     and choose **Open** instead.
+   - **Linux**: run `./build.sh` in a terminal in the project folder.
+4. Wait. The first build downloads the Godot game engine and its export templates (about 1.4 GB)
+   and takes a while; later builds are much quicker.
+5. When it finishes, the game is in the **dist** folder, ready to play as described above.
+
+Packages for every platform at once: `node scripts/setup.mjs --all-templates`, then
+`node scripts/package-release.mjs --targets all`.
 
 ## Status
 
+Aurelhaven is an early preview. Tested on Windows 11; every release package is also started
+automatically on Windows, Linux and macOS (Apple Silicon) before it is published.
+
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Tools and spikes: harnesses, git worktrees on Windows, the web token handoff | Done |
-| 1 | Town Hall core: database, protocol, tasks, approvals, Mana, ledger and rewards, with a scripted stand-in agent | Done |
-| 2 | The offline town: map, camera, units, gathering, construction, HUD | Done |
+| 0 | Tools and experiments: the agent programs, git worktrees on Windows, the web version | Done |
+| 1 | The Town Hall: tasks, approvals, Mana, the resource ledger and rewards, with practice agents | Done |
+| 2 | The town: map, camera, units, gathering, construction, the controls | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
-| 4 | Real harnesses: the Claude Code CLI, the Codex CLI (`codex app-server`) and pi | Done |
-| 5 | Progression and polish: ages and walls, onboarding, menus, audio | In progress: the Town Hall side is done (protocol 1.3, separate practice and real towns, closing and switching the Town Hall from the game, Claude party leads, provider usage windows) |
+| 4 | Real agents on Claude Code, Codex and pi | Done |
+| 5 | Ages and walls, menus and onboarding, sound | In progress: the Town Hall side is done (protocol 1.3, practice and real towns, switching and closing the Town Hall, party leads, usage limits) |
 
-Tested on Windows 11, desktop and web (the web build is served by the Town Hall). macOS and
-Linux builds are exported but untested.
-
-## How it fits together
+## For developers
 
 ```
 Godot client (desktop or web) <-- WebSocket on 127.0.0.1 --> Town Hall (TypeScript, Node 22)
@@ -56,135 +173,42 @@ Godot client (desktop or web) <-- WebSocket on 127.0.0.1 --> Town Hall (TypeScri
 
 The **Town Hall** (`townhall/`) is a small local service that owns everything real: agents,
 tasks, approvals, Mana, the resource ledger and saved towns. It runs each agent on an existing
-harness as a child process and routes every permission request to the player. The **client**
-(`client/`) is the Godot game; it simulates the town and mirrors the Town Hall's state. See
-[docs/architecture.md](docs/architecture.md).
+agent program as a child process and sends every permission request to the player. The
+**client** (`client/`) is the Godot 4.7.2 game; it simulates the town and mirrors the Town
+Hall's state.
 
-## Requirements
+Running from source, after `node scripts/setup.mjs`:
 
-- Windows 10 or 11.
-- [Node.js](https://nodejs.org) 22.12 or newer, and git.
-- Godot 4.7.2 (standard build) with its export templates, in `.tools/godot/`. Only needed to
-  build the game or run it from source; see [docs/development.md](docs/development.md#tools).
-- For real agents, at least one harness installed and signed in: the
-  [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) or the Codex CLI. pi is bundled
-  with the Town Hall and needs a model provider sign-in of its own.
-
-## Getting started
-
-From a fresh clone (PowerShell):
-
-```powershell
-cd townhall
-npm ci
-cd ..
-node scripts/build-game.mjs --windows-only
-.\client\export\windows\Aurelhaven.exe
-```
-
-The game finds a running Town Hall or starts one itself (from `townhall/`, detached, with its
-output in `townhall.log` in its data folder). The Town Hall keeps running after you close the
-game, so agents can finish their work while you are away.
-
-To run from source instead, open `client/project.godot` in Godot 4.7.2 and press Play, or run
-`.tools\godot\Godot_v4.7.2-stable_win64.exe --path client`. Add `-- --offline` to play a town
-without the Town Hall.
-
-### Practice agents and real agents
-
-The game keeps two towns, each with its own Town Hall and data folder:
-
-- **Practice** (`townhall/data/practice/`): a scripted stand-in plays the agents' part, through
-  tasks, approvals and reviews, without running anything or spending Mana. The game starts this
-  one by default.
-- **Real** (`townhall/data/`): your installed Claude Code, Codex or pi, working in your folders.
-
-The game can already switch between the two and close a Town Hall, but the menu that offers it
-is still being built (Phase 5). Until then, choose real agents in either of two ways:
-
-- Close the game and stop any Town Hall it started (the `node.exe` process running
-  `townhall\src\main.ts`; Task Manager's Details tab shows the command line). In
-  `%APPDATA%\Godot\app_userdata\Aurelhaven\settings.cfg` (create it if needed), set:
-  ```ini
-  [townhall]
-  provider="real"
-  ```
-  The game then starts the real Town Hall when it opens.
-- Or start the real Town Hall yourself and leave its window open; the game connects to it:
-  ```powershell
-  cd townhall
-  $env:AURELHAVEN_PROVIDER = "real"
-  npm start
-  ```
-  Press Ctrl+C in that window to stop it.
-
-Real agents use your own Claude Code, Codex or pi sign-in. Every task has a Mana seal (a cost
-cap), the Mana pool caps each day (or week, or month), and an agent can only use the tools its
-add-ons grant.
-
-### Web
-
-`node scripts/build-game.mjs --web-only` exports the web build to `client/export/web/`. The Town
-Hall serves it: open the `Web client:` address it prints (also the `url` in
-`townhall/data/runtime.json`). The address carries the session token in its `#t=` fragment; the
-page moves it out of the address bar.
-
-## Controls
-
-| Input | Action |
-|---|---|
-| Left click, drag | Select, box-select (Shift adds) |
-| Double-click | Select everything of that type on screen |
-| Right click | Move, gather, build, carry a scroll to an agent's home, set a rally point |
-| Q W E R T, A S D F G, Z X C V B | The 5 x 3 command card |
-| Ctrl+1 to 9, then 1 to 9 | Assign and recall control groups (double tap to centre the camera) |
-| . (period) | Next idle townsperson |
-| H | Select the Keep |
-| Space | Jump to the oldest ringing bell (an approval waiting) |
-| F4 | Mana budget |
-| Delete | Cancel the selected construction site or the last unit in training |
-| Arrow keys, screen edge, middle-drag | Pan |
-| Mouse wheel | Zoom toward the cursor |
-| Ctrl+Left / Right, Alt+middle-drag | Rotate |
-| F2, F3 | Toggle night, show FPS |
-| F5, F9 | Save, load an offline town (online towns save to the Town Hall) |
-| Pause | Pause |
-| Esc | Cancel or close the top window |
-
-## Safety
-
-- **Your checkout is left alone until you accept.** In a git repository each task gets its own
-  worktree on a branch `aurelhaven/<agent>/<task>`. Accepting merges it only when your checkout
-  is clean and on the target branch; otherwise the branch is kept for you. A folder that is not a
-  repository is worked on in a versioned copy. Accepting writes the changed files back all at
-  once, or not at all if you edited one of them in the meantime.
-- **No destructive git.** The Town Hall never runs `reset --hard`, `clean`, `stash` or a forced
-  worktree removal; a test enforces it.
-- **Tools come from add-ons.** An agent gets only the tools its add-ons grant. Anything outside
-  the trusted rules of its approval mode waits for your answer.
-- **Local only.** The Town Hall listens on 127.0.0.1, makes a new token at every start, checks
-  the Host and Origin headers, and never stores provider credentials.
-
-## Repository layout
+- Open `client/project.godot` in Godot 4.7.2 (in `.tools/godot/`) and press Play; the game starts
+  the Town Hall from `townhall/` by itself. Add `-- --offline` to play without it.
+- Or run the Town Hall yourself in `townhall/` with `npm start` (`AURELHAVEN_PROVIDER=real` for
+  real agents).
+- The web version: `node scripts/build-game.mjs --web-only`, then open the `Web client:` address
+  the Town Hall prints.
 
 | Path | Contents |
 |---|---|
-| `client/` | The Godot 4.7.2 project (GDScript): simulation, world, HUD, networking, tests |
-| `townhall/` | The Town Hall service (TypeScript, Node 22); see [townhall/README.md](townhall/README.md) |
-| `protocol/` | The client and Town Hall contract: `PROTOCOL.md`, `economy.json` (every game constant), `pricing.json`, generated GDScript |
-| `scripts/` | Build, sync, end-to-end check and asset scripts |
+| `client/` | The Godot project (GDScript): simulation, world, HUD, networking, tests |
+| `townhall/` | The Town Hall (TypeScript, Node 22); see [townhall/README.md](townhall/README.md) |
+| `protocol/` | The contract between them: `PROTOCOL.md`, `economy.json` (every game constant), `pricing.json`, generated GDScript |
+| `scripts/` | Setup, build, release packaging, end-to-end and asset scripts |
 | `art_src/` | The Blender pipeline that builds models, characters and icons from the KayKit kits |
-| `docs/` | Architecture, development guide, spike notes, README images |
+| `docs/` | Architecture, development guide, experiment notes, README images |
+| `.github/workflows/` | The release workflow |
 | `design_handoff_aurelhaven/` | The original design handoff: lore, colours, fonts, the wall animation |
-| `.tools/` (ignored) | Godot, export templates, vendored art sources |
-| `out/` (ignored) | Screenshots and reports written by tools |
-
-## Documentation
 
 - [docs/architecture.md](docs/architecture.md): how the Town Hall and the client work and talk.
-- [docs/development.md](docs/development.md): tools, tests, builds, conventions and
+- [docs/development.md](docs/development.md): tools, tests, builds, releases, conventions and
   troubleshooting.
 - [townhall/README.md](townhall/README.md): running and configuring the Town Hall.
 - [protocol/PROTOCOL.md](protocol/PROTOCOL.md): the WebSocket protocol.
-- [docs/spikes.md](docs/spikes.md): findings from the harness, worktree and web experiments.
-- [CREDITS.md](CREDITS.md): art, fonts and software.
+- [docs/spikes.md](docs/spikes.md): findings from the agent-program, worktree and web experiments.
+
+Releases are built by [.github/workflows/release.yml](.github/workflows/release.yml): pushing a
+tag such as `v0.5.0` builds the Windows, Linux and macOS packages, starts each one on its own
+system, and publishes them on the Releases page.
+
+## Credits
+
+Art by Kay Lousberg (KayKit, CC0), fonts under the SIL Open Font License, built with Godot. The
+full list is in [CREDITS.md](CREDITS.md).

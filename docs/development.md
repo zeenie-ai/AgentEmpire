@@ -8,27 +8,19 @@ fit together, read [architecture.md](architecture.md) first.
 | Tool | Where | Needed for |
 |---|---|---|
 | Node.js 22.12+ and git | on PATH | the Town Hall, every script |
-| Godot 4.7.2 (standard, win64) | `.tools/godot/` | running, testing and building the client |
-| Godot 4.7.2 export templates | `.tools/godot/editor_data/export_templates/4.7.2.stable/` | `scripts/build-game.mjs` |
+| Godot 4.7.2 | `.tools/godot/`, by `node scripts/setup.mjs` | running, testing and building the client |
+| Godot 4.7.2 export templates | `.tools/godot/editor_data/export_templates/4.7.2.stable/` (macOS: your user Library), by `setup.mjs` | building the game |
 | GUT 9.7.1 | `client/addons/gut/` (committed) | client tests |
 | KayKit source kits | `.tools/vendor/` via `node scripts/fetch-assets.mjs` | rebuilding art only |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1\` | rebuilding art only |
 
-`.tools/` is git-ignored. Godot runs there in self-contained mode: next to
-`Godot_v4.7.2-stable_win64.exe` and `Godot_v4.7.2-stable_win64_console.exe` sits an empty
-`._sc_` file, so editor settings and export templates live in `.tools/godot/editor_data/`
-instead of your user profile. To set it up, download the 4.7.2 stable Windows build and export
-templates from [godotengine.org](https://godotengine.org/download/archive/), unzip the two
-executables into `.tools/godot/`, create `._sc_`, and install the templates from the editor
-(Editor > Manage Export Templates > Install from File). Every script also accepts a `GODOT`
-environment variable pointing at a console executable elsewhere.
-
-Then install the Town Hall's packages once per checkout:
-
-```powershell
-cd townhall
-npm ci
-```
+`.tools/` is git-ignored. `node scripts/setup.mjs` fills it: it downloads Godot 4.7.2 for your
+system from Godot's GitHub release (checked against its SHA-512 list), the export templates your
+builds need, and installs the Town Hall's packages (`npm ci` in `townhall/`). On Windows and
+Linux Godot runs self-contained (an empty `._sc_` file next to the editor), so its settings and
+templates live in `.tools/godot/editor_data/`; on macOS the templates go to
+`~/Library/Application Support/Godot/export_templates/`. Every script also accepts a `GODOT`
+environment variable pointing at a Godot console executable elsewhere.
 
 ## Everyday commands
 
@@ -117,6 +109,42 @@ it into the other checkout.
 
 Edit only `protocol/economy.json`, then run `node scripts/sync-economy.mjs`. A client test fails
 if the copy is stale, and a running Town Hall reads the file only at start.
+
+## Releases
+
+A release package is one zip per platform (`windows`, `linux`, `macos-arm64`, `macos-x64`) that
+a player unzips and starts, with nothing else to install:
+
+```
+Aurelhaven-<version>-<target>/
+  Aurelhaven.exe | Aurelhaven.x86_64 | Aurelhaven.app   the game (macOS: universal, ad-hoc signed)
+  townhall/      the compiled Town Hall (dist/), its run-time files (src/), its packages for that
+                 platform, and release.json, which marks it as a release
+  runtime/node/  Node.js 22 for that platform, which runs the Town Hall
+  protocol/      economy.json and pricing.json
+  README.txt, CREDITS.md, licenses/
+```
+
+In a release the game finds `townhall/` next to itself (or next to `Aurelhaven.app`), starts it
+with `runtime/node`, and keeps the towns in the player's data folder
+(`%APPDATA%\Aurelhaven\townhall`, `~/Library/Application Support/Aurelhaven/townhall`,
+`~/.local/share/Aurelhaven/townhall`). A development checkout keeps using `townhall/data`.
+
+| What | Command |
+|---|---|
+| Godot, the templates for this computer, the Town Hall packages | `node scripts/setup.mjs` (`--all-templates` for every platform) |
+| A package for this computer, also unzipped in `dist/` | `node scripts/package-release.mjs --unpacked` |
+| Every package | `node scripts/package-release.mjs --targets all` |
+| Start an unzipped package the way a player would | `node scripts/smoke-package.mjs dist/Aurelhaven-<version>-<target>` |
+
+`build.cmd` (Windows), `build.command` (macOS) and `build.sh` (Linux) run the first two for
+people who don't use a terminal.
+
+To publish a release, set `config/version` in `client/project.godot` and the Windows file and
+product versions in `client/export_presets.cfg`, commit, and push a tag `v<version>`. The
+workflow in `.github/workflows/release.yml` builds every package on Windows, starts each one on
+Windows, Linux and macOS with `smoke-package.mjs`, and publishes them, with `SHA256SUMS.txt`, as
+a pre-release. Run it by hand from the Actions tab to build and check without publishing.
 
 ## GDScript conventions and pitfalls
 
