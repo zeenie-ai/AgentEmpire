@@ -1,8 +1,14 @@
 import { loadConfig } from "./config.js";
 import { Daemon } from "./daemon.js";
 import { createLogger } from "./log.js";
+import { userPath } from "./providers/common/shell-path.js";
 
 async function main(): Promise<void> {
+  // A game opened from Finder or a desktop launcher passes on a minimal PATH (macOS, Linux).
+  if (process.platform !== "win32") {
+    const full = userPath(process.env);
+    if (full) process.env.PATH = full;
+  }
   const config = loadConfig();
   const log = createLogger(config.logLevel);
   // The `shutdown` command stops the daemon (tasks pause, runtime files go) and then exits here.
