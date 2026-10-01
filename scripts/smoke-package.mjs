@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Smoke test for an unzipped release package: does it work the way a player would use it?
 //   1. Its bundled Node.js runs its compiled Town Hall, which answers on its port.
-//   2. Its game, started headless, launches its own Town Hall (practice agents) with that
+//   2. esbuild's native program runs (pi needs it for its extensions; it must stay executable).
+//   3. Its game, started headless, launches its own Town Hall (practice agents) with that
 //      Node.js and connects to it.
 // Everything runs in a temporary data folder with the shared discovery file off, so nothing a
 // player or another Town Hall uses is touched; every process started here is stopped.
@@ -107,6 +108,26 @@ async function townHallAlone() {
   stop(child);
 }
 
+/** pi loads TypeScript extensions with esbuild, whose native program must run on this system. */
+async function esbuildRuns() {
+  const th = join(pkg, 'townhall');
+  const candidates = [
+    join(th, 'node_modules', 'esbuild'),
+    join(th, 'node_modules', '@earendil-works', 'pi-coding-agent', 'node_modules', 'esbuild'),
+  ];
+  const esbuild = candidates.find((p) => existsSync(join(p, 'package.json')));
+  if (!esbuild) {
+    console.log('skip the package has no esbuild');
+    return;
+  }
+  const code = `require(${JSON.stringify(esbuild)}).transformSync('let x: number = 1', { loader: 'ts' })`;
+  const child = spawn(node, ['-e', code], { cwd: th, stdio: ['ignore', 'pipe', 'pipe'] });
+  const err = [];
+  child.stderr.on('data', (d) => err.push(String(d)));
+  const status = await new Promise((resolve) => child.on('close', resolve));
+  if (!check(status === 0, 'esbuild runs, so pi can load its extensions')) console.log(err.join('').slice(-1500));
+}
+
 async function gameStartsItsTownHall() {
   if (!check(game !== null && existsSync(game), 'the package has the game')) return;
   const root = join(tmp, 'game');
@@ -127,6 +148,7 @@ async function gameStartsItsTownHall() {
 
 try {
   await townHallAlone();
+  await esbuildRuns();
   await gameStartsItsTownHall();
 } finally {
   for (const c of children) stop(c);

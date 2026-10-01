@@ -278,8 +278,19 @@ function readme(t, version) {
   ].join(t.os === 'win32' ? '\r\n' : '\n');
 }
 
-/** Zips `stage` under the folder name `top`, with Unix modes from `modes` (else 0644, folders 0755). */
-function zipFolder(stage, out, top, modes) {
+/**
+ * The Unix mode of a file with no recorded mode. On macOS and Linux the programs in node_modules
+ * must stay runnable: esbuild's native program (pi loads TypeScript extensions with it) and the
+ * bin/ and .bin/ scripts. A Windows build host records no permissions, so they come from here.
+ */
+function defaultMode(rel, t) {
+  if (t.os === 'win32') return 0o644;
+  if (/(^|\/)node_modules\/(?:.*\/)?\.?bin\/[^/]+$/.test(rel) && !/\.(cmd|ps1|json|md|txt|map)$/i.test(rel)) return 0o755;
+  return 0o644;
+}
+
+/** Zips `stage` under the folder name `top`, with Unix modes from `modes` (else defaultMode, folders 0755). */
+function zipFolder(stage, out, top, modes, t) {
   const zip = new ZipWriter(out);
   zip.addDir(top);
   const walk = (dir) => {
@@ -290,7 +301,7 @@ function zipFolder(stage, out, top, modes) {
         zip.addDir(`${top}/${rel}`);
         walk(full);
       } else {
-        zip.addFile(`${top}/${rel}`, readFileSync(full), modes.get(rel) ?? 0o644);
+        zip.addFile(`${top}/${rel}`, readFileSync(full), modes.get(rel) ?? defaultMode(rel, t));
       }
     }
   };
@@ -387,6 +398,16 @@ async function main() {
     modes.set(`runtime/node/${nodeProgram}`, 0o755);
     if (process.platform !== 'win32') {
       for (const [rel, mode] of modes) chmodSync(join(stage, rel), mode);
+      // The unzipped copy (--unpacked) keeps runnable node_modules programs too.
+      const walk = (dir) => {
+        for (const name of readdirSync(dir)) {
+          const full = join(dir, name);
+          const rel = relative(stage, full).split('\\').join('/');
+          if (statSync(full).isDirectory()) walk(full);
+          else if (defaultMode(rel, t) === 0o755) chmodSync(full, 0o755);
+        }
+      };
+      walk(join(stage, 'townhall', 'node_modules'));
     }
     mkdirSync(join(stage, 'protocol'), { recursive: true });
     for (const f of ['economy.json', 'pricing.json']) copyFileSync(join(root, 'protocol', f), join(stage, 'protocol', f));
@@ -396,7 +417,7 @@ async function main() {
 
     const zipPath = join(dist, `${name}.zip`);
     rmSync(zipPath, { force: true });
-    zipFolder(stage, zipPath, name, modes);
+    zipFolder(stage, zipPath, name, modes, t);
     zips.push(zipPath);
     console.log(`   ${relative(root, zipPath)}  ${(statSync(zipPath).size / 1048576).toFixed(1)} MB`);
     if (argv.includes('--unpacked')) {
