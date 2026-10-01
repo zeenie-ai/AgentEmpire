@@ -199,7 +199,7 @@ func test_summon_spec_shape() -> void:
 	(call["req"] as NetRequest).finish(true, {"agent_id": "agt_new", "cost": {}, "free": true, "training": {"duration_ms": 40000}})
 	await wait_process_frames(3)
 	assert_eq(String(got_id[0]), "agt_new")
-	assert_true(d.is_closing(), "closes after summoning")
+	assert_true(_closing_or_closed(d), "closes after summoning")
 
 
 func test_summon_shows_errors_inline() -> void:
@@ -565,6 +565,12 @@ func test_windows_fit_1280x720_and_scroll() -> void:
 		await wait_process_frames(1)
 
 
+## A window that was asked to close: still animating out, or already freed (a slow frame can
+## outlast the animation). Untyped, because a freed instance cannot be passed as a WindowFrame.
+func _closing_or_closed(w: Variant) -> bool:
+	return not is_instance_valid(w) or (w as WindowFrame).is_closing()
+
+
 func _press_escape() -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = KEY_ESCAPE
@@ -586,12 +592,12 @@ func test_escape_closes_the_topmost_window_only() -> void:
 	assert_true(fb.is_topmost())
 	_press_escape()
 	await wait_process_frames(1)
-	assert_true(fb.is_closing(), "Esc closes the folder browser")
+	assert_true(_closing_or_closed(fb), "Esc closes the folder browser")
 	assert_false(d.is_closing(), "and leaves the Summoning Font open")
 	await wait_process_frames(12)
 	_press_escape()
 	await wait_process_frames(1)
-	assert_true(d.is_closing())
+	assert_true(_closing_or_closed(d))
 
 
 func test_folder_browser_fills_the_summon_form() -> void:
