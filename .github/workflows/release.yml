@@ -91,7 +91,10 @@ jobs:
           else
             unzip -q "$zip" -d unpacked
           fi
-          echo "PACKAGE=$(ls -d "$PWD"/unpacked/Aurelhaven-*)" >> "$GITHUB_ENV"
+          package=$(ls -d "$PWD"/unpacked/Aurelhaven-*)
+          # The next step runs in PowerShell on Windows: give it a Windows path, not Git Bash's.
+          if [ "$RUNNER_OS" = "Windows" ]; then package=$(cygpath -w "$package"); fi
+          echo "PACKAGE=$package" >> "$GITHUB_ENV"
 
       - name: Start it the way a player would
         run: node scripts/smoke-package.mjs "${{ env.PACKAGE }}"
