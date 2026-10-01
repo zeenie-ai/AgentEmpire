@@ -11,6 +11,10 @@ extends Node
 ##
 ## Only one client may be connected. A second one gets SESSION_BUSY and parks as "busy" until
 ## the player chooses take_over().
+##
+## Each Town Hall data folder has its own event history, so `last_seq` only carries over to a
+## Town Hall on the same data folder; any other one (the other mode's town) starts with a full
+## state. A mode switch pins the runtime file of the Town Hall it waits for (pin_runtime).
 
 signal status_changed(status: String)
 signal connection_changed(online: bool)
@@ -40,7 +44,7 @@ const TRANSIENT_EVENTS := ["session_revoked", "daemon_shutdown"]
 
 var status: String = STATUS_OFF
 var online: bool = false
-## {"host", "port", "token", "source"} of the Town Hall in use.
+## {"host", "port", "token", "source", "pid", "data_dir"} of the Town Hall in use.
 var endpoint: Dictionary = {}
 ## The hello reply: {protocol, daemon_version, sdk_versions, features, seq, catchup}.
 var hello_info: Dictionary = {}
@@ -66,6 +70,10 @@ var _session: String = ""
 var _snapshot_pending: bool = false
 var _held: Array[Dictionary] = []
 var _connect_started_msec: int = 0
+## Only this runtime file is read while set (a mode switch waiting for one Town Hall).
+var _pinned_runtime: String = ""
+## The data folder whose event history last_seq belongs to.
+var _seq_data_dir: String = ""
 
 
 func _ready() -> void:
@@ -107,6 +115,56 @@ func reconnect_now() -> void:
 	_parked = false
 	if _ws == null:
 		_retry_in = 0.0
+
+
+## Starts looking afresh: the attempt and failure counts start over (a caller waiting for a
+## Town Hall reads them), and the next attempt is immediate.
+func restart_search() -> void:
+	attempts = 0
+	failures = 0
+	_backoff = RETRY_MIN_S
+	last_problem = ""
+	_parked = false
+	if not _enabled:
+		enable(true)
+	elif _ws == null:
+		_retry_in = 0.0
+
+
+## Reads only `path` when looking for a Town Hall, until unpin_runtime().
+func pin_runtime(path: String) -> void:
+	_pinned_runtime = path
+
+
+func unpin_runtime() -> void:
+	_pinned_runtime = ""
+
+
+## Forgets the Town Hall this client followed (its last seq and hello), so the next one starts
+## with a full state. Used before connecting to another Town Hall's town.
+func forget_session() -> void:
+	last_seq = -1
+	_seq_data_dir = ""
+	hello_info = {}
+	_held.clear()
+
+
+## The connected Town Hall's mode from its hello features: "real", "fake", or "" when unknown.
+func town_hall_mode() -> String:
+	return mode_from_features(J.a(hello_info.get("features")))
+
+
+## Whether the connected Town Hall announced `feature` in its hello (for example "shutdown").
+func has_feature(feature: String) -> bool:
+	return feature in J.a(hello_info.get("features"))
+
+
+static func mode_from_features(features: Array) -> String:
+	if "real_providers" in features:
+		return "real"
+	if "fake_provider" in features:
+		return "fake"
+	return ""
 
 
 ## Connects even though another client is active; that client is closed with 4409.
@@ -163,12 +221,19 @@ func _process(delta: float) -> void:
 
 func _attempt() -> void:
 	attempts += 1
-	endpoint = TownHallDiscovery.find()
+	endpoint = TownHallDiscovery.find(_pinned_runtime, String(Settings.get_value("townhall/provider", "fake")))
 	if endpoint.is_empty():
 		last_problem = "No running Town Hall found."
 		_set_status(STATUS_SEARCHING)
 		_retry_in = SEARCH_EVERY_S
 		return
+	# Another data folder means another event history: its seq numbers say nothing about ours.
+	var data_dir := J.gs(endpoint, "data_dir")
+	if data_dir != "" and not TownHallLauncher.same_dir(data_dir, _seq_data_dir):
+		if _seq_data_dir != "":
+			last_seq = -1
+			_held.clear()
+		_seq_data_dir = data_dir
 	var ws := WebSocketPeer.new()
 	ws.inbound_buffer_size = BUFFER_BYTES
 	ws.outbound_buffer_size = BUFFER_BYTES

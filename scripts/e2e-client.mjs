@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Phase 3 end-to-end check: a real Town Hall (scripted fake agent) and the Godot client,
-// headless, playing the whole loop (client/tools/e2e_client.gd):
+// End-to-end check: a real Town Hall (scripted fake agent) and the Godot client, headless,
+// playing the whole loop (client/tools/e2e_client.gd):
 // summon -> train -> plot -> home and add-ons -> task by courier -> approval -> review ->
-// accept (merge) -> reward, then treasury == Town Hall ledger and save/reload == same town.
+// accept (merge) -> reward and progress, then treasury == Town Hall ledger and save/reload ==
+// same town; finally the game closes the Town Hall (the shutdown command), which must exit with
+// code 0 and remove its runtime file.
 //
 // Usage: node scripts/e2e-client.mjs [--keep]
 //   GODOT   path to the Godot console executable (default: .tools/godot in this checkout or
@@ -74,6 +76,8 @@ const townhall = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
 let hallLog = '';
 townhall.stdout.on('data', (d) => (hallLog += d));
 townhall.stderr.on('data', (d) => (hallLog += d));
+let hallExit = null;
+const hallExited = new Promise((r) => townhall.once('exit', (code) => r((hallExit = code))));
 
 const runtimeFile = join(dataDir, 'runtime.json');
 let exitCode = 1;
@@ -110,13 +114,19 @@ try {
   const merged = existsSync(join(repo, 'src', 'greeting.txt'));
   const log = gitOut(repo, 'log', '--oneline', '-5');
   console.log(`== Work repo after accept: greeting ${merged ? 'merged' : 'MISSING'}\n${log.replace(/^/gm, '   ')}`);
-  exitCode = ok && merged ? 0 : 1;
+  // The game closed the Town Hall: it ends by itself, with code 0, and removes its runtime file.
+  await Promise.race([hallExited, sleep(15000)]);
+  const closed = hallExit === 0 && !existsSync(runtimeFile);
+  console.log(`== Town Hall after the game closed it: ${hallExit === null ? 'STILL RUNNING' : `exit code ${hallExit}`}, runtime.json ${existsSync(runtimeFile) ? 'STILL THERE' : 'removed'}`);
+  exitCode = ok && merged && closed ? 0 : 1;
 } catch (err) {
   console.error(String(err instanceof Error ? err.message : err));
 } finally {
-  townhall.kill('SIGINT');
-  await Promise.race([new Promise((r) => townhall.on('close', r)), sleep(5000)]);
-  if (!townhall.killed) townhall.kill();
+  if (hallExit === null) {
+    townhall.kill('SIGINT');
+    await Promise.race([hallExited, sleep(5000)]);
+    if (hallExit === null) townhall.kill();
+  }
   if (keep || exitCode !== 0) {
     writeFileSync(join(tmp, 'townhall.log'), hallLog);
     console.log(`== Kept ${tmp}`);
