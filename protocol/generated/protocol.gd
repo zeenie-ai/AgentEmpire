@@ -4,7 +4,7 @@
 extends RefCounted
 
 const PROTOCOL_MAJOR := 1
-const PROTOCOL_MINOR := 2
+const PROTOCOL_MINOR := 3
 const ENVELOPE_VERSION := 1
 const MAX_FRAME_BYTES := 1048576
 const HELLO_TIMEOUT_MS := 5000
@@ -55,7 +55,9 @@ const CMD_SAVE_TOWN := "save_town"
 const CMD_LOAD_TOWN := "load_town"
 const CMD_SET_SETTING := "set_setting"
 const CMD_GET_LEDGER := "get_ledger"
-const COMMANDS := ["hello", "ping", "get_state", "check_providers", "list_models", "browse_folder", "create_agent", "agent_trained", "place_home", "home_built", "update_agent", "retire_agent", "attach_tool", "tool_built", "detach_tool", "assign_task", "task_delivered", "cancel_task", "resume_task", "stop_and_review", "nudge_task", "respond_approval", "get_task_detail", "accept_result", "send_back", "abandon_task", "discard_workspace", "form_party", "disband_party", "set_budget", "spend_resources", "refund_resources", "report_gather", "trade", "advance_age", "save_town", "load_town", "set_setting", "get_ledger"]
+const CMD_GET_PROGRESS := "get_progress"
+const CMD_SHUTDOWN := "shutdown"
+const COMMANDS := ["hello", "ping", "get_state", "check_providers", "list_models", "browse_folder", "create_agent", "agent_trained", "place_home", "home_built", "update_agent", "retire_agent", "attach_tool", "tool_built", "detach_tool", "assign_task", "task_delivered", "cancel_task", "resume_task", "stop_and_review", "nudge_task", "respond_approval", "get_task_detail", "accept_result", "send_back", "abandon_task", "discard_workspace", "form_party", "disband_party", "set_budget", "spend_resources", "refund_resources", "report_gather", "trade", "advance_age", "save_town", "load_town", "set_setting", "get_ledger", "get_progress", "shutdown"]
 
 # Events (server to client)
 const EVT_AGENT_UPDATED := "agent_updated"
@@ -78,7 +80,8 @@ const EVT_PROVIDERS_UPDATED := "providers_updated"
 const EVT_TOWN_SAVED := "town_saved"
 const EVT_SESSION_REVOKED := "session_revoked"
 const EVT_DAEMON_SHUTDOWN := "daemon_shutdown"
-const EVENTS := ["agent_updated", "agent_retired", "tool_updated", "task_updated", "task_progress", "task_activity", "approval_requested", "approval_resolved", "mana_updated", "treasury_updated", "incident_opened", "incident_resolved", "party_updated", "party_disbanded", "subtask_delegated", "age_updated", "providers_updated", "town_saved", "session_revoked", "daemon_shutdown"]
+const EVT_PROGRESS_UPDATED := "progress_updated"
+const EVENTS := ["agent_updated", "agent_retired", "tool_updated", "task_updated", "task_progress", "task_activity", "approval_requested", "approval_resolved", "mana_updated", "treasury_updated", "incident_opened", "incident_resolved", "party_updated", "party_disbanded", "subtask_delegated", "age_updated", "providers_updated", "town_saved", "session_revoked", "daemon_shutdown", "progress_updated"]
 
 # Error codes
 const ERR_AUTH_FAILED := "AUTH_FAILED"
@@ -388,3 +391,14 @@ class SettingKey:
 	const EXPRESS_DISPATCH := "express_dispatch"
 	const LANTERN_HOURS := "lantern_hours"
 	const ALL := ["work_while_away", "express_dispatch", "lantern_hours"]
+
+# Progress next.milestones[].key (1.3)
+class MilestoneKey:
+	const ACCEPTED := "accepted"
+	const ACCEPTED_FIRST_TRY := "accepted_first_try"
+	const TOOLS_BUILT := "tools_built"
+	const RITES_PASSED := "rites_passed"
+	const PARTY_TASKS := "party_tasks"
+	const UNDER_BASELINE := "under_baseline"
+	const AGENT_RANK := "agent_rank"
+	const ALL := ["accepted", "accepted_first_try", "tools_built", "rites_passed", "party_tasks", "under_baseline", "agent_rank"]

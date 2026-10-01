@@ -68,6 +68,16 @@ export const MergeBlockedReason = z.enum([
   "not_a_repo",
   "workspace_missing",
 ]);
+/** The real-use milestones an age can require (economy.json ages[].milestones), 1.3. */
+export const MilestoneKey = z.enum([
+  "accepted",
+  "accepted_first_try",
+  "tools_built",
+  "rites_passed",
+  "party_tasks",
+  "under_baseline",
+  "agent_rank",
+]);
 
 export type Provider = z.infer<typeof Provider>;
 export type Role = z.infer<typeof Role>;
@@ -97,6 +107,7 @@ export type ProgressPhase = z.infer<typeof ProgressPhase>;
 export type Integrate = z.infer<typeof Integrate>;
 export type MergeBlockedReason = z.infer<typeof MergeBlockedReason>;
 export type DiffFileStatus = z.infer<typeof DiffFileStatus>;
+export type MilestoneKey = z.infer<typeof MilestoneKey>;
 
 // ---------- shared objects ----------
 
@@ -300,6 +311,53 @@ export type Party = z.infer<typeof Party>;
 export const Research = z.object({ target: int, started_at: isoTime, duration_ms: nonNegInt });
 export const Age = z.object({ current: int.min(1).max(4), research: Research.nullable() });
 export type Age = z.infer<typeof Age>;
+
+/** Verified outcomes the town has achieved so far (the inputs of the age milestones), 1.3. */
+export const TownFacts = z.object({
+  accepted: nonNegInt,
+  accepted_first_try: nonNegInt,
+  tools_built: nonNegInt,
+  rites_passed: nonNegInt,
+  party_tasks: nonNegInt,
+  under_baseline: nonNegInt,
+});
+export type TownFacts = z.infer<typeof TownFacts>;
+
+/** One real-use milestone of the next age: what the town has, what the age wants, 1.3. */
+export const Milestone = z.object({
+  key: MilestoneKey,
+  label: z.string(),
+  have: nonNegInt,
+  want: nonNegInt,
+  met: z.boolean(),
+});
+export type Milestone = z.infer<typeof Milestone>;
+
+/** The next age and what advancing to it needs; `ready` means advance_age would succeed now, 1.3. */
+export const NextAge = z.object({
+  n: int,
+  id: z.string(),
+  name: z.string(),
+  wall: z.string(),
+  cost: Resources,
+  research_s: z.number().min(0),
+  ready: z.boolean(),
+  milestones: z.array(Milestone),
+});
+export type NextAge = z.infer<typeof NextAge>;
+
+/** The Quartermaster's current multipliers on economy.json sell_basic.get and sell_precious.get (1 = base), 1.3. */
+export const QuartermasterRates = z.object({ basic_rate: z.number().min(0), precious_rate: z.number().min(0) });
+export type QuartermasterRates = z.infer<typeof QuartermasterRates>;
+
+/** The town's progression: age, facts, the next age's milestones and the Quartermaster's rates, 1.3. */
+export const Progress = z.object({
+  age: Age,
+  facts: TownFacts,
+  next: NextAge.nullable(),
+  quartermaster: QuartermasterRates,
+});
+export type Progress = z.infer<typeof Progress>;
 
 export const ActivityEntry = z.object({ time: isoTime, kind: ActivityKind, text: z.string() });
 export type ActivityEntry = z.infer<typeof ActivityEntry>;

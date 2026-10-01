@@ -20,14 +20,15 @@ describe("pi as a third provider (protocol 1.2, fake mode)", () => {
     await town.stop();
   });
 
-  it("lists pi and its models, and reports the protocol minor version 2", async () => {
+  it("lists pi and its models, and reports the current protocol version (1.3)", async () => {
     const providers = await c.ok("check_providers", {});
     const pi = providers.providers.find((p: { id: string }) => p.id === "pi");
     expect(pi).toMatchObject({ installed: true, logged_in: true });
     const models = await c.ok("list_models", { provider: "pi" });
     expect(models.models).toEqual([expect.objectContaining({ id: "fake/pi", default: true })]);
     expect(hello.ok).toBe(true);
-    expect(hello.payload.protocol).toEqual({ major: 1, minor: 2 });
+    expect(hello.payload.protocol).toEqual({ major: 1, minor: 3 });
+    expect(hello.payload.features).toEqual(expect.arrayContaining(["progress", "shutdown"]));
     expect(hello.payload.features).toContain("fake_provider");
     expect(hello.payload.sdk_versions).toEqual({ claude: "fake-1.0", codex: "fake-1.0", pi: "fake-1.0" });
   });

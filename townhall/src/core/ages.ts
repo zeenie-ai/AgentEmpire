@@ -1,24 +1,27 @@
 import { fromJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
-import type { Age } from "../protocol/objects.js";
+import type { Age, Milestone, MilestoneKey, TownFacts } from "../protocol/objects.js";
 import type { TimerHandle } from "./clock.js";
 import type { Ctx } from "./context.js";
 import { toResources } from "./economy.js";
 import { rankAtLeast } from "./ranks.js";
+
+export type { TownFacts } from "../protocol/objects.js";
 
 interface AgeState {
   current: number;
   research: { target: number; started_at: string; duration_ms: number } | null;
 }
 
-export interface TownFacts {
-  accepted: number;
-  accepted_first_try: number;
-  tools_built: number;
-  rites_passed: number;
-  party_tasks: number;
-  under_baseline: number;
-}
+/** Player-facing names of the milestones, in the order they are listed. */
+const MILESTONE_LABELS: Record<Exclude<MilestoneKey, "agent_rank">, string> = {
+  accepted: "tasks accepted",
+  accepted_first_try: "accepted on the first try",
+  tools_built: "add-ons built",
+  rites_passed: "Rites passed",
+  party_tasks: "party tasks",
+  under_baseline: "tasks under the Mana baseline",
+};
 
 export class AgeService {
   private timer: TimerHandle | null = null;
@@ -76,29 +79,37 @@ export class AgeService {
     };
   }
 
-  /** Unmet milestones for reaching `target`, as readable strings. */
-  missingMilestones(target: number): string[] {
+  /**
+   * Every milestone economy.json sets for reaching `target`, with what the town has: met or not,
+   * in a fixed order. Empty for an unknown age or one without milestones.
+   */
+  milestones(target: number, facts: TownFacts = this.facts()): Milestone[] {
     const def = this.ctx.econ.data.ages.find((a) => a.n === target);
-    if (!def) return [`unknown age ${target}`];
+    if (!def) return [];
     const m = def.milestones;
-    const f = this.facts();
-    const missing: string[] = [];
-    const need = (have: number, want: number | undefined, label: string) => {
-      if (want !== undefined && have < want) missing.push(`${label}: ${have}/${want}`);
+    const out: Milestone[] = [];
+    const add = (key: MilestoneKey, have: number, want: number | undefined, label: string) => {
+      if (want !== undefined) out.push({ key, label, have, want, met: have >= want });
     };
-    need(f.accepted, m.accepted, "tasks accepted");
-    need(f.accepted_first_try, m.accepted_first_try, "accepted on the first try");
-    need(f.tools_built, m.tools_built, "add-ons built");
-    need(f.rites_passed, m.rites_passed, "Rites passed");
-    need(f.party_tasks, m.party_tasks, "party tasks");
-    need(f.under_baseline, m.under_baseline, "tasks under the Mana baseline");
+    for (const key of Object.keys(MILESTONE_LABELS) as Array<keyof typeof MILESTONE_LABELS>) {
+      add(key, facts[key], m[key], MILESTONE_LABELS[key]);
+    }
     if (m.agent_rank) {
+      const rank = m.agent_rank.rank;
       const ranked = this.ctx.db
         .all<{ rank: string }>("SELECT rank FROM agents WHERE retired_at IS NULL")
-        .filter((a) => rankAtLeast(this.ctx.econ, a.rank, m.agent_rank!.rank)).length;
-      need(ranked, m.agent_rank.count, `agents of rank ${m.agent_rank.rank} or higher`);
+        .filter((a) => rankAtLeast(this.ctx.econ, a.rank, rank)).length;
+      add("agent_rank", ranked, m.agent_rank.count, `agents of rank ${rank} or higher`);
     }
-    return missing;
+    return out;
+  }
+
+  /** Unmet milestones for reaching `target`, as readable strings. */
+  missingMilestones(target: number): string[] {
+    if (!this.ctx.econ.data.ages.some((a) => a.n === target)) return [`unknown age ${target}`];
+    return this.milestones(target)
+      .filter((m) => !m.met)
+      .map((m) => `${m.label}: ${m.have}/${m.want}`);
   }
 
   advance(): { research: { target: number; started_at: string; duration_ms: number } } {

@@ -8,6 +8,7 @@ import {
   toResources,
   zeroResources,
   type Cost,
+  type QuartermasterKind,
   type ResourceKey,
   type Resources,
 } from "./economy.js";
@@ -37,9 +38,24 @@ interface AppendSpec {
   spendOpId?: string | null;
 }
 
-interface MarketState {
+/** How far one kind of Quartermaster trade has worsened, as of `at` (epoch ms). */
+interface MarketPenalty {
   penalty: number;
   at: number;
+}
+
+/** Each kind of trade has its own price; before 1.3 one penalty covered both ({penalty, at}). */
+type MarketState = Record<QuartermasterKind, MarketPenalty>;
+
+/**
+ * Rates are reported with this many decimals: economy.json moves them in steps of 0.01 (per trade
+ * and per minute of recovery), so a reported rate changes at most once a minute while it recovers.
+ */
+const RATE_DECIMALS = 2;
+
+function roundRate(rate: number): number {
+  const f = 10 ** RATE_DECIMALS;
+  return Math.round(rate * f) / f;
 }
 
 /** Prefix for op ids the Town Hall generates itself, so they never collide with client op ids. */
@@ -212,49 +228,67 @@ export class Treasury {
   }
 
   private market(): MarketState {
-    return this.ctx.settings.getState<MarketState>("quartermaster", { penalty: 0, at: this.ctx.clock.now() });
+    const now = this.ctx.clock.now();
+    const raw = this.ctx.settings.getState<Partial<MarketState> & Partial<MarketPenalty>>("quartermaster", {});
+    // A town saved before 1.3 has one penalty for both kinds of trade.
+    const legacy: MarketPenalty = { penalty: raw.penalty ?? 0, at: raw.at ?? now };
+    return { basic: raw.basic ?? legacy, precious: raw.precious ?? legacy };
   }
 
-  /** The Quartermaster's current rate multiplier (1 = the base rate). */
-  marketRate(): number {
-    const qm = this.ctx.econ.data.quartermaster;
+  /** The penalty left on one kind of trade after recovering since its last trade. */
+  private penaltyNow(p: MarketPenalty): number {
+    const minutes = Math.max(0, (this.ctx.clock.now() - p.at) / 60_000);
+    return Math.max(0, p.penalty - this.ctx.econ.data.quartermaster.recover_per_minute * minutes);
+  }
+
+  /** The Quartermaster's current multiplier for one kind of trade (1 = the base rate). */
+  marketRate(kind: QuartermasterKind): number {
+    return Math.max(0, 1 - this.penaltyNow(this.market()[kind]));
+  }
+
+  /** Both current rates, rounded for display (get_progress). */
+  marketRates(): { basic_rate: number; precious_rate: number } {
+    return { basic_rate: roundRate(this.marketRate("basic")), precious_rate: roundRate(this.marketRate("precious")) };
+  }
+
+  /** True while some trade kind is still recovering from earlier trades. */
+  marketRecovering(): boolean {
     const m = this.market();
-    const minutes = Math.max(0, (this.ctx.clock.now() - m.at) / 60_000);
-    const penalty = Math.max(0, m.penalty - qm.recover_per_minute * minutes);
-    return Math.max(0, 1 - penalty);
+    return this.penaltyNow(m.basic) > 0 || this.penaltyNow(m.precious) > 0;
+  }
+
+  /** Which kind of trade `give` for `get` is, or null when the Quartermaster does not offer it. */
+  tradeKind(give: ResourceKey, get: ResourceKey): QuartermasterKind | null {
+    const qm = this.ctx.econ.data.quartermaster;
+    if (qm.sell_basic.give_from.includes(give) && qm.sell_basic.get_to.includes(get)) return "basic";
+    if (qm.sell_precious.give_from.includes(give) && qm.sell_precious.get_to.includes(get)) return "precious";
+    return null;
   }
 
   trade(opId: string, give: { resource: ResourceKey; amount: number }, get: ResourceKey): { treasury: Resources; rate: number } {
     this.assertClientOp(opId);
     const qm = this.ctx.econ.data.quartermaster;
     return this.ctx.db.tx(() => {
+      const kind = this.tradeKind(give.resource, get);
       const existing = this.findOp(opId);
       if (existing) {
         if (existing.kind !== "trade") throw fail.conflict(`op_id ${opId} was already used for ${existing.kind}`);
-        return { treasury: this.balance(), rate: this.marketRate() };
+        return { treasury: this.balance(), rate: roundRate(this.marketRate(kind ?? "basic")) };
       }
       if (this.ctx.ages.current() < qm.age) throw fail.age(`the Quartermaster opens in Age ${qm.age}`);
-      let ratio: number;
-      if (qm.sell_basic.give_from.includes(give.resource) && qm.sell_basic.get_to.includes(get)) {
-        ratio = qm.sell_basic.get / qm.sell_basic.give;
-      } else if (qm.sell_precious.give_from.includes(give.resource) && qm.sell_precious.get_to.includes(get)) {
-        ratio = qm.sell_precious.get / qm.sell_precious.give;
-      } else {
-        throw fail.badRequest(`the Quartermaster does not trade ${give.resource} for ${get}`);
-      }
-      const rate = this.marketRate();
-      const received = Math.floor(give.amount * ratio * rate);
+      if (!kind) throw fail.badRequest(`the Quartermaster does not trade ${give.resource} for ${get}`);
+      const deal = kind === "basic" ? qm.sell_basic : qm.sell_precious;
+      const rate = this.marketRate(kind);
+      const received = Math.floor(give.amount * (deal.get / deal.give) * rate);
       if (received <= 0) throw fail.badRequest("the trade is too small to receive anything");
       const delta = zeroResources();
       delta[give.resource] -= give.amount;
       delta[get] += received;
       const treasury = this.append({ kind: "trade", reason: `trade:${give.resource}->${get}`, delta, opId });
-      const penaltyNow = 1 - rate;
-      this.ctx.settings.setState("quartermaster", {
-        penalty: Math.min(1, penaltyNow + qm.worsen_per_trade),
-        at: this.ctx.clock.now(),
-      } satisfies MarketState);
-      return { treasury, rate: this.marketRate() };
+      const market = this.market();
+      market[kind] = { penalty: Math.min(1, 1 - rate + qm.worsen_per_trade), at: this.ctx.clock.now() };
+      this.ctx.settings.setState("quartermaster", market satisfies MarketState);
+      return { treasury, rate: roundRate(this.marketRate(kind)) };
     });
   }
 

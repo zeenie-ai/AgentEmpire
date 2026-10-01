@@ -18,6 +18,7 @@ import { Treasury } from "./core/ledger.js";
 import { KeyedLock } from "./core/locks.js";
 import { ManaService } from "./core/mana.js";
 import { PartyService } from "./core/parties.js";
+import { ProgressService } from "./core/progress.js";
 import { SettingsService } from "./core/settings.js";
 import { RunSupervisor } from "./core/tasks/run-supervisor.js";
 import { Scheduler } from "./core/tasks/scheduler.js";
@@ -52,6 +53,11 @@ export interface DaemonOptions {
   scenarioDir?: string;
   /** Overrides the provider adapters (tests). */
   adapters?: Record<Provider, ProviderAdapter>;
+  /**
+   * Called once the `shutdown` command has stopped the Town Hall (main.ts exits the process).
+   * Without it the daemon just stops.
+   */
+  onShutdown?: () => void;
 }
 
 export interface RuntimeInfo {
@@ -78,6 +84,14 @@ function writeRuntime(file: string, info: RuntimeInfo): void {
 }
 
 export class Daemon {
+  private stopping: Promise<void> | null = null;
+  private shutdownRequested = false;
+  private resolveStopped: () => void = () => undefined;
+  /** Resolves once the Town Hall has stopped (by stop() or the `shutdown` command). */
+  readonly stopped: Promise<void> = new Promise((resolve) => {
+    this.resolveStopped = resolve;
+  });
+
   private constructor(
     readonly ctx: Ctx,
     readonly port: number,
@@ -87,6 +101,7 @@ export class Daemon {
     private readonly server: Server,
     private readonly wss: WebSocketServer,
     private readonly connections: ConnectionManager,
+    private readonly onShutdown: (() => void) | undefined,
   ) {}
 
   static async start(opts: DaemonOptions): Promise<Daemon> {
@@ -141,6 +156,8 @@ export class Daemon {
     ctx.tasks = new TaskService(ctx);
     ctx.scheduler = new Scheduler(ctx);
     ctx.supervisor = new RunSupervisor(ctx);
+    // Last, so its check runs after the other services' flushers in each round.
+    ctx.progress = new ProgressService(ctx);
 
     let adapters = opts.adapters;
     if (!adapters) {
@@ -171,9 +188,11 @@ export class Daemon {
     ctx.ages.start();
     ctx.tasks.recoverAfterRestart();
     ctx.agents.refreshAll();
+    ctx.progress.start();
 
     const broadcaster = new Broadcaster(bus, ids, clock, log);
-    const router = new Router(ctx, buildHandlers(ctx));
+    let daemon: Daemon | null = null;
+    const router = new Router(ctx, buildHandlers(ctx, { requestShutdown: () => daemon?.requestShutdown() }));
     const connections = new ConnectionManager(ctx, router, broadcaster, token);
     ctx.presence = { hasClient: () => connections.hasActiveClient() };
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false });
@@ -208,23 +227,48 @@ export class Daemon {
     }
     log.info({ port, dataDir: config.dataDir, provider: config.providerMode }, "Town Hall listening");
 
-    const daemon = new Daemon(ctx, port, token, url, runtimeFile, server, wss, connections);
+    daemon = new Daemon(ctx, port, token, url, runtimeFile, server, wss, connections, opts.onShutdown);
     ctx.scheduler.kick();
     return daemon;
   }
 
-  private stopped = false;
+  /**
+   * The `shutdown` command: once the reply has gone out, stop as a clean exit does (running tasks
+   * pause and resume on the next start), then tell the owner, which exits the process.
+   */
+  requestShutdown(): void {
+    if (this.shutdownRequested) return;
+    this.shutdownRequested = true;
+    this.ctx.log.info("shutdown requested by the client");
+    setImmediate(() => {
+      this.stop().then(
+        () => this.onShutdown?.(),
+        (err: unknown) => {
+          this.ctx.log.error({ err: String(err) }, "shutdown failed");
+          this.onShutdown?.();
+        },
+      );
+    });
+  }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
-    this.stopped = true;
+  /** Stops the Town Hall. Calling it again returns the same promise. */
+  stop(): Promise<void> {
+    this.stopping ??= this.doStop().finally(() => this.resolveStopped());
+    return this.stopping;
+  }
+
+  private async doStop(): Promise<void> {
     const ctx = this.ctx;
     ctx.scheduler.stop();
+    // Tells every client (daemon_shutdown), closes their sockets and refuses new ones.
     this.connections.closeAll();
     await ctx.supervisor.shutdown();
     ctx.tasks.stop();
     ctx.mana.stop();
     ctx.ages.stop();
+    ctx.progress.stop();
+    // Give the clients a moment to complete the close handshake before cutting what is left.
+    await this.connections.waitClosed(1_000);
     for (const client of this.wss.clients) client.terminate();
     this.wss.close();
     await new Promise<void>((resolve) => {
