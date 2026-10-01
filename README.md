@@ -157,7 +157,7 @@ automatically on Windows, Linux and macOS (Apple Silicon) before it is published
 | 2 | The town: map, camera, units, gathering, construction, the controls | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
 | 4 | Real agents on Claude Code, Codex and pi | Done |
-| 5 | Ages and walls, menus and onboarding, sound | In progress: the Town Hall side is done (protocol 1.3, practice and real towns, switching and closing the Town Hall, party leads, usage limits) |
+| 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music. Still to come: the menus, the onboarding, and the Age and Quartermaster windows (until then the town stays in its first age) |
 
 ## For developers
 
@@ -210,5 +210,6 @@ system, and publishes them on the Releases page.
 
 ## Credits
 
-Art by Kay Lousberg (KayKit, CC0), fonts under the SIL Open Font License, built with Godot. The
-full list is in [CREDITS.md](CREDITS.md).
+Art by Kay Lousberg (KayKit, CC0); sound from Kenney, OpenGameArt.org and Freesound (CC0) plus
+bells made for the game; fonts under the SIL Open Font License; built with Godot. The full list is
+in [CREDITS.md](CREDITS.md).

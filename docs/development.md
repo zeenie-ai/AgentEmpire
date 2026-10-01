@@ -41,6 +41,7 @@ Run from the repository root unless noted. `<godot>` is
 | Build | `node scripts/build-game.mjs` (`--windows-only` or `--web-only`) |
 | Check the built exe | `pwsh scripts/check-exe.ps1` (launches it, captures `out/exe-check.png`, fails on any ERROR line in the game log) |
 | Rebuild all art | `blender --background --factory-startup --python-exit-code 1 --python art_src/blender/build_all.py` |
+| Rebuild all sound | `node scripts/fetch-audio.mjs` (needs ffmpeg; downloads the CC0 sources into `.tools/vendor/audio`) |
 
 The end-to-end check starts a Town Hall with the scripted agent in a temporary folder, makes a
 fresh git repository as the work folder, and plays the whole loop headless: summon, train, place
@@ -70,6 +71,8 @@ screenshot tools need a real window, so leave out `--headless`.
 | `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames and draw time |
 | `input_smoke.gd` | Injects mouse and keyboard input into the main scene and checks the results |
 | `char_check.gd`, `prop_check.gd` | Look-development renders for characters and carried props |
+| `walls_showcase.gd` | Renders towns at Age I to IV and a wall mid-rise |
+| `audio_check.gd` | Renders every sound cue to a WAV file for review, with loudness figures |
 
 ## Working on the code
 

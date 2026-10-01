@@ -36,6 +36,34 @@ walls. The same scripts produce the character recolours (copies of the KayKit at
 the clothing swatches re-dyed), the trimmed farm plot and gate arch, the squat wall tower (a kit
 tower with one band of windows cut out), the town gate with its doors swung open, and every icon.
 
+## Sound and music (CC0)
+
+Every recorded sound is released under
+[Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/); the
+rest is made in-house. `node scripts/fetch-audio.mjs` downloads each source (pinned by SHA-256),
+then trims, layers, normalises and encodes everything into `client/audio/`.
+
+- **Kenney** ([kenney.nl](https://kenney.nl)): the
+  [RPG Audio](https://kenney.nl/assets/rpg-audio),
+  [Interface Sounds](https://kenney.nl/assets/interface-sounds),
+  [Impact Sounds](https://kenney.nl/assets/impact-sounds) and
+  [UI Audio](https://kenney.nl/assets/ui-audio) packs, behind the interface, building, gathering
+  and town sounds.
+- **Music**, from OpenGameArt.org:
+  [Medieval: The Bard's Tale](https://opengameart.org/content/medieval-the-bards-tale) and
+  [Medieval: Exploration](https://opengameart.org/content/medieval-exploration) by RandomMind,
+  [Town Theme RPG](https://opengameart.org/content/town-theme-rpg) by cynicmusic, and
+  [Calming RPG Town Theme](https://opengameart.org/content/calming-rpg-town-theme) by destin715.
+- **Ambience**, from Freesound:
+  [Springtime birdsong with soft wind ambiance](https://freesound.org/people/rubindaniel/sounds/847380/)
+  by rubindaniel,
+  [Night Crickets Back Porch](https://freesound.org/people/hdfreema/sounds/333221/) by hdfreema,
+  and [Crickets At Night](https://freesound.org/people/Defelozedd94/sounds/522298/) by
+  Defelozedd94.
+- **In-house**: the bells (the hand bell for approvals, the warning, alarm and dawn bells, the
+  great bells of a new age), the chimes and the magic are synthesised by
+  `scripts/fetch-audio.mjs`.
+
 ## Fonts (SIL Open Font License 1.1)
 
 Bundled in `client/ui/fonts/`, each folder with its `OFL.txt`:

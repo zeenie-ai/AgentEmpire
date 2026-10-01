@@ -311,8 +311,9 @@ function zipFolder(stage, out, top, modes, t) {
 
 function releaseNotes(version, targets) {
   const rows = targets.map((t) => `| ${t.label} | \`Aurelhaven-${version}-${t.id}.zip\` |`).join('\n');
-  return `Aurelhaven ${version} is an early preview: the town, agents as villagers, practice agents, and real
-agents on Claude Code, Codex and pi. Ages, walls, menus, onboarding and sound are still being built.
+  return `Aurelhaven ${version} is an early preview: the town, agents as villagers, practice agents, real
+agents on Claude Code, Codex and pi, the town walls, and sound and music. The menus, the onboarding
+and the windows for advancing an age and for trading are still being built.
 
 ## Download
 

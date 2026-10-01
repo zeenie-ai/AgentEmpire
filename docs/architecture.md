@@ -144,7 +144,7 @@ limits are in [docs/spikes.md](spikes.md), section S5.
 | `Settings` | `user://settings.cfg` and key bindings |
 | `Economy` | `economy.json` |
 | `Notify` | Toasts |
-| `Audio` | Sound cues (a stub until Phase 5) |
+| `Audio` | Sound: the Master, Music, SFX, UI and Ambience buses (volumes from Settings), named cues with variations, cooldowns and voice limits (`client/audio/`), bells driven by Realm's signals, day and night ambience, music |
 | `Net` | The WebSocket: discovery, connection, requests (`Net.request` returns a `NetRequest`), reconnect with backoff, catch-up |
 | `Realm` | The client's copy of the Town Hall's state (agents, tools, tasks, approvals, incidents, parties, Mana, age, treasury), with signals for every change |
 | `Game` | Boot, the simulation clock, the current `SimWorld`, saves, switching between the practice and real Town Halls and closing one; owns `Game.link` (TownLink) |
