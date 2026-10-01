@@ -16,7 +16,9 @@ fit together, read [architecture.md](architecture.md) first.
 
 `.tools/` is git-ignored. `node scripts/setup.mjs` fills it: it downloads Godot 4.7.2 for your
 system from Godot's GitHub release (checked against its SHA-512 list), the export templates your
-builds need, and installs the Town Hall's packages (`npm ci` in `townhall/`). On Windows and
+builds need, and installs the Town Hall's packages (`npm ci --ignore-scripts` in `townhall/`: no
+install script is needed, and skipping them keeps npm from compiling better-sqlite3, whose
+programs for every platform ship in its package, so no C++ toolchain is needed). On Windows and
 Linux Godot runs self-contained (an empty `._sc_` file next to the editor), so its settings and
 templates live in `.tools/godot/editor_data/`; on macOS the templates go to
 `~/Library/Application Support/Godot/export_templates/`. Every script also accepts a `GODOT`
