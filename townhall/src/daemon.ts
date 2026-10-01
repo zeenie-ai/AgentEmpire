@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import net, { type AddressInfo } from "node:net";
 import path from "node:path";
 import { WebSocketServer } from "ws";
 import type { Config } from "./config.js";
@@ -77,6 +77,34 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** Whether something accepts connections on 127.0.0.1:`port` within `timeoutMs`. */
+function portAnswers(port: unknown, timeoutMs = 1000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof port !== "number" || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      resolve(false);
+      return;
+    }
+    const socket = net.connect({ host: "127.0.0.1", port });
+    const done = (answered: boolean) => {
+      socket.destroy();
+      resolve(answered);
+    };
+    socket.setTimeout(timeoutMs, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+  });
+}
+
+/**
+ * Whether the Town Hall that wrote an existing runtime file still runs. Its process must be alive
+ * and its port must answer: a Town Hall that was killed (or died with the computer) leaves its
+ * runtime file behind, and the system may since have given its process id to another program.
+ */
+async function previousStillRuns(prev: Partial<RuntimeInfo>): Promise<boolean> {
+  if (typeof prev.pid !== "number" || prev.pid === process.pid || !pidAlive(prev.pid)) return false;
+  return portAnswers(prev.port);
+}
+
 function writeRuntime(file: string, info: RuntimeInfo): void {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, JSON.stringify(info, null, 2), { mode: 0o600 });
@@ -110,13 +138,14 @@ export class Daemon {
     mkdirSync(config.dataDir, { recursive: true });
     const runtimeFile = path.join(config.dataDir, "runtime.json");
     if (existsSync(runtimeFile)) {
+      let prev: Partial<RuntimeInfo> | null = null;
       try {
-        const prev = JSON.parse(readFileSync(runtimeFile, "utf8")) as Partial<RuntimeInfo>;
-        if (typeof prev.pid === "number" && prev.pid !== process.pid && pidAlive(prev.pid)) {
-          throw new Error(`another Town Hall (pid ${prev.pid}) is using ${config.dataDir}`);
-        }
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith("another Town Hall")) throw err;
+        prev = JSON.parse(readFileSync(runtimeFile, "utf8")) as Partial<RuntimeInfo>;
+      } catch {
+        prev = null; // unreadable: a leftover, overwritten below
+      }
+      if (prev && (await previousStillRuns(prev))) {
+        throw new Error(`another Town Hall (pid ${prev.pid}) is using ${config.dataDir}`);
       }
     }
 

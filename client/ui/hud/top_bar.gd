@@ -6,6 +6,14 @@ extends PanelContainer
 
 ## The Mana orb was clicked.
 signal budget_requested()
+## The player chose practice ("fake") or real agents in the Town Hall chip's menu.
+signal town_hall_mode_requested(mode: String)
+## The player chose to close the Town Hall in the chip's menu.
+signal town_hall_close_requested()
+
+const HALL_PRACTICE := 1
+const HALL_REAL := 2
+const HALL_CLOSE := 3
 
 const REFRESH_S := 0.25
 
@@ -21,6 +29,7 @@ var _age: AgeBadge
 var _mana: ManaOrb
 var _hall: Button
 var _hall_label: Label
+var _hall_menu: PopupMenu
 var _timer: float = 0.0
 var _time: float = 0.0
 var _pop_capped: bool = false
@@ -96,6 +105,7 @@ func _ready() -> void:
 	Net.status_changed.connect(func(_s: String) -> void: _refresh_hall())
 	Game.link.online_changed.connect(func(_on: bool) -> void: _refresh_hall())
 	Game.link.town_available.connect(_refresh_hall)
+	Game.town_hall_mode_changed.connect(func(_mode: String) -> void: _refresh_hall())
 	_refresh()
 	_refresh_mana()
 	_refresh_hall()
@@ -111,12 +121,19 @@ func _refresh_hall() -> void:
 	var color := UiTokens.HUD_MUTED
 	var tip := "No Town Hall is running. Agents need it: start it with `npm start` in townhall/.
 The town plays offline meanwhile."
+	if TownHallLauncher.find_dir() != "":
+		tip = "No Town Hall is running. Click to start it; the town plays offline meanwhile."
 	match Net.status:
 		Net.STATUS_ONLINE:
 			if Game.is_online_town():
-				text = "TOWN HALL"
-				color = UiTokens.MINT
-				tip = "Connected to the Town Hall at port %d. This town and its agents live there." % int(Net.endpoint.get("port", 0))
+				if Game.town_hall_mode() == TownHallLauncher.MODE_FAKE:
+					text = "PRACTICE TOWN"
+					color = UiTokens.GOLD_BRIGHT
+					tip = "Practice agents: a stand-in plays the agents' part, so nothing real runs and nothing is spent.\nClick to switch to real agents or to close the Town Hall."
+				else:
+					text = "TOWN HALL"
+					color = UiTokens.MINT
+					tip = "Real agents: they work in your folders on your Claude Code, Codex or pi sign-in.\nClick to switch to practice agents or to close the Town Hall."
 			else:
 				text = "OPEN TOWN HALL TOWN"
 				color = UiTokens.GOLD_BRIGHT
@@ -138,14 +155,55 @@ The town plays offline meanwhile."
 
 
 func _on_hall_pressed() -> void:
+	if Game.town_hall_busy():
+		return
 	match Net.status:
 		Net.STATUS_BUSY:
 			Net.take_over()
 		Net.STATUS_ONLINE:
-			if not Game.is_online_town():
+			if Game.is_online_town():
+				_open_hall_menu()
+			else:
 				Game.switch_to_town_hall(int(Settings.get_value("game/seed", 4127)))
 		_:
-			Net.reconnect_now()
+			# Start the Town Hall when this game can (the mode last chosen); otherwise look again.
+			if TownHallLauncher.find_dir() != "":
+				Game.open_town_hall()
+			else:
+				Net.reconnect_now()
+
+
+## The chip's menu while a Town Hall's town is open: practice or real agents, or close it.
+func _open_hall_menu() -> void:
+	if _hall_menu == null:
+		_hall_menu = PopupMenu.new()
+		_hall_menu.id_pressed.connect(_on_hall_menu)
+		add_child(_hall_menu)
+	_hall_menu.clear()
+	var mode := Game.town_hall_mode()
+	_hall_menu.add_radio_check_item("Practice agents: nothing real runs", HALL_PRACTICE)
+	_hall_menu.set_item_checked(_hall_menu.get_item_index(HALL_PRACTICE), mode == TownHallLauncher.MODE_FAKE)
+	_hall_menu.add_radio_check_item("Real agents: Claude Code, Codex, pi", HALL_REAL)
+	_hall_menu.set_item_checked(_hall_menu.get_item_index(HALL_REAL), mode == TownHallLauncher.MODE_REAL)
+	_hall_menu.add_separator()
+	_hall_menu.add_item("Close the Town Hall", HALL_CLOSE)
+	var at := _hall.global_position + Vector2(0.0, _hall.size.y + 4.0)
+	if not get_viewport().gui_embed_subwindows:
+		at += Vector2(get_window().position)
+	_hall_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+
+
+func _on_hall_menu(id: int) -> void:
+	var mode := Game.town_hall_mode()
+	match id:
+		HALL_PRACTICE:
+			if mode != TownHallLauncher.MODE_FAKE:
+				town_hall_mode_requested.emit(TownHallLauncher.MODE_FAKE)
+		HALL_REAL:
+			if mode != TownHallLauncher.MODE_REAL:
+				town_hall_mode_requested.emit(TownHallLauncher.MODE_REAL)
+		HALL_CLOSE:
+			town_hall_close_requested.emit()
 
 
 func _chip(key: String, icon: String) -> Control:

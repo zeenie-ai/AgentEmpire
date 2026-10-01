@@ -18,18 +18,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findGodot } from './lib/godot.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const keep = process.argv.includes('--keep');
-const GODOT_EXE = 'Godot_v4.7.2-stable_win64_console.exe';
-
-function findGodot() {
-  if (process.env.GODOT) return process.env.GODOT;
-  const candidates = [join(root, '.tools', 'godot', GODOT_EXE)];
-  // A worktree under <main>/.wt/<name> shares the main checkout's tools.
-  candidates.push(join(root, '..', '..', '.tools', 'godot', GODOT_EXE));
-  return candidates.find((p) => existsSync(p)) ?? candidates[0];
-}
 
 function git(cwd, ...args) {
   execFileSync('git', ['-c', 'core.longpaths=true', ...args], { cwd, stdio: 'pipe' });
@@ -53,7 +45,7 @@ git(repo, 'init', '-q', '-b', 'main');
 git(repo, 'add', '-A');
 git(repo, '-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', 'commit', '-q', '-m', 'initial');
 
-const godot = findGodot();
+const godot = findGodot(root);
 if (!existsSync(godot)) {
   console.error(`Godot not found at ${godot}. Set GODOT.`);
   process.exit(2);

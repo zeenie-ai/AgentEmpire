@@ -2,11 +2,15 @@ class_name TownHallLauncher
 extends RefCounted
 ## Starts the Town Hall for the player when none is running (desktop only), so opening the game
 ## is enough. It looks for the townhall/ folder the way TownHallDiscovery looks for its runtime
-## file (AURELHAVEN_TOWNHALL_DIR, next to the client project, or three folders up from an
-## exported build in client/export/<platform>/) and runs townhall/scripts/launch.mjs, which
+## file (AURELHAVEN_TOWNHALL_DIR; next to the client project; next to the game in a release
+## package; three folders up from an exported build in client/export/<platform>/, which is also
+## next to Aurelhaven.app in a macOS package) and runs townhall/scripts/launch.mjs, which
 ## starts the Town Hall detached (no console, no handles inherited from the game, output to
 ## <data dir>/townhall.log) and exits at once. The Town Hall keeps running after the game quits
 ## (agents work while the player is away); it writes its runtime file, which Net then finds.
+##
+## A release package (scripts/package-release.mjs) carries a compiled Town Hall (dist/main.js)
+## and its own Node.js in runtime/node/ next to townhall/, so players need not install Node.
 ##
 ## Two modes, each with its own town: "fake" (practice: scripted stand-in agents) keeps its data
 ## in <data root>/practice, "real" (the installed Claude Code, Codex and pi) in <data root>
@@ -25,10 +29,15 @@ const START_FAILED := "The Town Hall could not start: "
 const ALREADY_RUNNING := "another Town Hall"
 
 
-## The townhall folder, or "" when there is none (a web build, or a lone exported exe).
+## The townhall folder, or "" when there is none (a web build, or a lone exported exe). It must be
+## runnable: a release package's compiled Town Hall (release.json next to dist/main.js) or a
+## development checkout with its packages installed (tsx).
 static func find_dir() -> String:
 	for dir in _candidates():
-		if FileAccess.file_exists(dir.path_join("scripts/launch.mjs")) and FileAccess.file_exists(dir.path_join("node_modules/tsx/dist/cli.mjs")):
+		if not FileAccess.file_exists(dir.path_join("scripts/launch.mjs")):
+			continue
+		var release := FileAccess.file_exists(dir.path_join("release.json")) and FileAccess.file_exists(dir.path_join("dist/main.js"))
+		if release or FileAccess.file_exists(dir.path_join("node_modules/tsx/dist/cli.mjs")):
 			return dir
 	return ""
 
@@ -45,6 +54,10 @@ static func _candidates() -> PackedStringArray:
 		candidates.append(project.path_join("../townhall").simplify_path())
 	var exe_dir := OS.get_executable_path().get_base_dir()
 	if OS.has_feature("template") and exe_dir != "":
+		# A release package (Windows, Linux): townhall/ next to the game.
+		candidates.append(exe_dir.path_join("townhall").simplify_path())
+		# client/export/<platform>/ in a checkout, or Aurelhaven.app/Contents/MacOS in a macOS
+		# package: townhall/ three folders up.
 		candidates.append(exe_dir.path_join("../../../townhall").simplify_path())
 	return candidates
 
@@ -54,13 +67,18 @@ static func normalize_mode(mode: String) -> String:
 	return MODE_REAL if mode == MODE_REAL else MODE_FAKE
 
 
-## Where the Town Halls keep their data: AURELHAVEN_DATA_ROOT, else <townhall>/data; "" when unknown.
+## Where the Town Halls keep their data: AURELHAVEN_DATA_ROOT; for a release package the player's
+## data folder (%APPDATA%, ~/Library/Application Support or ~/.local/share, then
+## Aurelhaven/townhall), so towns survive updates and a read-only install; else <townhall>/data.
+## "" when unknown.
 static func data_root() -> String:
 	var env := OS.get_environment(DATA_ROOT_ENV)
 	if env != "":
 		return env.replace("\\", "/").simplify_path()
 	for dir in _candidates():
 		if FileAccess.file_exists(dir.path_join("scripts/launch.mjs")):
+			if FileAccess.file_exists(dir.path_join("release.json")):
+				return OS.get_data_dir().replace("\\", "/").path_join("Aurelhaven/townhall")
 			return dir.path_join("data")
 	return ""
 
@@ -137,7 +155,7 @@ static func start(mode: String) -> int:
 	mode = normalize_mode(mode)
 	OS.set_environment("AURELHAVEN_PROVIDER", mode)
 	OS.set_environment("AURELHAVEN_DATA_DIR", data)
-	var pid := OS.create_process(_node(), PackedStringArray([dir.path_join("scripts/launch.mjs")]), false)
+	var pid := OS.create_process(node_for(dir), PackedStringArray([dir.path_join("scripts/launch.mjs")]), false)
 	if pid > 0:
 		ClientLog.info("townhall", "Starting the Town Hall (%s agents) from %s on %s." % [mode, dir, data])
 	else:
@@ -171,5 +189,19 @@ static func same_dir(a: String, b: String) -> bool:
 	return x == y
 
 
-static func _node() -> String:
+## The Node.js to run the Town Hall with: a release package's own (runtime/node/ next to
+## townhall/), else the one on PATH.
+static func node_for(townhall_dir: String) -> String:
+	var bundled := bundled_node(townhall_dir)
+	if bundled != "":
+		return bundled
 	return "node.exe" if OS.has_feature("windows") else "node"
+
+
+## A release package's Node.js next to `townhall_dir`, or "".
+static func bundled_node(townhall_dir: String) -> String:
+	if townhall_dir == "":
+		return ""
+	var runtime := townhall_dir.path_join("../runtime/node").simplify_path()
+	var exe := runtime.path_join("node.exe") if OS.has_feature("windows") else runtime.path_join("bin/node")
+	return exe if FileAccess.file_exists(exe) else ""

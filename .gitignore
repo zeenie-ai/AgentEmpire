@@ -23,3 +23,7 @@ runtime.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Release packages (scripts/package-release.mjs)
+/dist/
+/build/

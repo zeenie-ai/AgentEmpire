@@ -77,8 +77,19 @@ static func _add(out: PackedStringArray, path: String) -> void:
 static func read_runtime_file(path: String) -> Dictionary:
 	if path == "" or not FileAccess.file_exists(path):
 		return {}
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-	return parse_runtime(parsed, path)
+	# A Town Hall that stops removes its file and one that starts replaces it, so the file can be
+	# gone or empty by the time it is read: read it without logging an error for that.
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return {}
+	var text := f.get_as_text()
+	f.close()
+	if text.strip_edges() == "":
+		return {}
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return {}
+	return parse_runtime(json.data, path)
 
 
 static func parse_runtime(parsed: Variant, source: String) -> Dictionary:

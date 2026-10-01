@@ -81,6 +81,8 @@ func _ready() -> void:
 	root.add_child(modal_root)
 	modal_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	top_bar.budget_requested.connect(open_budget)
+	top_bar.town_hall_mode_requested.connect(_on_town_hall_mode_requested)
+	top_bar.town_hall_close_requested.connect(_on_town_hall_close_requested)
 
 
 func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsInput) -> void:
@@ -184,6 +186,32 @@ func _update_dim() -> void:
 
 
 ## A small parchment question with Yes and No; `on_yes` runs on Yes.
+## The Town Hall chip's menu: switching between practice and real agents, after a confirmation.
+func _on_town_hall_mode_requested(mode: String) -> void:
+	if mode == TownHallLauncher.MODE_REAL:
+		confirm("Use real agents?",
+			"Real agents work in your folders on your own Claude Code, Codex or pi sign-in, and what they use is real (your Mana budget caps it). The practice Town Hall closes and your real town opens.",
+			_switch_town_hall.bind(TownHallLauncher.MODE_REAL))
+	else:
+		confirm("Use practice agents?",
+			"Practice agents are a stand-in: nothing real runs and nothing is spent. The real Town Hall closes, so its agents pause until it runs again, and the practice town opens.",
+			_switch_town_hall.bind(TownHallLauncher.MODE_FAKE))
+
+
+func _switch_town_hall(mode: String) -> void:
+	Game.switch_town_hall_mode(mode)
+
+
+func _on_town_hall_close_requested() -> void:
+	confirm("Close the Town Hall?",
+		"Agents stop until the Town Hall runs again, then pick up where they left off. This town is saved, and you keep playing offline.",
+		_close_town_hall)
+
+
+func _close_town_hall() -> void:
+	Game.close_town_hall()
+
+
 func confirm(title: String, text: String, on_yes: Callable) -> void:
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = "DocumentPanel"
