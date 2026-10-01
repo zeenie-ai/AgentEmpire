@@ -260,7 +260,8 @@ func _overview(w: SimWorld, age: int) -> void:
 		pts.append(p)
 		pts.append(p + Vector3.UP * 4.5)
 	pts.append(Vector3(c.x, 7.0, c.y))
-	main.camera.frame(pts, 26.0 + r * 0.8, 0.02, true, 150.0, deg_to_rad(-16.0))
+	var yaw := [-16.0, -16.0, -10.0, -4.0][clampi(age - 1, 0, 3)] as float
+	main.camera.frame(pts, 26.0 + r * 0.8, 0.0 if age == 4 else 0.02, true, 150.0, deg_to_rad(yaw))
 
 
 ## Sends townsfolk back and forth through gate `g`.
