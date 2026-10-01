@@ -45,6 +45,7 @@ export class ClaudeCodeAdapter implements ProviderAdapter {
   constructor(
     private readonly deps: HarnessDeps,
     private readonly approvalScript = srcPath("providers", "claude", "approval-mcp.mjs"),
+    private readonly townScript = srcPath("providers", "common", "town-mcp.mjs"),
   ) {}
 
   private resolve(): Launch | null {
@@ -175,6 +176,7 @@ export class ClaudeCodeAdapter implements ProviderAdapter {
       launch: res.launch,
       deps: this.deps,
       approvalScript: this.approvalScript,
+      townScript: this.townScript,
       restoresCostOnResume: this.version === null || compareVersions(this.version, COST_RESTORE_VERSION) >= 0,
       estimate: this.billing === "subscription" ? true : undefined,
     });

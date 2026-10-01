@@ -1,7 +1,7 @@
 import type { WaygateConfig } from "../../protocol/commands.js";
 
-/** Server names the adapters use themselves; a Waygate may not take them. */
-export const RESERVED_SERVER_NAMES = new Set(["aurelhaven"]);
+/** Server names the adapters use themselves (approvals, a party lead's town tools); a Waygate may not take them. */
+export const RESERVED_SERVER_NAMES = new Set(["aurelhaven", "town"]);
 
 /**
  * Environment references for a harness config. Waygate secrets live only in the Town Hall's

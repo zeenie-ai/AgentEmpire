@@ -10,6 +10,7 @@ import {
   Incident,
   Mana,
   Party,
+  Progress,
   ProgressPhase,
   ProviderInfo,
   Resources,
@@ -52,6 +53,8 @@ export const events = {
   town_saved: z.object({ rev: nonNegInt }),
   session_revoked: z.object({}),
   daemon_shutdown: z.object({}),
+  /** 1.3: the get_progress object, whenever any part of it changes. */
+  progress_updated: Progress,
 };
 
 export type Events = typeof events;

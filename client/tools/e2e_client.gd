@@ -6,8 +6,9 @@ extends SceneTree
 ## connect -> open the Town Hall's town -> summon an Artificer -> it trains at the Keep ->
 ## choose its plot -> it builds its home and starting add-ons -> send a task by courier ->
 ## approve the shell command -> the result waits for review -> accept (merge) -> the reward
-## arrives; then checks that the treasury matches the Town Hall's ledger and that saving and
-## reloading the town gives back the same simulation. Prints "E2E OK" or "E2E FAILED: ...".
+## arrives and the progress counts it; then checks that the treasury matches the Town Hall's
+## ledger and that saving and reloading the town gives back the same simulation, and finally
+## closes the Town Hall from the game. Prints "E2E OK" or "E2E FAILED: ...".
 
 const SEED := 4127
 const TIME_SCALE := 8.0
@@ -141,6 +142,12 @@ func _play() -> void:
 	_step("accepted: %d RP, %s" % [int((rewards as Dictionary).get("rp", 0)), JSON.stringify(paid)])
 	if int((rewards as Dictionary).get("rp", 0)) <= 0:
 		_fail("zero reward: %s" % JSON.stringify(rewards))
+	# The Town Hall's progress (protocol 1.3) counts the accepted task towards the next age.
+	if not await _wait(func() -> bool: return J.gi(J.gd(realm.town_progress, "facts"), "accepted") >= 1, 10.0, "progress counts the accepted task"):
+		return
+	var next: Dictionary = J.gd(realm.town_progress, "next")
+	var first: Dictionary = J.d(J.a(next.get("milestones")).front()) if not J.a(next.get("milestones")).is_empty() else {}
+	_step("progress: %s %d/%d towards %s" % [J.gs(first, "label"), J.gi(first, "have"), J.gi(first, "want"), J.gs(next, "name")])
 
 	# The treasury mirror settles on the Town Hall's ledger (paused, so nobody gathers meanwhile).
 	game.paused = true
@@ -192,6 +199,15 @@ func _play() -> void:
 		_step("save and reload give the same town (%d bytes)" % saved.length())
 	if game.world.agent_home(agent_id) == null or game.world.agent_tools(agent_id).size() < 3:
 		_fail("the reloaded town lost the agent's buildings")
+
+	# Close the Town Hall the way the Esc menu does: save, shutdown (protocol 1.3), wait for the
+	# process to end, carry on offline. scripts/e2e-client.mjs checks that it exited with code 0.
+	game.paused = false
+	await game.close_town_hall()
+	if game.world == null or game.is_online_town() or net.is_online():
+		_fail("close_town_hall did not leave an offline town")
+	else:
+		_step("closed the Town Hall; the game plays on offline (%s)" % game.world.town_id)
 
 
 ## The simulation snapshot without the command queue (reconciliation queues commands on load).

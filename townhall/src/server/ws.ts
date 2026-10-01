@@ -17,7 +17,8 @@ import type { Broadcaster, EventSink } from "./broadcaster.js";
 import type { Router } from "./router.js";
 
 const HEARTBEAT_MS = 30_000;
-const COMMON_FEATURES = ["replay", "idempotency", "parties", "stop_and_review"];
+/** "progress" and "shutdown" (1.3): get_progress / progress_updated, and the shutdown command. */
+const COMMON_FEATURES = ["replay", "idempotency", "parties", "stop_and_review", "progress", "shutdown"];
 
 /** Feature flags for hello_result; "fake_provider" only when the agents are scripted. */
 export function features(providerMode: "fake" | "real"): string[] {
@@ -57,6 +58,9 @@ export class ConnectionManager {
   private readonly connections = new Set<Connection>();
   private active: Connection | null = null;
   private readonly heartbeat: NodeJS.Timeout;
+  /** Set once the Town Hall is shutting down: new connections are refused. */
+  private closing = false;
+  private closedWaiters: Array<() => void> = [];
 
   constructor(
     private readonly ctx: Ctx,
@@ -73,6 +77,10 @@ export class ConnectionManager {
   }
 
   handle(ws: WebSocket, _req: IncomingMessage): void {
+    if (this.closing) {
+      ws.close(1001, "the Town Hall is shutting down");
+      return;
+    }
     const conn = new Connection(ws);
     this.connections.add(conn);
     this.armHelloTimer(conn);
@@ -212,6 +220,7 @@ export class ConnectionManager {
       this.active = null;
       this.ctx.scheduler.kick();
     }
+    if (this.connections.size === 0) for (const w of this.closedWaiters.splice(0)) w();
   }
 
   private beat(): void {
@@ -229,10 +238,23 @@ export class ConnectionManager {
     }
   }
 
-  /** Sends `daemon_shutdown` and closes every connection. */
+  /** Sends `daemon_shutdown`, closes every connection and refuses new ones from now on. */
   closeAll(): void {
+    this.closing = true;
     clearInterval(this.heartbeat);
     this.broadcaster.sendTransientToAll("daemon_shutdown", {});
     for (const conn of this.connections) conn.close(1001, "the Town Hall is shutting down");
+  }
+
+  /** Resolves once every connection has closed, or after `ms`. */
+  waitClosed(ms: number): Promise<void> {
+    if (this.connections.size === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      this.closedWaiters.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 }

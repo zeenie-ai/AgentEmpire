@@ -5,7 +5,8 @@ import { createLogger } from "./log.js";
 async function main(): Promise<void> {
   const config = loadConfig();
   const log = createLogger(config.logLevel);
-  const daemon = await Daemon.start({ config, log });
+  // The `shutdown` command stops the daemon (tasks pause, runtime files go) and then exits here.
+  const daemon = await Daemon.start({ config, log, onShutdown: () => process.exit(0) });
   process.stdout.write(`Aurelhaven Town Hall is ready.\nWeb client: ${daemon.url}\nruntime.json: ${daemon.runtimeFile}\n`);
 
   let stopping = false;

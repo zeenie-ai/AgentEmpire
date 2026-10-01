@@ -6,6 +6,7 @@ import type { Launch } from "../common/exec.js";
 import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { usdToMicros } from "../common/pricing.js";
 import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { codexRateWindows } from "../common/rate-limits.js";
 import { asNumber, asString, classifyFailure, cleanText, isPlainObject, type HarnessDeps } from "../common/support.js";
 import { codexMcpOverrides, usableWaygates } from "../common/waygates.js";
 import type { ApprovalAnswer, ApprovalRequest, RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
@@ -384,6 +385,12 @@ export class CodexRun implements RunHandle {
           if (p.status === "failed") {
             this.emit({ kind: "activity", activity: "system", text: `MCP server ${String(p.name)} did not start: ${String(p.error ?? "unknown error")}` });
           }
+          break;
+        }
+        case "account/rateLimits/updated": {
+          // The ChatGPT plan's own usage windows (five-hour, weekly): Mana.provider_windows.
+          const windows = codexRateWindows(p);
+          if (windows.length > 0) this.emit({ kind: "rate_limits", windows });
           break;
         }
         default:

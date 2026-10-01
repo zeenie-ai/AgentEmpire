@@ -16,6 +16,7 @@ import type { IncidentService } from "./incidents.js";
 import type { KeyedLock } from "./locks.js";
 import type { ManaService } from "./mana.js";
 import type { PartyService } from "./parties.js";
+import type { ProgressService } from "./progress.js";
 import type { SettingsService } from "./settings.js";
 import type { RunSupervisor } from "./tasks/run-supervisor.js";
 import type { Scheduler } from "./tasks/scheduler.js";
@@ -62,4 +63,5 @@ export interface Ctx {
   scheduler: Scheduler;
   supervisor: RunSupervisor;
   providers: ProviderRegistry;
+  progress: ProgressService;
 }

@@ -37,6 +37,7 @@ import {
   ManaPeriod,
   MAX_FRAME_BYTES,
   MergeBlockedReason,
+  MilestoneKey,
   PauseReason,
   ProgressPhase,
   PROTOCOL_MAJOR,
@@ -94,6 +95,7 @@ const ENUMS: Array<[string, AnyEnum, string]> = [
   ["RetireWhen", RetireWhen as unknown as AnyEnum, "retire_agent when"],
   ["ResourceName", ResourceName as unknown as AnyEnum, "resource keys"],
   ["SettingKey", SettingKey as unknown as AnyEnum, "set_setting key"],
+  ["MilestoneKey", MilestoneKey as unknown as AnyEnum, "Progress next.milestones[].key (1.3)"],
 ];
 
 function constName(value: string): string {

@@ -39,6 +39,8 @@ func _run() -> void:
 		print("BOOT no town after %.1f s (net %s: %s)" % [secs, net.status, net.last_problem])
 		quit(1)
 		return
-	print("BOOT %s town %s after %.1f s (net %s, endpoint %s)" % ["Town Hall" if game.is_online_town() else "offline",
-		game.world.town_id, secs, net.status, String(net.endpoint.get("source", "-"))])
+	print("BOOT %s town %s after %.1f s (net %s, endpoint %s, mode %s, started by the game: %s)" % [
+		"Town Hall" if game.is_online_town() else "offline", game.world.town_id, secs, net.status,
+		String(net.endpoint.get("source", "-")), game.town_hall_mode() if game.town_hall_mode() != "" else "-",
+		str(game.town_hall_launched_by_game())])
 	quit(0)

@@ -31,6 +31,8 @@ interface ActiveRun {
   size: Size;
   handle: RunHandle | null;
   abort: AbortController;
+  /** Aborted when the run is asked to stop or has ended: ends a party lead's wait for its members. */
+  stopped: AbortController;
   stop: StopRequest | null;
   workspace: TaskWorkspace | null;
   ended: boolean;
@@ -105,6 +107,7 @@ export class RunSupervisor {
       size: task.size as Size,
       handle: null,
       abort: new AbortController(),
+      stopped: new AbortController(),
       stop: null,
       workspace: null,
       ended: false,
@@ -289,6 +292,20 @@ export class RunSupervisor {
           },
         };
       },
+      partyStatus: () => this.ctx.parties.status(run.taskId),
+      waitSubtasks: async (taskIds, timeoutMs) => {
+        // Waiting on the party is not silence: no stall alarm while members work.
+        run.waitingChildren++;
+        this.suspendStall(run);
+        this.progress(run, "delegating");
+        try {
+          return await this.ctx.parties.waitAll(run.taskId, taskIds, timeoutMs, run.stopped.signal);
+        } finally {
+          run.waitingChildren--;
+          this.progress(run, "working");
+          this.touch(run);
+        }
+      },
       checkpoint: (state) => {
         if (run.ended) return;
         this.ctx.db.run("UPDATE tasks SET provider_state_json = ? WHERE id = ?", [toJson(state), run.taskId]);
@@ -336,6 +353,9 @@ export class RunSupervisor {
         case "files_touched":
           for (const p of ev.paths) run.filesTouched.add(p);
           this.progress(run, run.phase);
+          break;
+        case "rate_limits":
+          this.ctx.mana.updateProviderWindows(run.provider, ev.windows);
           break;
       }
     } catch (err) {
@@ -469,6 +489,7 @@ export class RunSupervisor {
     if (!run || run.ended) return false;
     if (run.stop && STOP_PRIORITY[run.stop.kind] >= STOP_PRIORITY[stop.kind]) return true;
     run.stop = stop;
+    run.stopped.abort();
     this.suspendStall(run);
     this.ctx.approvals.cancelForTask(taskId, "cancelled");
     if (run.handle) this.sendInterrupt(run);
@@ -510,6 +531,7 @@ export class RunSupervisor {
   private async onRunEnded(run: ActiveRun, outcome: RunOutcome): Promise<void> {
     if (run.ended) return;
     run.ended = true;
+    run.stopped.abort();
     this.clearTimers(run);
     this.runs.delete(run.taskId);
     if (this.stopping) return;
@@ -684,6 +706,7 @@ export class RunSupervisor {
     const pending: Array<Promise<unknown>> = [];
     for (const run of this.runs.values()) {
       this.clearTimers(run);
+      run.stopped.abort();
       if (run.handle) {
         run.handle.kill();
         pending.push(run.handle.done.catch(() => undefined));

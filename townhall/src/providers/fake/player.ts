@@ -175,6 +175,17 @@ export class ScenarioPlayer implements RunHandle {
         }
         return null;
       }
+      case "rate_limits":
+        host.emit({
+          kind: "rate_limits",
+          windows: step.windows.map((w) => ({
+            window: w.window,
+            usedPercent: w.used_percent,
+            resetsAt: w.resets_in_s === undefined ? null : new Date(host.clock.now() + w.resets_in_s * 1000).toISOString(),
+            windowMinutes: w.window_minutes ?? null,
+          })),
+        });
+        return null;
       case "sleep":
         await this.raceAbort(host.clock.sleep(step.ms, this.abort.signal));
         return null;

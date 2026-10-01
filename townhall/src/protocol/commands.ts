@@ -22,6 +22,7 @@ import {
   MergeBlockedReason,
   ModelInfo,
   Party,
+  Progress,
   Provider,
   ProviderInfo,
   Research,
@@ -81,6 +82,8 @@ export const GetStateResult = z.object({
   town: TownRef.nullable(),
   settings: Settings,
   providers: z.array(ProviderInfo),
+  /** Added in 1.3: the same object get_progress returns. */
+  progress: Progress,
 });
 
 const setSettingPayload = z.discriminatedUnion("key", [
@@ -288,6 +291,13 @@ export const commands = {
     z.object({ entries: z.array(LedgerEntry), treasury: Resources }),
     false,
   ),
+  /** 1.3: the town's progression (age, facts, next age milestones, Quartermaster rates). */
+  get_progress: def(empty, Progress, false),
+  /**
+   * 1.3: the Town Hall replies, sends daemon_shutdown, pauses running tasks (they resume on the
+   * next start), closes, removes its runtime files and exits.
+   */
+  shutdown: def(empty, empty, false),
 };
 
 export type Commands = typeof commands;

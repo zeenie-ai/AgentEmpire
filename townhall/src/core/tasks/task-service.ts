@@ -483,6 +483,16 @@ export class TaskService {
     return { task: this.toProtocol(r), activity, ...(diff ? { diff } : {}) };
   }
 
+  /** The paths a task's work changed (its snapshot against its base), at most `limit`. */
+  async changedFiles(taskId: string, limit: number): Promise<string[]> {
+    const ws = this.workspaceOf(this.row(taskId));
+    if (!ws) return [];
+    const cwd = !ws.removed && existsSync(ws.worktree) ? ws.worktree : ws.repo;
+    const to = ws.snapshot_sha ?? (cwd === ws.worktree ? null : ws.base_sha);
+    const { files } = await this.ctx.workspace.diffFiles(cwd, ws.base_sha, to);
+    return files.slice(0, limit).map((f) => f.path);
+  }
+
   async accept(taskId: string, integrate: Integrate): Promise<{ rewards: Rewards | null; merge?: { commit?: string; blocked_reason?: MergeBlockedReason } }> {
     const first = this.row(taskId);
     if (first.parent_task_id) throw fail.invalidState("party sub-tasks are reviewed through their parent task");

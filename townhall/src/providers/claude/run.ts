@@ -8,6 +8,8 @@ import type { Launch } from "../common/exec.js";
 import { HarnessProcess, waitAny, type ExitInfo } from "../common/process.js";
 import { RunningTotal } from "../common/pricing.js";
 import { firstMessageFor, notDelivered, nudgeMessage, systemPromptFor } from "../common/prompt.js";
+import { claudeRateWindows } from "../common/rate-limits.js";
+import { claudeTownToolNames, TOWN_SERVER, TownToolsBridge } from "../common/town-tools.js";
 import {
   asNumber,
   asString,
@@ -47,6 +49,8 @@ export interface ClaudeRunOptions {
   deps: HarnessDeps;
   /** Path to approval-mcp.mjs. */
   approvalScript: string;
+  /** Path to town-mcp.mjs, the party lead's town tools. */
+  townScript: string;
   /** Claude Code 2.1.277+ restores a session's cost total on resume. */
   restoresCostOnResume: boolean;
   /** True when the CLI is signed in with a subscription: costs are API-equivalent estimates. */
@@ -80,6 +84,8 @@ export class ClaudeRun implements RunHandle {
   readonly done: Promise<RunOutcome>;
   private proc: HarnessProcess | null = null;
   private bridge: ApprovalBridge | null = null;
+  /** A party lead's town tools (delegate, check_status, collect_results); null for everyone else. */
+  private town: TownToolsBridge | null = null;
   private scratch: string | null = null;
   private stop: "interrupt" | "kill" | null = null;
   private stopping: Promise<unknown> | null = null;
@@ -165,6 +171,8 @@ export class ClaudeRun implements RunHandle {
     try {
       if (this.stop) return { kind: "interrupted" };
       this.bridge = await ApprovalBridge.open((p) => this.onPermission(p));
+      // A party lead (not its members, who cannot delegate further) gets the town tools.
+      if (this.req.party && this.req.depth === 0) this.town = await TownToolsBridge.open(this.host, this.req.party);
       this.scratch = makeScratch(this.opts.deps.dataDir, "claude", this.req.taskId);
       let mode: Mode = this.req.resume?.sessionId || isCheckpoint(this.req.resume?.state) ? "resume" : "fresh";
       for (;;) {
@@ -182,6 +190,7 @@ export class ClaudeRun implements RunHandle {
       return { kind: "failed", error: { code: "crash", message: cleanText(message, this.opts.deps.redactor), transient: true } };
     } finally {
       this.bridge?.close();
+      this.town?.close();
       removeScratch(this.scratch);
     }
   }
@@ -195,7 +204,11 @@ export class ClaudeRun implements RunHandle {
 
     const scratch = this.scratch!;
     const promptFile = path.join(scratch, "system-prompt.md");
-    writeFileSync(promptFile, systemPromptFor(req, { names: this.opts.deps.names }), "utf8");
+    writeFileSync(
+      promptFile,
+      systemPromptFor(req, { names: this.opts.deps.names, ...(this.town ? { partyTools: claudeTownToolNames() } : {}) }),
+      "utf8",
+    );
 
     const servers: Record<string, unknown> = {
       [APPROVAL_SERVER]: {
@@ -206,6 +219,14 @@ export class ClaudeRun implements RunHandle {
         env: { AURELHAVEN_APPROVAL_URL: this.bridge!.url, AURELHAVEN_APPROVAL_TOKEN: this.bridge!.token },
       },
     };
+    if (this.town) {
+      servers[TOWN_SERVER] = {
+        type: "stdio",
+        command: process.execPath,
+        args: [this.opts.townScript],
+        env: { AURELHAVEN_TOWN_URL: this.town.url, AURELHAVEN_TOWN_TOKEN: this.town.token },
+      };
+    }
     this.allowedMcpTools.clear();
     if (plan.mcp) {
       const { usable, skipped } = usableWaygates(req.waygates);
@@ -268,6 +289,9 @@ export class ClaudeRun implements RunHandle {
       CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT: "0",
       DISABLE_AUTOUPDATER: "1",
       ...(plan.charter ? {} : { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }),
+      // A lead must see its town tools directly: with tool search on (the default), MCP tools are
+      // deferred behind the ToolSearch tool, which --tools (the add-ons' built-ins) leaves out.
+      ...(this.town ? { ENABLE_TOOL_SEARCH: "false" } : {}),
     });
 
     if (this.stop) return { kind: "interrupted" };
@@ -386,6 +410,12 @@ export class ClaudeRun implements RunHandle {
         case "control_request":
           this.onControlRequest(record);
           break;
+        case "rate_limit_event": {
+          // The subscription's own usage windows (five-hour, weekly): Mana.provider_windows.
+          const windows = claudeRateWindows(record.rate_limit_info);
+          if (windows.length > 0) this.emit({ kind: "rate_limits", windows });
+          break;
+        }
         default:
           break;
       }
@@ -566,6 +596,11 @@ export class ClaudeRun implements RunHandle {
   private async onPermission(prompt: PermissionPrompt): Promise<PermissionResult> {
     if (this.stop) return { behavior: "deny", message: "The task is stopping.", interrupt: true };
     const tool = prompt.tool_name;
+    if (this.town && tool.startsWith(`mcp__${TOWN_SERVER}__`)) {
+      // The lead's own town tools: delegating and checking on the party act on nothing outside
+      // the Town Hall, and every member still asks the player before each of its own actions.
+      return { behavior: "allow", updatedInput: prompt.input };
+    }
     if (tool.startsWith("mcp__")) {
       const refusal = this.mcpRefusal(tool);
       if (refusal) return { behavior: "deny", message: refusal };

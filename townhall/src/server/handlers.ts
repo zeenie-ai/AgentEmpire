@@ -22,7 +22,14 @@ export function getState(ctx: Ctx) {
     town: ctx.town.latestRef(),
     settings: ctx.settings.get(),
     providers: ctx.providers.cached(),
+    progress: ctx.progress.snapshot(),
   };
+}
+
+/** What the handlers need from the process that owns the Town Hall. */
+export interface DaemonControl {
+  /** The `shutdown` command: stop after the reply has gone out. */
+  requestShutdown(): void;
 }
 
 /** Lists sub-folders inside the allowed work roots for the summoning dialog's folder browser. */
@@ -69,7 +76,7 @@ export function browseFolder(ctx: Ctx, requested: string | null) {
   return { path: displayPath(dir), parent: parentAllowed ? displayPath(parentDir) : null, entries, roots };
 }
 
-export function buildHandlers(ctx: Ctx): Handlers {
+export function buildHandlers(ctx: Ctx, control: DaemonControl = { requestShutdown: () => undefined }): Handlers {
   return {
     ping: () => ({}),
     get_state: () => getState(ctx),
@@ -154,5 +161,10 @@ export function buildHandlers(ctx: Ctx): Handlers {
       return { settings: ctx.settings.set(p.key, p.value) };
     },
     get_ledger: (p) => ({ entries: ctx.treasury.entries(p.limit ?? 100), treasury: ctx.treasury.balance() }),
+    get_progress: () => ctx.progress.snapshot(),
+    shutdown: () => {
+      control.requestShutdown();
+      return {};
+    },
   };
 }

@@ -27,6 +27,7 @@ interface EventRow {
 }
 
 type Flusher = () => boolean;
+type Observer = (type: EventType, payload: unknown) => void;
 
 const causation = new AsyncLocalStorage<{ id: string | null }>();
 
@@ -39,6 +40,7 @@ export class EventBus {
   private pending: EmittedEvent[] = [];
   private readonly listeners = new Set<(ev: EmittedEvent) => void>();
   private readonly flushers: Flusher[] = [];
+  private readonly observers: Observer[] = [];
   private readonly dirtySets: DirtySet[] = [];
   private lastSeq: number;
 
@@ -81,6 +83,14 @@ export class EventBus {
     this.flushers.push(fn);
   }
 
+  /**
+   * Registers an observer that sees every event as it is emitted, inside its transaction (before
+   * COMMIT, unlike subscribers). Observers only note what changed; a flusher acts on it.
+   */
+  observe(fn: Observer): void {
+    this.observers.push(fn);
+  }
+
   subscribe(listener: (ev: EmittedEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -115,6 +125,7 @@ export class EventBus {
     const seq = Number(info.lastInsertRowid);
     this.lastSeq = seq;
     this.pending.push({ ...ev, seq });
+    for (const o of this.observers) o(type, ev.payload);
   }
 
   /** Events after `afterSeq`, oldest first. */

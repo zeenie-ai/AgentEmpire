@@ -22,8 +22,10 @@ import {
   Mana,
   ManaLevel,
   ManaPeriod,
+  MilestoneKey,
   Party,
   PauseReason,
+  Progress,
   replyError,
   replyOk,
   ReplyEnvelope,
@@ -85,6 +87,7 @@ describe("protocol conformance with PROTOCOL.md", () => {
     expect(md).toContain(pipe(ApprovalMode.options));
     expect(md).toContain(pipe(ManaLevel.options));
     expect(md).toContain(pipe(ManaPeriod.options));
+    expect(md).toContain(quoted(MilestoneKey.options));
   });
 
   it("has payload and result schemas for every command, and a payload schema for every event", () => {
@@ -217,10 +220,35 @@ describe("protocol round trips", () => {
         level: "normal",
         by_provider: { claude: 0, codex: 0, pi: 0 },
         estimates: true,
-        provider_windows: [{ provider: "codex", used_percent: 12.5, resets_at: "2026-09-28T12:00:00.000Z" }],
+        provider_windows: [
+          { provider: "claude", window: "five_hour", window_minutes: 300, used_percent: 41.5, resets_at: "2026-09-28T12:00:00.000Z" },
+          { provider: "codex", window: "seven_day", window_minutes: 10080, used_percent: 12.5, resets_at: null },
+        ],
       },
     ],
     ["Party", Party, { id: "pty_1", lead_agent_id: "agt_01", member_ids: ["agt_02"], created_at: "2026-09-28T10:00:00.000Z" }],
+    [
+      "Progress",
+      Progress,
+      {
+        age: { current: 1, research: null },
+        facts: { accepted: 2, accepted_first_try: 1, tools_built: 3, rites_passed: 0, party_tasks: 0, under_baseline: 1 },
+        next: {
+          n: 2,
+          id: "market",
+          name: "Market",
+          wall: "Merchant Ring",
+          cost: { food: 400, wood: 300, stone: 150, gold: 100 },
+          research_s: 90,
+          ready: false,
+          milestones: [
+            { key: "accepted", label: "tasks accepted", have: 2, want: 3, met: false },
+            { key: "tools_built", label: "add-ons built", have: 3, want: 2, met: true },
+          ],
+        },
+        quartermaster: { basic_rate: 0.95, precious_rate: 1 },
+      },
+    ],
   ];
 
   it.each(samples)("%s survives JSON and parsing unchanged", (_name, schema, value) => {

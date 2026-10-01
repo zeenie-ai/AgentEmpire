@@ -8,7 +8,7 @@ extends Node
 ## Objects are the protocol's dictionaries as parsed from JSON: ids are strings, numbers floats.
 
 ## kind: "agent", "tool", "task", "approval", "incident", "party", "mana", "age", "settings",
-## "providers" or "all" (after a reset). id is the object's id, or "".
+## "providers", "progress" or "all" (after a reset). id is the object's id, or "".
 signal changed(kind: String, id: String)
 signal reset()
 signal agent_changed(agent: Dictionary)
@@ -26,6 +26,9 @@ signal age_changed(age: Dictionary)
 signal treasury_event(treasury: Dictionary, reason: String, delta: Dictionary, causation_id: String)
 signal subtask_delegated(info: Dictionary)
 signal daemon_shutdown()
+## The town's progression changed (protocol 1.3 Progress: age, facts, next age with its
+## milestones and `ready`, Quartermaster rates). Also after every full state.
+signal town_progress_changed(progress: Dictionary)
 
 const Protocol = preload("res://net/protocol.gd")
 const ACTIVITY_KEEP := 200
@@ -43,6 +46,11 @@ var providers: Array = []
 var treasury: Dictionary = {}
 ## {rev, schema_version} of the town save on the Town Hall, or {} when there is none.
 var town: Dictionary = {}
+## The Town Hall's Progress object (get_progress / progress_updated, protocol 1.3):
+## {age, facts, next: null | {n, id, name, wall, cost, research_s, ready, milestones: [{key, label,
+## have, want, met}]}, quartermaster: {basic_rate, precious_rate}}. {} before the first state or
+## with a Town Hall older than 1.3.
+var town_progress: Dictionary = {}
 ## Latest task_progress payload per task id.
 var progress: Dictionary = {}
 ## Recent task_activity entries per task id, oldest first.
@@ -76,6 +84,7 @@ func clear() -> void:
 	providers = []
 	treasury = {}
 	town = {}
+	town_progress = {}
 	progress.clear()
 	activity.clear()
 	has_state = false
@@ -243,11 +252,13 @@ func apply_state(state: Dictionary) -> void:
 	providers = ps if typeof(ps) == TYPE_ARRAY else []
 	treasury = _dict(state.get("treasury"))
 	town = _dict(state.get("town"))
+	town_progress = _dict(state.get("progress"))
 	has_state = true
 	reset.emit()
 	changed.emit("all", "")
 	mana_changed.emit(mana)
 	age_changed.emit(age)
+	town_progress_changed.emit(town_progress)
 
 
 ## Applies one event envelope.
@@ -357,6 +368,10 @@ func apply_event(ev: Dictionary) -> void:
 			town["rev"] = int(p.get("rev", 0))
 		Protocol.EVT_DAEMON_SHUTDOWN:
 			daemon_shutdown.emit()
+		Protocol.EVT_PROGRESS_UPDATED:
+			town_progress = p
+			town_progress_changed.emit(town_progress)
+			changed.emit("progress", "")
 
 
 static func _dict(v: Variant) -> Dictionary:

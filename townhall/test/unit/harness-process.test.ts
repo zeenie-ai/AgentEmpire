@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Launch } from "../../src/providers/common/exec.js";
@@ -7,10 +7,13 @@ import { removeRoot, tempRoot } from "../helpers/harness.js";
 
 // A harness that starts a long-lived program which inherits its stdout (as a shell command, a
 // dev server or a build server can), writes that program's pid, and exits with code 3. The
-// program is detached: on Windows, Node ends its own non-detached children when it exits.
+// program is detached: on Windows, Node ends its own non-detached children when it exits. It
+// runs in the system temp folder, not the test's, so it never holds the test folder open (a
+// process's working folder cannot be removed on Windows, even for a moment after it is killed).
 const LEAVES_A_PROGRAM_BEHIND = `
 import { spawn } from "node:child_process";
-const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "inherit", windowsHide: true, detached: true });
+import os from "node:os";
+const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "inherit", windowsHide: true, detached: true, cwd: os.tmpdir() });
 child.unref();
 process.stdout.write(JSON.stringify({ grandchild: child.pid }) + "\\n", () => process.exit(3));
 `;
@@ -30,7 +33,7 @@ describe("harness processes", () => {
   beforeAll(() => {
     root = tempRoot("proc");
   });
-  afterAll(() => {
+  afterAll(async () => {
     for (const pid of leftovers) {
       try {
         process.kill(pid);
@@ -38,7 +41,10 @@ describe("harness processes", () => {
         // already gone
       }
     }
+    const deadline = Date.now() + 5_000;
+    while (leftovers.some(alive) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     removeRoot(root);
+    expect(existsSync(root)).toBe(false);
   });
 
   it("finishes soon after the harness exits, even while a program it started holds its output open", async () => {

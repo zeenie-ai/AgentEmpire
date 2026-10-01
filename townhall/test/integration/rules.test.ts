@@ -58,9 +58,13 @@ describe("economy rules through the protocol", () => {
     // The penalty recovers in real time between the two trades, so allow a little drift under load.
     expect(t2.rate).toBeCloseTo(0.9, 3);
     town.clock.advance(5 * 60_000);
-    expect(town.ctx.treasury.marketRate()).toBeCloseTo(0.95, 3);
+    expect(town.ctx.treasury.marketRate("basic")).toBeCloseTo(0.95, 3);
+    // Each kind of trade has its own price: selling food did not worsen the precious rate.
+    expect(town.ctx.treasury.marketRate("precious")).toBe(1);
     const precious = await c.ok("trade", { op_id: "q3", give: { resource: "gold", amount: 25 }, get: "wood" });
-    expect(precious.treasury.wood).toBe(t2.treasury.wood + 47);
+    expect(precious.treasury.wood).toBe(t2.treasury.wood + 50);
+    expect(precious.rate).toBeCloseTo(0.95, 3);
+    expect(town.ctx.treasury.marketRates()).toEqual({ basic_rate: expect.closeTo(0.95, 3), precious_rate: 0.95 });
     const bad = await c.send("trade", { op_id: "q4", give: { resource: "food", amount: 100 }, get: "wood" });
     expect(bad.error?.code).toBe("BAD_REQUEST");
   });

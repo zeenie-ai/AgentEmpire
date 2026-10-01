@@ -1,6 +1,13 @@
-# Town Hall protocol, version 1.2
+# Town Hall protocol, version 1.3
 
 This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change.
+
+**Changes in 1.3** (all backward compatible; a 1.2 client keeps working):
+- `get_progress` and the `progress_updated` event: the town's progression in one object (the age, the facts behind the milestones, the next age with its structured milestones and whether it can be started now, and the Quartermaster's current rates). `get_state` carries the same object as `progress`.
+- `shutdown`: the client asks the Town Hall to stop. It replies, sends `daemon_shutdown`, pauses running tasks (they resume on its next start), closes, removes its runtime files and exits.
+- The Quartermaster prices each kind of trade separately: selling Food or Wood worsens only the basic rate, selling Stone or Gold only the precious rate. `trade` returns the rate of the kind just traded.
+- `hello_result.features` lists `progress` and `shutdown`.
+- `Mana.provider_windows` is filled from the harnesses' own usage reports, and each entry names its `window` and `window_minutes`.
 
 **Changes in 1.2** (all backward compatible; a 1.1 client keeps working):
 - A third provider, `pi`, runs agents on any other model provider through the pi coding agent. It appears in `Agent.provider`, `check_providers`, `list_models`, `Mana.by_provider` and `set_budget` billing.
@@ -129,13 +136,41 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "cap_micros": 5000000, "spent_micros": 0, "reserved_micros": 0, "remaining_micros": 5000000,
   "level": "normal|dim|warning|depleted",
   "by_provider": { "claude": 0, "codex": 0, "pi": 0 }, "estimates": true,   // pi: added in 1.2
-  "provider_windows": [ { "provider": "codex", "used_percent": 12.5, "resets_at": "..." } ] }
+  "provider_windows": [ { "provider": "codex", "window": "five_hour", "window_minutes": 300,
+                          "used_percent": 12.5, "resets_at": "..." } ] }
+// provider_windows: each provider's own usage limits, as its harness last reported them
+// (Claude Code's rate_limit_event on a subscription, Codex's account/rateLimits/updated):
+// one entry per provider and window, by provider then shortest window first. used_percent is
+// 0-100; resets_at is null when unknown; a window disappears once its resets_at has passed.
+// window (1.3): "five_hour", "seven_day", and for Claude also "seven_day_opus", "seven_day_sonnet",
+// "seven_day_overage_included" or "overage"; Codex windows of another length keep "primary" or
+// "secondary". window_minutes (1.3) is the window's length, or null when unknown.
 
 // Party
 { "id": "pty_...", "lead_agent_id": "agt_...", "member_ids": ["agt_..."], "created_at": "..." }
 
 // Age
 { "current": 1, "research": null }   // research: {"target":2,"started_at":"...","duration_ms":90000}
+
+// Progress (1.3): get_progress, progress_updated, get_state.progress
+{
+  "age": { "current": 1, "research": null },            // the Age object
+  "facts": { "accepted": 2, "accepted_first_try": 1, "tools_built": 3, "rites_passed": 0,
+             "party_tasks": 0, "under_baseline": 1 },   // verified outcomes so far (rewarded work only)
+  "next": {                                             // null at the last age
+    "n": 2, "id": "market", "name": "Market", "wall": "Merchant Ring",
+    "cost": { "food": 400, "wood": 300, "stone": 150, "gold": 100 }, "research_s": 90,
+    "ready": false,                                     // true exactly when advance_age would succeed now:
+                                                        // every milestone met, the cost affordable, no research under way
+    "milestones": [                                     // economy.json order; only the ones this age sets
+      { "key": "accepted", "label": "tasks accepted", "have": 2, "want": 3, "met": false },
+      { "key": "tools_built", "label": "add-ons built", "have": 3, "want": 2, "met": true }
+    ]
+  },
+  "quartermaster": { "basic_rate": 0.95, "precious_rate": 1 }   // multipliers on sell_basic.get and sell_precious.get (1 = base), two decimals
+}
+// Milestone keys: "accepted"|"accepted_first_try"|"tools_built"|"rites_passed"|"party_tasks"|"under_baseline"|"agent_rank"
+// ("agent_rank": have = agents at or above the rank economy.json names, want = how many it asks for).
 ```
 
 ## Commands
@@ -144,9 +179,10 @@ The table shows each command's payload and the payload of its successful reply.
 
 | Command | Payload | Result |
 |---|---|---|
-| `hello` | `{token, protocol:{major:1,minor:0}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2). |
+| `hello` | `{token, protocol:{major:1,minor:0}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
 | `ping` | `{}` | `{}` |
-| `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers}` (`tasks` = open tasks plus the 50 most recent) |
+| `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers, progress}` (`tasks` = open tasks plus the 50 most recent; `progress`, the Progress object, was added in 1.3) |
+| `get_progress` | `{}` | The Progress object (1.3). |
 | `check_providers` | `{}` | `{providers:[{id, installed, version?, logged_in, billing_hint:"api_key"\|"subscription"\|"unknown", message?}]}`. One entry per provider: `claude`, `codex` and `pi` (1.2). |
 | `list_models` | `{provider}` | `{models:[{id,label,default,cost_hint?}]}`. pi model ids are `"<pi provider>/<model id>"` and list only models whose provider has credentials. |
 | `browse_folder` | `{path?}` | `{path, parent, entries:[{name,path,is_git_repo}], roots}` (directories only, inside allowed roots) |
@@ -177,12 +213,13 @@ The table shows each command's payload and the payload of its successful reply.
 | `spend_resources` | `{op_id, reason, cost, ref?}` | `{treasury}`. For simulation purchases such as a townsperson, Cottage, Farm, Storehouse or Quartermaster trade. The server checks the balance, and `op_id` makes retries safe. |
 | `refund_resources` | `{op_id, spend_op_id, fraction}` | `{treasury}`. At most one refund per spend, and never more than the spend. |
 | `report_gather` | `{op_id, deposits:{food?,wood?}, storehouses}` | `{treasury}`. Batched. Food and Wood are capped at `storage.cap_by_age[age] + storehouses × storage.storehouse_bonus`. `storehouses` is the number of completed Storehouses, as counted by the client. Rewards may push a resource past the cap; gathering may not. |
-| `trade` | `{op_id, give:{resource,amount}, get:resource}` | `{treasury, rate}` (Quartermaster). `rate` is the town's price multiplier after this trade. Trades ignore storage caps. |
+| `trade` | `{op_id, give:{resource,amount}, get:resource}` | `{treasury, rate}` (Quartermaster). Food or Wood for Stone or Gold is a basic trade, Stone or Gold for Food or Wood a precious one; each kind has its own price. `rate` is the multiplier of the kind just traded, after this trade (1.3; before, one rate covered both). Every trade worsens its kind by `quartermaster.worsen_per_trade`, which recovers by `recover_per_minute`. Trades ignore storage caps. |
 | `advance_age` | `{}` | `{research:{target,started_at,duration_ms}}` |
 | `save_town` | `{base_rev, schema_version, snapshot}` | `{rev}`, or `CONFLICT` if `base_rev` is stale |
 | `load_town` | `{}` | `{rev, schema_version, snapshot}` or `null` |
 | `set_setting` | `{key, value}` | `{settings}`. Keys: `work_while_away`, `express_dispatch`, `lantern_hours:{start,end}` (whole local hours, 0–23). |
 | `get_ledger` | `{limit?}` | `{entries, treasury}` |
+| `shutdown` | `{}` | `{}` (1.3). After replying, the Town Hall sends `daemon_shutdown`, closes every connection (code 1001) and refuses new ones, stops its agents' runs the way a restart does (running tasks become `paused` with reason `restart` and resume on its next start; approvals still waiting reappear then), removes `runtime.json` and the discovery copy, and exits with code 0. The client saves its town (`save_town`) before asking. |
 
 ## Events
 
@@ -208,6 +245,7 @@ The table shows each command's payload and the payload of its successful reply.
 | `town_saved` | `{rev}` |
 | `session_revoked` | `{}`. Transient: not logged, so it does not advance `seq` and is never replayed. |
 | `daemon_shutdown` | `{}`. Transient: not logged, so it does not advance `seq` and is never replayed. |
+| `progress_updated` | The Progress object (1.3), whenever any part of it changes: work accepted, an add-on built or dismantled, an agent's rank, the age, the treasury (it decides `next.ready`) or a trade. While a Quartermaster rate recovers after a trade it is checked at most once a minute, so it moves in steps. |
 
 ## Rules both sides rely on
 

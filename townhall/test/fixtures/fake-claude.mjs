@@ -5,10 +5,12 @@
 // `--permission-prompt-tool` does, so the whole approval path runs for real.
 //
 // Controlled by environment variables:
-//   FAKE_CLAUDE_SCENARIO  JSON file: {"turns":[{"steps":[...]}]} (see runStep for step kinds)
-//   FAKE_CLAUDE_HOME      folder for fake sessions (<id>.json), which makes --resume work
-//   FAKE_CLAUDE_LOG       JSON-lines file recording each invocation (argv, env names, approvals)
-//   FAKE_CLAUDE_AUTH      "max" (default), "api" or "none" for `auth status`
+//   FAKE_CLAUDE_SCENARIO   JSON file: {"turns":[{"steps":[...]}]} (see runStep for step kinds)
+//   FAKE_CLAUDE_SCENARIOS  JSON file: {"<name>": {"turns":[...]}, ...}; a run whose first message
+//                          contains "[scenario:<name>]" plays that one (several agents, one env)
+//   FAKE_CLAUDE_HOME       folder for fake sessions (<id>.json), which makes --resume work
+//   FAKE_CLAUDE_LOG        JSON-lines file recording each invocation (argv, env names, approvals)
+//   FAKE_CLAUDE_AUTH       "max" (default), "api" or "none" for `auth status`
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -44,14 +46,30 @@ if (argv[0] === "auth" && argv[1] === "status") {
 
 const home = env.FAKE_CLAUDE_HOME ?? path.join(process.cwd(), ".fake-claude");
 mkdirSync(home, { recursive: true });
-const scenario = env.FAKE_CLAUDE_SCENARIO ? JSON.parse(readFileSync(env.FAKE_CLAUDE_SCENARIO, "utf8")) : { turns: [] };
+let scenario = env.FAKE_CLAUDE_SCENARIO ? JSON.parse(readFileSync(env.FAKE_CLAUDE_SCENARIO, "utf8")) : { turns: [] };
+const namedScenarios = env.FAKE_CLAUDE_SCENARIOS ? JSON.parse(readFileSync(env.FAKE_CLAUDE_SCENARIOS, "utf8")) : {};
+let scenarioChosen = false;
 
+/** The first message may name its scenario: "[scenario:<name>]". */
+function chooseScenario(text) {
+  if (scenarioChosen) return;
+  scenarioChosen = true;
+  const m = /\[scenario:([A-Za-z0-9_-]+)\]/.exec(text);
+  if (m && namedScenarios[m[1]]) {
+    scenario = namedScenarios[m[1]];
+    log({ kind: "scenario", name: m[1] });
+  }
+}
+
+const promptFile = flag("--append-system-prompt-file");
 log({
   kind: "start",
   argv,
   cwd: process.cwd(),
-  envNames: Object.keys(env).filter((k) => /^(AURELHAVEN|MCP_|CLAUDE|DISABLE_)/.test(k)),
+  envNames: Object.keys(env).filter((k) => /^(AURELHAVEN|MCP_|CLAUDE|DISABLE_|ENABLE_)/.test(k)),
+  toolSearch: env.ENABLE_TOOL_SEARCH ?? null,
   claudeMdsDisabled: env.CLAUDE_CODE_DISABLE_CLAUDE_MDS === "1",
+  systemPrompt: promptFile && existsSync(promptFile) ? readFileSync(promptFile, "utf8") : null,
 });
 
 function out(message) {
@@ -102,15 +120,16 @@ const mcpConfigPath = flag("--mcp-config");
 const mcpConfig = mcpConfigPath ? JSON.parse(readFileSync(mcpConfigPath, "utf8")) : { mcpServers: {} };
 log({ kind: "mcp_config", servers: mcpConfig.mcpServers });
 
-let mcp = null;
-function startMcp() {
-  const [, serverName] = (promptTool ?? "").split("__");
+/** MCP servers from --mcp-config, started on first use like Claude Code's own clients. */
+const servers = new Map();
+function startServer(serverName) {
+  if (servers.has(serverName)) return servers.get(serverName);
   const server = mcpConfig.mcpServers?.[serverName];
   if (!server) return null;
   const childEnv = { ...env };
   for (const [k, v] of Object.entries(server.env ?? {})) childEnv[k] = expand(v);
   const child = spawn(expand(server.command), (server.args ?? []).map(expand), { env: childEnv, stdio: ["pipe", "pipe", "inherit"], windowsHide: true });
-  log({ kind: "mcp_started", pid: child.pid });
+  log({ kind: "mcp_started", server: serverName, pid: child.pid });
   const waiting = new Map();
   let buffer = "";
   let nextId = 1;
@@ -126,6 +145,8 @@ function startMcp() {
       if (msg.id !== undefined && waiting.has(msg.id)) {
         waiting.get(msg.id)(msg);
         waiting.delete(msg.id);
+      } else if (msg.method === "notifications/progress") {
+        log({ kind: "mcp_progress", server: serverName });
       }
     }
   });
@@ -139,20 +160,34 @@ function startMcp() {
     const init = await request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake-claude", version: "1" } });
     child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
     const list = await request("tools/list", {});
+    log({ kind: "mcp_tools", server: serverName, tools: list.result.tools });
     return { init: init.result, tools: list.result.tools.map((t) => t.name) };
   })();
-  return { child, request, ready };
+  const entry = { child, request, ready };
+  servers.set(serverName, entry);
+  return entry;
 }
 
 async function askPermission(toolName, input, toolUseId) {
-  mcp ??= startMcp();
+  const [, serverName, tool] = (promptTool ?? "").split("__");
+  const mcp = startServer(serverName);
   if (!mcp) return { behavior: "deny", message: "no permission prompt tool" };
   await mcp.ready;
-  const [, , tool] = promptTool.split("__");
   const res = await mcp.request("tools/call", { name: tool, arguments: { tool_name: toolName, input, tool_use_id: toolUseId } });
   const decision = JSON.parse(res.result.content[0].text);
   log({ kind: "approval", tool: toolName, decision });
   return decision;
+}
+
+/** Calls an MCP tool ("mcp__<server>__<tool>") the way Claude Code does once it is allowed. */
+async function callMcpTool(fullName, input) {
+  const [, serverName, tool] = fullName.split("__");
+  const mcp = startServer(serverName);
+  if (!mcp) return { content: [{ type: "text", text: `No such tool available: ${fullName}` }], isError: true };
+  const { tools } = await mcp.ready;
+  if (!tools.includes(tool)) return { content: [{ type: "text", text: `No such tool available: ${fullName}` }], isError: true };
+  const res = await mcp.request("tools/call", { name: tool, arguments: input, _meta: { progressToken: `p-${tool}` } });
+  return res.result ?? { content: [{ type: "text", text: res.error?.message ?? "MCP error" }], isError: true };
 }
 
 // ---------- turns ----------
@@ -212,6 +247,28 @@ async function runStep(step, state) {
       });
       if (decision.interrupt) interrupted = true;
     }
+  } else if (step.mcp_tool !== undefined) {
+    // A model call of an MCP tool: permission first (ask ["*"] covers MCP tools too), then the call.
+    const id = `toolu_${++toolSeq}`;
+    const input = step.input ?? {};
+    assistant([{ type: "tool_use", id, name: step.mcp_tool, input }]);
+    const decision = await askPermission(step.mcp_tool, input, id);
+    if (decision.behavior !== "allow") {
+      out({ type: "user", session_id: sessionId, message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: decision.message, is_error: true }] } });
+      if (decision.interrupt) interrupted = true;
+      return;
+    }
+    const result = await callMcpTool(step.mcp_tool, decision.updatedInput ?? input);
+    const text = (result.content ?? []).map((c) => c.text ?? "").join("\n");
+    log({ kind: "mcp_call", tool: step.mcp_tool, input, isError: result.isError === true, text });
+    out({
+      type: "user",
+      session_id: sessionId,
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: text, ...(result.isError ? { is_error: true } : {}) }] },
+    });
+  } else if (step.rate_limit !== undefined) {
+    // As Claude Code 2.1.281 reports the subscription's usage windows.
+    out({ type: "rate_limit_event", rate_limit_info: step.rate_limit, uuid: `rl-${++toolSeq}`, session_id: sessionId });
   } else if (step.cost !== undefined) {
     totalCost += step.cost;
   } else if (step.sleep !== undefined) {
@@ -234,6 +291,7 @@ async function runTurn(message) {
   out({ type: "command_lifecycle", command_uuid: uuid, state: "started", session_id: sessionId });
   const text = message.message?.content?.[0]?.text ?? "";
   log({ kind: "message", text });
+  chooseScenario(text);
   const turn = scenario.turns?.[turnIndex++] ?? { steps: [{ text: `Noted: ${text}` }] };
   const state = { lastText: "" };
   for (const step of turn.steps ?? []) {
@@ -265,7 +323,7 @@ function pump() {
 function finish(code) {
   saveSession();
   log({ kind: "exit", code, totalCost });
-  mcp?.child.stdin.end();
+  for (const s of servers.values()) s.child.stdin.end();
   process.exit(code);
 }
 

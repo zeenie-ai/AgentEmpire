@@ -157,6 +157,9 @@ async function runStep(step, turn) {
       questions: [{ id: `mcp_tool_call_approval_${id}`, header: "Approve app tool call?", question: `Allow ${step.userInput.server} to run ${step.userInput.tool}?`, isOther: false, isSecret: false, options: [{ label: "Allow", description: "" }, { label: "Cancel", description: "" }] }],
     });
     log({ kind: "approval", method: "item/tool/requestUserInput", response: res });
+  } else if (step.rate_limits !== undefined) {
+    // An account-level notification, as app-server 0.144 sends when the plan's windows move.
+    out({ method: "account/rateLimits/updated", params: { rateLimits: step.rate_limits } });
   } else if (step.restate) {
     // As Codex does when rate limits update: the thread's current figures again, nothing new.
     out({ method: "thread/tokenUsage/updated", params: { threadId, turnId: turn.id, tokenUsage: { total: breakdown(thread.total), last: breakdown(thread.last ?? thread.total), modelContextWindow: 272000 } } });

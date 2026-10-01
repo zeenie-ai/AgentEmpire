@@ -182,8 +182,29 @@ The only glue plugs into documented extension points: an MCP server for Claude C
 - **Waygates on pi** need `pi.registerMcpServer`, which 0.87.1 lacks: the gate skips them and the run shows a warning. When pi ships MCP, the `--tools` allowlist may also need the MCP tool names.
 - **Rookery on pi** gives nothing: pi has no web search or fetch tool.
 - **Leftover programs.** A program an agent starts that outlives its harness (a dev server, a build server) is not ended by the Town Hall: `taskkill /T` reaches only the tree of a process that is still running, and there is no job object around the harness. The run no longer waits for such a program's inherited pipes.
-- **Parties.** Party leads get no delegation tools yet on the real harnesses.
-- **Provider windows.** Claude Code's `rate_limit_event` and Codex's `account/rateLimits/updated` are not yet fed into `Mana.provider_windows`.
+- **Parties.** Resolved in Phase 5 for Claude Code leads (see Parties below). A Codex lead could use the same MCP server (Codex reads `mcp_servers` from `-c`), and a pi lead would need pi's MCP support or a gate extension tool; both wait, since economy.json allows only Claude leads (`parties.lead_providers`).
+- **Provider windows.** Resolved in Phase 5 (see Usage windows below).
+
+### Parties (Phase 5, 2026-10-01)
+
+A Claude Code party lead gets a second Town Hall MCP server, `town` (`townhall/src/providers/common/town-mcp.mjs`, dependency-free like the approval server), with three tools: `delegate` (a sub-task on a member's queue, by name; returns at once), `check_status` (each sub-task's status, Mana used, and what the lead's seal has left) and `collect_results` (waits for the sub-tasks, at most 600 s per call and `parties.await_timeout_max_s`, and returns each member's summary and changed files).
+- The tool list and every call go to a per-run listener on 127.0.0.1 with its own random bearer secret, kept only in the run's MCP config: the approval bridge's design, now shared as `LoopbackListener`. The members' names are the `member` parameter's enum, and the lead's system prompt lists them with the tools.
+- With `permissions.ask ["*"]` the lead's town tool calls reach the permission prompt tool like any other; the Town Hall allows them without a card (they act on nothing outside the Town Hall). Members are ordinary runs on their own harness (Claude Code, Codex or pi), so every one of their actions still asks the player, and sub-tasks pay only through the party task (40% lead, 60% members).
+- A sub-task's budget comes out of the lead's Mana Seal: `budget_mana`, or by default the member's seal for the size, at most half of what is left. The lead's wait ends when the lead's run stops (cancel, pause, shutdown).
+- **Tool search.** Claude Code 2.1.281 turns tool search on by default for first-party accounts, which defers MCP tools behind the ToolSearch tool; `--tools` (the add-ons' built-ins) leaves ToolSearch out. Leads therefore run with `ENABLE_TOOL_SEARCH=false`, so the town tools are always in front of the model. Waygate tools for other agents are not changed and were not checked against a model in this phase.
+- **Real run** (`AURELHAVEN_SMOKE_PARTY=1`, opt-in): a Claude Code lead and member on Haiku 4.5, Max subscription, the whole party within a 9-Mana seal. On 2026-10-01 the lead called `mcp__town__delegate` (no card), wrote its file, called `mcp__town__collect_results`, which returned the member's summary and `member.txt`, and finished; both tasks reached review in 13 s. Cost: $0.0461 in all (lead $0.0313, member $0.0148), an estimate on the subscription. The run's session transcripts (four folders under `~/.claude/projects` named after the temporary worktrees and repos) were removed afterwards.
+
+### Usage windows (Phase 5)
+
+`Mana.provider_windows` now shows each provider's own limits as its harness reports them (protocol 1.3 adds `window` and `window_minutes`), kept per provider and window across restarts and dropped once `resets_at` has passed.
+- Claude Code 2.1.281 writes `{"type":"rate_limit_event","rate_limit_info":{status, resetsAt, rateLimitType, utilization, unifiedWindows:{five_hour, seven_day, seven_day_overage_included}, ...}}` in stream-json (read from the bundled schema): utilization is a fraction (it can pass 1), resetsAt Unix seconds; `unifiedWindows` appears on subscriptions only, the top-level fields describe the window that limits now.
+- Codex 0.144's app server sends `account/rateLimits/updated {rateLimits: {limitId, limitName, primary, secondary, credits, individualLimit, planType, rateLimitReachedType}}`, each window `{usedPercent, windowDurationMins, resetsAt}` (percent, Unix seconds; from the app-server types in the binary). Windows of 300 and 10,080 minutes are named five_hour and seven_day. Not yet seen from the real account, which is at its usage limit until 2026-10-05.
+
+### The Town Hall's lifecycle (Phase 5)
+
+- Practice (the scripted agents) keeps its town in `townhall/data/practice`, real agents in `townhall/data`; `AURELHAVEN_DATA_ROOT` moves both. The game starts the mode in `townhall/provider`, switches with the protocol 1.3 `shutdown` command (save, shut down, wait for the process to end, start the other mode, open its town) and falls back to an offline town when anything fails. `client/tools/townhall_mode_check.gd` runs practice, real, a failed start, practice again and a close against temporary data in a child Godot whose APPDATA is temporary too.
+- Starting a real Town Hall probes the harnesses (no model call). pi 0.87.1 creates `~/.pi/agent/auth.json` and `models-store.json` (both `{}`) when they do not exist, and Codex refreshed its own `~/.codex/models_cache.json`; Claude Code's probe left `~/.claude` as it was.
+- A town made with the scripted agents in `townhall/data` before this change now opens as the real town; move it to `townhall/data/practice` to keep it as the practice town.
 
 ### Smoke runs (opt-in: `npm run test:smoke` with `AURELHAVEN_SMOKE_CLAUDE=1`, `_CODEX=1` or `_PI=1`)
 

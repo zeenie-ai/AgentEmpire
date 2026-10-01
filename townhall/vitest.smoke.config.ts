@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 // Opt-in smoke tests against the real harnesses and real models. Each file runs only when its
-// switch is set: AURELHAVEN_SMOKE_CLAUDE=1, AURELHAVEN_SMOKE_CODEX=1, AURELHAVEN_SMOKE_PI=1.
+// switch is set: AURELHAVEN_SMOKE_CLAUDE=1, AURELHAVEN_SMOKE_CODEX=1, AURELHAVEN_SMOKE_PI=1, and
+// AURELHAVEN_SMOKE_PARTY=1 (a Claude Code lead and member on Haiku, within a $0.09 seal).
 export default defineConfig({
   test: {
     include: ["test/smoke/**/*.smoke.test.ts"],

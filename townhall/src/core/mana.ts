@@ -1,6 +1,7 @@
 import { fromJson, toJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
-import type { Billing, Mana, ManaLevel, ManaPeriod, Provider } from "../protocol/objects.js";
+import type { Billing, Mana, ManaLevel, ManaPeriod, Provider, ProviderWindow } from "../protocol/objects.js";
+import type { RateWindow } from "../providers/types.js";
 import type { TimerHandle } from "./clock.js";
 import type { Ctx } from "./context.js";
 import { incidentKey } from "./incidents.js";
@@ -19,6 +20,10 @@ type ByProvider = Record<Provider, number>;
 function zeroByProvider(): ByProvider {
   return { claude: 0, codex: 0, pi: 0 };
 }
+
+/** Where the providers' usage windows are kept between runs and restarts. */
+const WINDOWS_KEY = "provider_windows";
+const PROVIDER_ORDER: Provider[] = ["claude", "codex", "pi"];
 
 interface PeriodRow {
   id: number;
@@ -208,8 +213,56 @@ export class ManaService {
       level: levelFor(p.cap_micros, p.spent_micros, this.m.stages, this.m.lights_out_fraction),
       by_provider: { claude: byProvider.claude, codex: byProvider.codex, pi: byProvider.pi },
       estimates,
-      provider_windows: [],
+      provider_windows: this.providerWindows(),
     };
+  }
+
+  /**
+   * The providers' own usage windows as their harnesses last reported them, without the ones
+   * that have reset since: by provider, then shortest window first.
+   */
+  providerWindows(): ProviderWindow[] {
+    const now = this.ctx.clock.now();
+    return this.ctx.settings
+      .getState<ProviderWindow[]>(WINDOWS_KEY, [])
+      .filter((w) => !w.resets_at || Date.parse(w.resets_at) > now)
+      .sort(
+        (a, b) =>
+          PROVIDER_ORDER.indexOf(a.provider) - PROVIDER_ORDER.indexOf(b.provider) ||
+          (a.window_minutes ?? Number.MAX_SAFE_INTEGER) - (b.window_minutes ?? Number.MAX_SAFE_INTEGER) ||
+          a.window.localeCompare(b.window),
+      );
+  }
+
+  /**
+   * Records the usage windows a harness reported (Claude Code's rate_limit_event, Codex's
+   * account/rateLimits/updated). Each report replaces that window's earlier figures; mana_updated
+   * goes out only when something visible changed.
+   */
+  updateProviderWindows(provider: Provider, windows: RateWindow[]): void {
+    if (windows.length === 0) return;
+    this.ctx.db.tx(() => {
+      const now = this.ctx.clock.now();
+      const stored = this.ctx.settings
+        .getState<ProviderWindow[]>(WINDOWS_KEY, [])
+        .filter((w) => !w.resets_at || Date.parse(w.resets_at) > now);
+      const before = JSON.stringify(stored);
+      for (const w of windows) {
+        const next: ProviderWindow = {
+          provider,
+          window: w.window,
+          window_minutes: w.windowMinutes === null ? null : Math.max(0, Math.round(w.windowMinutes)),
+          used_percent: Math.round(Math.min(100, Math.max(0, w.usedPercent)) * 10) / 10,
+          resets_at: w.resetsAt,
+        };
+        const i = stored.findIndex((s) => s.provider === provider && s.window === w.window);
+        if (i >= 0) stored[i] = next;
+        else stored.push(next);
+      }
+      if (JSON.stringify(stored) === before) return;
+      this.ctx.settings.setState(WINDOWS_KEY, stored);
+      this.markDirty();
+    });
   }
 
   /** Called at startup: roll over a stale period, arm the refill timer, sync incidents. */

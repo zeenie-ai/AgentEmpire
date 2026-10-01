@@ -107,6 +107,8 @@ export const economySchema = z.looseObject({
         n: int,
         id: z.string(),
         name: z.string(),
+        /** The wall ring the age raises ("Merchant Ring"). */
+        wall: z.string().optional(),
         cost: costSchema,
         research_s: z.number().min(0),
         milestones: milestonesSchema,
@@ -189,6 +191,7 @@ export const economySchema = z.looseObject({
 });
 
 export type EconomyData = z.infer<typeof economySchema>;
+export type QuartermasterKind = "basic" | "precious";
 
 export class Economy {
   readonly rankOrder: string[];
