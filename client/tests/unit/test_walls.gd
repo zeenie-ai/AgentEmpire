@@ -95,7 +95,8 @@ func test_cells_lie_on_their_ring() -> void:
 		for ci in p.cells:
 			var c := l.cell_of(ci)
 			var d := (Vector2(c) + Vector2(0.5, 0.5)).distance_to(l.center)
-			assert_lt(absf(d - l.radii[p.ring]), 4.6, "cell %s near ring %d" % [c, p.ring])
+			# Gate roads reach furthest: the gatehouse's depth plus GATE_APRON either side.
+			assert_lt(absf(d - l.radii[p.ring]), WallLayout.GATE_APRON + 2.4, "cell %s near ring %d" % [c, p.ring])
 			assert_eq(l.piece_at(c), p.index)
 			assert_eq(l.ring_at(c), p.ring)
 			assert_eq(l.is_gate_cell(c), p.kind == WallLayout.GATE)
@@ -260,7 +261,7 @@ func test_placement_refuses_every_rings_line() -> void:
 	res = Placement.check(w, "cottage", future)
 	assert_eq(res["code"], "wall", str(res))
 	assert_string_contains(String(res["reason"]), "Reserved for the Merchant Ring")
-	assert_true(Placement.check(w, "cottage", Vector2i(70, 64))["ok"], "elsewhere is fine")
+	assert_true(Placement.check(w, "cottage", Vector2i(68, 58))["ok"], "elsewhere is fine")
 
 
 func test_plots_avoid_the_walls() -> void:

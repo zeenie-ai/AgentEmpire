@@ -41,7 +41,7 @@ const PIECE_LENGTH: Array[float] = [2.9, 3.1, 3.4, 3.8]
 ## of and behind the wall.
 const GATE_HALF := 1.2
 const GATE_CLEAR := 0.12
-const GATE_APRON := 2.0
+const GATE_APRON := 3.5
 ## Narrowest half-thickness of a curtain's band of cells.
 const MIN_HALF := 0.72
 ## Towers stand this far outside the wall line.

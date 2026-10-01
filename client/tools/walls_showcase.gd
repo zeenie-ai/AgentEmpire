@@ -6,6 +6,7 @@ extends SceneTree
 ##   walls_rise.png          the Merchant Ring half way through its rise, close to its east gate
 ##   walls_rise_overview.png the same rise as the player sees it (the camera framing the ring)
 ##   walls_gate.png          a close look at a gatehouse with townsfolk passing through
+##   walls_gate_ring1.png .. walls_gate_ring4.png   each ring's gatehouse from the field
 ##   walls_plates.png, walls_plates_close.png   agent homes' name plates at the default zoom and
 ##                           close up (needs fake agents in Realm, set up here)
 ##   walls_research.png, walls_research_yard.png   the Market Age being researched: the Keep, and
@@ -120,6 +121,20 @@ func _run() -> void:
 		main.camera.set_view(Vector3(g.center.x - 1.5, 0.0, g.center.y + 1.0), 15.0, deg_to_rad(-24.0))
 		await _shot("walls_gate", 140)
 
+	if _wanted("gates"):
+		# Every ring's gatehouse up close, from the field (Age IV, all standing).
+		var w := _town(map_seed, 4)
+		_grow(w, 4)
+		main.hud.visible = false
+		game.paused = false
+		await _frames(6)
+		for k in w.walls.ring_count():
+			var gates := w.walls.pieces_of(k, WallLayout.GATE)
+			var g: WallLayout.Piece = gates[1 % gates.size()]
+			var at := g.center + g.outward * 2.0
+			main.camera.set_view(Vector3(at.x, 0.0, at.y), 16.0 + 2.0 * float(k), atan2(g.outward.x, g.outward.y) + 0.45)
+			await _shot("walls_gate_ring%d" % (k + 1), 40)
+
 	if _wanted("night"):
 		var w := _town(map_seed, 3)
 		_grow(w, 3)
@@ -195,6 +210,11 @@ func _town(map_seed: int, age: int) -> SimWorld:
 	w.allow_debug_commands = true
 	main.camera.input_enabled = false
 	main.selection.clear()
+	# No hover ring under wherever the mouse happens to rest.
+	main.input.set_process(false)
+	main.input.set_process_input(false)
+	main.input.set_process_unhandled_input(false)
+	main.world_view.hover_id = 0
 	if age > 1:
 		w.commands.push(GameCommands.debug_set_age(age))
 		w.step(1)
