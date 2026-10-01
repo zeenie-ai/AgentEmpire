@@ -8,6 +8,8 @@ extends Node3D
 ## Graphics quality (Settings "graphics/quality") is applied here to the environment, the grass
 ## and the selection rings (decals on Forward+, a MultiMesh elsewhere).
 ## The town walls (WallView) stand for the current age; survey stakes mark the rings to come.
+## While the Town Hall researches the next age, ResearchView shows it at the Keep and at the
+## gates of the ring that will rise.
 ## When the age changes a ring rises with the handoff's animation (wall_rise_started lets the
 ## camera frame it), then the stakes move out to the next ring.
 ## World sounds go to the Audio autoload at their positions: hammering at construction sites,
@@ -32,6 +34,8 @@ const HAMMER_S := Vector2(0.5, 0.8)
 const CHOP_S := Vector2(0.85, 1.15)
 const FORAGE_S := Vector2(1.3, 1.9)
 const SOUND_RANGE := 42.0
+## Canvas layer of the agent homes' name plates: over the town, under the HUD (layer 10).
+const PLATE_LAYER := 4
 
 var world: SimWorld
 var selection: Selection
@@ -43,12 +47,17 @@ var ground: GroundView
 var resources: ResourceFieldView
 var stakes: SurveyStakes
 var walls: WallView
+var research: ResearchView
+## Tools and tests: an age research to show instead of the Town Hall's ({} for none).
+var research_override: Dictionary = {}
 ## SelectionRings or DecalRings: both take set_rings(entries).
 var rings: Node3D
 var ghost: PlacementGhost
 var rally: RallyFlag
 var floating: FloatingText
 var motes: GeometryInstance3D
+## Screen-space name plates of agent homes (NamePlate), under the HUD.
+var plate_root: Control
 
 var unit_views: Dictionary = {}
 var building_views: Dictionary = {}
@@ -89,6 +98,9 @@ func _ready() -> void:
 	add_child(walls)
 	walls.rise_started.connect(_on_rise_started)
 	walls.rise_finished.connect(_on_rise_finished)
+	research = ResearchView.new()
+	research.name = "Research"
+	add_child(research)
 	_buildings_root = Node3D.new()
 	_buildings_root.name = "Buildings"
 	add_child(_buildings_root)
@@ -105,6 +117,15 @@ func _ready() -> void:
 	floating = FloatingText.new()
 	floating.name = "FloatingText"
 	add_child(floating)
+	var plates := CanvasLayer.new()
+	plates.name = "Plates"
+	plates.layer = PLATE_LAYER
+	add_child(plates)
+	plate_root = Control.new()
+	plate_root.name = "PlateRoot"
+	plate_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plates.add_child(plate_root)
+	plate_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	motes = Fx.motes(MOTES_EXTENT)
 	motes.name = "Motes"
 	_motes_material = (Fx.sprite_material(WorldTextures.soft_dot(), true).duplicate() as StandardMaterial3D)
@@ -159,6 +180,7 @@ func bind(w: SimWorld) -> void:
 	w.entity_changed.connect(_on_changed)
 	w.notice.connect(_on_notice)
 	w.walls_changed.connect(_on_walls_changed)
+	research.bind(w, building_views.get(w.keep_id), plate_root)
 
 
 func unbind() -> void:
@@ -169,6 +191,7 @@ func unbind() -> void:
 		world.notice.disconnect(_on_notice)
 		world.walls_changed.disconnect(_on_walls_changed)
 	walls.clear()
+	research.clear()
 	_site_sound.clear()
 	_unit_sound.clear()
 	_wisp_flying.clear()
@@ -205,7 +228,7 @@ func _add_building(b: SimBuilding) -> void:
 		var hv := HomeStatusView.new()
 		hv.name = "Home%d" % b.id
 		_buildings_root.add_child(hv)
-		hv.setup(b, v.height, v.model.get_meta("door", Vector3(0, 0.3, float(b.size.y) * 0.5)))
+		hv.setup(b, v.height, v.model.get_meta("door", Vector3(0, 0.3, float(b.size.y) * 0.5)), plate_root)
 		home_views[b.id] = hv
 
 
@@ -322,6 +345,19 @@ func _process(delta: float) -> void:
 	_update_rings(alpha)
 	_update_motes()
 	_update_sounds(delta)
+	research.show_research(_research())
+	research.update_visual(Time.get_unix_time_from_system(), delta, _time)
+
+
+## The age research under way: the tools' override, else the Town Hall's (online towns only).
+func _research() -> Dictionary:
+	if not research_override.is_empty():
+		return research_override
+	var game := get_node_or_null("/root/Game")
+	var realm := get_node_or_null("/root/Realm")
+	if game == null or realm == null or not bool(game.call("is_online_town")):
+		return {}
+	return J.d(J.d(realm.get("age")).get("research"))
 
 
 ## Where an agent's add-on in use stands, or null when it works at none.
