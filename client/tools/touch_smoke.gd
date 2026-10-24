@@ -5,7 +5,8 @@ extends SceneTree
 ##   tap the Keep -> its Rally card, tap the ground (rally point) -> tap a townsperson, double
 ##   tap (all of them) -> tap a berry bush (gather) -> the Cottage card, drag the ghost, Build
 ##   (a site, paid) -> the Select toggle and a drag (box select) -> one finger pans, two fingers
-##   pinch (zoom) and twist (turn).
+##   pinch (zoom) and twist (turn) -> a long press on a card (its tip), then Back until the game
+##   menu opens, and once more to close it.
 ## Run (a real window, not --headless):
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/touch_smoke.gd -- --mobile --dpi=420
 ## Options after "--": --size=WxH (the window, default 2400x1080; 1200x540 with --dpi=210 is
@@ -175,7 +176,35 @@ func _run() -> void:
 	_check(cam.yaw > yaw + 0.3, "a clockwise twist turns the view with the fingers (%.2f -> %.2f rad)" % [yaw, cam.yaw])
 	await _shot("5_turned")
 
-	# 10. In the desktop preview the mouse is a finger: a click is one tap. With the townsfolk
+	# 10. A long press on a card shows its tip and does not press it. Back then undoes the latest
+	#     thing first: the tip, placing, the Select toggle, the selection; with nothing left it
+	#     opens the game menu, where the town waits until Back closes it.
+	var tip: Variant = load("res://ui/widgets/touch_tip.gd")
+	var hud: Variant = _main.hud
+	selection.set_ids(folk)
+	await _frames(3)
+	var cottage := _card_index(input, "build:cottage")
+	await _hold_card(cottage, "build:cottage")
+	_check(tip.showing() and input.mode == input.Mode.SELECT, "a long press on a card shows its tip, not the ghost")
+	await _shot("6_tip")
+	await _back()
+	_check(not tip.showing() and input.mode == input.Mode.SELECT, "Back hides the tip first")
+	await _tap_card(cottage, "build:cottage")
+	input.set_drag_selects(true)
+	await _back()
+	_check(input.mode == input.Mode.SELECT and input.drag_selects, "then it stops placing")
+	await _back()
+	_check(not input.drag_selects and selection.ids.size() == folk.size(), "then it turns the Select toggle off")
+	await _back()
+	_check(selection.ids.is_empty() and not hud.has_window(), "then it clears the selection")
+	await _back()
+	_check(hud.has_window() and _game().paused, "then it opens the game menu, and the town waits")
+	await _shot("7_menu")
+	await _back()
+	_check(not hud.has_window() and not _game().paused, "Back closes the menu, and the town runs again")
+	_game().paused = true
+
+	# 11. In the desktop preview the mouse is a finger: a click is one tap. With the townsfolk
 	#     selected, a click on the ground moves them and keeps them selected (a left click
 	#     handled as on desktop as well would deselect them), and nothing lights up under it.
 	if not OS.has_feature("mobile"):
@@ -344,6 +373,25 @@ func _tap_card(i: int, id: String) -> void:
 		_note("card slot %d (%s) is off screen at this size; pressed through the card instead" % [i, id])
 		button.pressed.emit()
 		await _frames(3)
+
+
+## Holds a finger on command card slot `i` (which should hold `id`) past the long-press time.
+func _hold_card(i: int, id: String) -> void:
+	var slots: Array[Dictionary] = _main.input.card_slots()
+	_check(i >= 0 and String(slots[i].get("id", "")) == id, "the card offers %s in slot %d" % [id, i])
+	if i < 0:
+		return
+	var r: Rect2 = (_main.hud.bottom.command_card.get_child(i) as Control).get_global_rect()
+	_touch(0, r.get_center(), true)
+	await create_timer(Platform.LONG_PRESS_MS / 1000.0 + 0.2).timeout
+	_touch(0, r.get_center(), false)
+	await _frames(3)
+
+
+## Android's Back button, which the system sends to every node.
+func _back() -> void:
+	root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _frames(3)
 
 
 ## One finger from `from` to `to` in `steps` moves (a screenshot named `shot` before lifting).
