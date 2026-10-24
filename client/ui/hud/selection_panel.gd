@@ -151,7 +151,8 @@ func _view(portrait: Portrait) -> VBoxContainer:
 	return col
 
 
-## The phone's X: clears the selection.
+## The phone's X: clears the selection. A whole touch target in the panel's top-right corner, its
+## glyph in the corner of the target, level with the title.
 func _close_button() -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "FlatButton"
@@ -161,9 +162,8 @@ func _close_button() -> Button:
 	b.tooltip_text = "Clear the selection"
 	var x := IconView.new("close", 16)
 	b.add_child(x)
-	x.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	x.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	x.grow_vertical = Control.GROW_DIRECTION_BOTH
+	x.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_KEEP_SIZE, 6)
+	x.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	b.pressed.connect(func() -> void:
 		if selection != null:
 			selection.clear())
