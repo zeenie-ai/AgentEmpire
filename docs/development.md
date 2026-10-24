@@ -70,8 +70,10 @@ screenshot tools need a real window, so leave out `--headless`.
 | `agent_showcase.gd` | Screenshots of agents in a real town against a Town Hall (`AURELHAVEN_RUNTIME=<data>\runtime.json`, `-- --work=<git repo>`) |
 | `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png` |
 | `capture_screens.gd`, `snap_main.gd` | Screenshots of a demo town and of the main scene |
-| `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames and draw time |
+| `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames, draw time, and per frame the draw calls, primitives (main view and shadows) and GPU time. For the phone build: `--rendering-method mobile -s res://tools/perf_stress.gd -- --quality=low` |
 | `input_smoke.gd` | Injects mouse and keyboard input into the main scene and checks the results |
+| `touch_smoke.gd` | Injects screen touches into the main scene as on a phone (tap, double tap, the Select box, a gather order, placement and Build, rally, pan, pinch, twist) and checks the results; run it with `-- --mobile --dpi=420` |
+| `store_art.gd` | Renders the Google Play icon and feature graphic and the Android launcher icons, and checks them against Play's limits (`--check` only checks) |
 | `char_check.gd`, `prop_check.gd` | Look-development renders for characters and carried props |
 | `walls_showcase.gd` | Renders towns at Age I to IV and a wall mid-rise |
 | `audio_check.gd` | Renders every sound cue to a WAV file for review, with loudness figures |
@@ -90,6 +92,10 @@ window:
 
 For example, a 6.5-inch phone: `<godot> --path client --resolution 2400x1080 -- --mobile --dpi=420`.
 A smaller window at half the density gives the same layout: `--resolution 1200x540 -- --mobile --dpi=210`.
+
+A phone or tablet saves the town to the `auto` slot (`user://saves/auto.json`) when the app goes
+to the background or quits, and the next start resumes it; closing the `--mobile` preview window
+does the same. Graphics default to Low there.
 
 ## Working on the code
 
