@@ -74,6 +74,7 @@ screenshot tools need a real window, so leave out `--headless`.
 | `input_smoke.gd` | Injects mouse and keyboard input into the main scene and checks the results |
 | `touch_smoke.gd` | Injects screen touches into the main scene as on a phone (tap, double tap, the Select box, a gather order, placement and Build, rally, pan, pinch, twist) and checks the results; run it with `-- --mobile --dpi=420` |
 | `store_art.gd` | Renders the Google Play icon and feature graphic and the Android launcher icons, and checks them against Play's limits (`--check` only checks) |
+| `touch_ui_preview.gd` | Screenshots of the phone and tablet panels over a demo town: the game menu, the touch help, a card's long-press tip, a chip's tip and the placement hint (`-- --mobile --dpi=<n> --size=WxH`) |
 | `char_check.gd`, `prop_check.gd` | Look-development renders for characters and carried props |
 | `walls_showcase.gd` | Renders towns at Age I to IV and a wall mid-rise |
 | `audio_check.gd` | Renders every sound cue to a WAV file for review, with loudness figures |
