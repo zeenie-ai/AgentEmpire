@@ -203,6 +203,128 @@ func test_rally_mode_takes_the_next_tap() -> void:
 	assert_eq(selection.ids, [k.id] as Array[int])
 
 
+## The screen point of the middle of a `type` footprint at `cell`.
+func _footprint_screen(type: String, cell: Vector2i) -> Vector2:
+	var fp := Vector2(w.econ.building_footprint(type))
+	return cam.camera.unproject_position(Vector3(cell.x + fp.x * 0.5, 0.0, cell.y + fp.y * 0.5))
+
+
+func _ghost_rect() -> Rect2:
+	return Rect2(Vector2(input.place_cell), Vector2(w.econ.building_footprint(input.place_type)))
+
+
+func _cottage_spot() -> Vector2i:
+	return DemoTown.find_spot(w, "cottage", Vector2i(w.keep().center()) + Vector2i(6, 3), 6)
+
+
+func test_touch_placement_starts_in_the_middle_of_the_view() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	assert_eq(input.mode, RtsInput.Mode.PLACE)
+	assert_true(view.ghost.visible)
+	var g: Vector3 = cam.screen_to_ground(cam.safe_rect().get_center())
+	assert_true(_ghost_rect().has_point(Vector2(g.x, g.z)), "the ghost stands under the middle of the view")
+
+
+func test_a_tap_moves_the_ghost() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	var spot := _cottage_spot()
+	input.tap_at(_footprint_screen("cottage", spot), false)
+	assert_eq(input.place_cell, spot)
+	assert_true(bool(input.place_check["ok"]))
+	assert_eq(input.mode, RtsInput.Mode.PLACE, "a tap only moves it")
+	assert_eq(selection.ids.size(), 3, "and selects nothing")
+
+
+func test_the_ghost_is_there_to_be_dragged() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	var middle := _footprint_screen("cottage", input.place_cell)
+	assert_true(input.ghost_contains(middle))
+	assert_gt(30.0, input._touch_pick_px(), "this view's touch radius")
+	assert_true(input.ghost_contains(middle + Vector2(0, -30)), "its model counts too")
+	assert_false(input.ghost_contains(middle + Vector2(300, 0)))
+	input.cancel_mode()
+	assert_false(input.ghost_contains(middle), "no ghost, nothing to drag")
+
+
+func test_build_places_the_site_and_pays() -> void:
+	var ids := _select_townsfolk()
+	input.begin_placement("cottage")
+	var spot := _cottage_spot()
+	input.move_ghost(_footprint_screen("cottage", spot))
+	var wood := w.ledger.amount("wood")
+	input.activate({"id": "mode_build"})
+	w.step(1)
+	var site := w.building_at(spot)
+	assert_true(site != null and site.type == "cottage", "a Cottage site at %s" % spot)
+	assert_eq(w.ledger.amount("wood"), wood - int(w.econ.building_cost("cottage")["wood"]))
+	for id in ids:
+		assert_eq((w.units[id] as SimUnit).job, SimConst.JOB_BUILD)
+	assert_eq(input.mode, RtsInput.Mode.SELECT, "one at a time without Repeat")
+
+
+func test_build_on_a_bad_spot_places_nothing() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	input.move_ghost(_footprint_screen("cottage", w.keep().cell))
+	assert_false(bool(input.place_check["ok"]), "on the Keep")
+	var count := w.buildings.size()
+	input.confirm_placement()
+	w.step(1)
+	assert_eq(w.buildings.size(), count)
+	assert_eq(input.mode, RtsInput.Mode.PLACE, "still placing")
+
+
+func test_repeat_keeps_placing_until_the_next_placement() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	input.activate({"id": "mode_repeat"})
+	assert_true(input.place_repeat)
+	input.move_ghost(_footprint_screen("cottage", _cottage_spot()))
+	input.confirm_placement()
+	assert_eq(input.mode, RtsInput.Mode.PLACE, "Repeat keeps the ghost up")
+	input.begin_placement("farm")
+	assert_false(input.place_repeat, "a new placement starts without Repeat")
+	input.activate({"id": "mode_cancel"})
+	assert_eq(input.mode, RtsInput.Mode.SELECT)
+	assert_false(view.ghost.visible)
+
+
+func test_the_card_shows_the_mode_bar() -> void:
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	input.move_ghost(_footprint_screen("cottage", _cottage_spot()))
+	var slots := input.card_slots()
+	assert_eq(String(slots[0]["id"]), String(CommandCardModel.slots(w, selection.ids)[0]["id"]), "the rows above stay")
+	assert_eq(String(slots[12]["id"]), "mode_repeat")
+	assert_false(bool(slots[12]["active"]))
+	assert_eq(String(slots[13]["id"]), "mode_build")
+	assert_eq(String(slots[13]["icon"]), "cottage")
+	assert_true(bool(slots[13]["enabled"]), "the spot works")
+	assert_eq(String(slots[14]["id"]), "mode_cancel")
+	input.move_ghost(_footprint_screen("cottage", w.keep().cell))
+	assert_false(bool(input.card_slots()[13]["enabled"]), "Build follows the ghost")
+	input.activate({"id": "mode_repeat"})
+	assert_true(bool(input.card_slots()[12]["active"]), "Repeat shows when it is on")
+	input.touch_mode = false
+	assert_true(input.card_slots()[13].is_empty(), "no mode bar with a mouse")
+
+
+func test_rally_mode_bar_only_cancels() -> void:
+	var k := w.keep()
+	selection.set_ids([k.id])
+	input.activate({"id": "rally"})
+	var slots := input.card_slots()
+	assert_true(slots[12].is_empty())
+	assert_true(slots[13].is_empty())
+	assert_eq(String(slots[14]["id"]), "mode_cancel")
+	input.activate(slots[14])
+	assert_eq(input.mode, RtsInput.Mode.SELECT)
+	assert_true(k.rally.is_empty(), "no rally point was set")
+
+
 func test_mouse_events_made_from_touches_are_left_alone() -> void:
 	var id := _townsfolk()[0]
 	var at := _unit_screen(id)

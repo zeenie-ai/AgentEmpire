@@ -39,6 +39,9 @@ var place_cell: Vector2i = Pathing.NO_CELL
 var place_check: Dictionary = {}
 ## PLACE_PLOT: the agent whose plot is being chosen.
 var place_agent_id: String = ""
+## Touch: the mode bar's Repeat. Building one keeps the ghost up for the next (Shift does this
+## with a mouse). Off at each new placement.
+var place_repeat: bool = false
 
 ## Phones and tablets: the world takes touches through TouchControls, so RtsInput leaves the
 ## world's mouse events alone (the engine emulates them from touch). Set by GameMain.
@@ -468,9 +471,21 @@ func execute_slot(i: int) -> void:
 	var w := world()
 	if w == null:
 		return
-	var slots := CommandCardModel.slots(w, selection.ids)
+	var slots := card_slots()
 	if i >= 0 and i < slots.size() and not slots[i].is_empty():
 		activate(slots[i])
+
+
+## The command card as shown: the selection's slots, and on touch, while placing or choosing a
+## rally point, the mode bar over the bottom row (CommandCardModel.mode_slots).
+func card_slots() -> Array[Dictionary]:
+	var slots := CommandCardModel.slots(world(), selection.ids)
+	if touch_mode and mode != Mode.SELECT:
+		var kind := "rally" if mode == Mode.RALLY else ("plot" if mode == Mode.PLACE_PLOT else "place")
+		var bar := CommandCardModel.mode_slots(kind, place_type, bool(place_check.get("ok", false)), place_repeat)
+		for i: int in bar:
+			slots[i] = bar[i]
+	return slots
 
 
 func activate(slot: Dictionary) -> void:
@@ -534,6 +549,12 @@ func activate(slot: Dictionary) -> void:
 		Game.issue(GameCommands.cancel_site(b.id))
 	elif id == "dismantle" and b != null:
 		Game.issue(GameCommands.dismantle(b.id))
+	elif id == "mode_repeat":
+		place_repeat = not place_repeat
+	elif id == "mode_build":
+		confirm_placement()
+	elif id == "mode_cancel":
+		cancel_mode()
 
 
 func _add_tool(agent_id: String, type: String, slot: Dictionary) -> void:
@@ -597,8 +618,14 @@ func begin_placement(type: String) -> void:
 	mode = Mode.PLACE
 	place_type = type
 	place_cell = Pathing.NO_CELL
+	place_repeat = false
 	view.ghost.show_type(type, w.econ.building_footprint(type))
-	_update_ghost(get_viewport().get_mouse_position())
+	_update_ghost(_ghost_start())
+
+
+## Where a new ghost appears: under the mouse, or on touch in the middle of the world's view.
+func _ghost_start() -> Vector2:
+	return camera.safe_rect().get_center() if touch_mode else get_viewport().get_mouse_position()
 
 
 ## Chooses a plot for an agent's home: a 7x7 ghost with the home in its middle.
@@ -614,7 +641,7 @@ func begin_plot_placement(agent_id: String) -> void:
 	place_type = Game.link.home_type(agent_id)
 	place_cell = Pathing.NO_CELL
 	view.ghost.show_plot(place_type)
-	_update_plot_ghost(get_viewport().get_mouse_position())
+	_update_plot_ghost(_ghost_start())
 
 
 func _update_plot_ghost(screen: Vector2) -> void:
@@ -671,6 +698,28 @@ func move_ghost(screen: Vector2) -> void:
 		_update_ghost(screen)
 	elif mode == Mode.PLACE_PLOT:
 		_update_plot_ghost(screen)
+
+
+## Touch: whether `screen` is on the ghost being placed, its model or its footprint, or within
+## half a touch target of its middle; a drag that starts there moves the ghost.
+func ghost_contains(screen: Vector2) -> bool:
+	if (mode != Mode.PLACE and mode != Mode.PLACE_PLOT) or place_cell == Pathing.NO_CELL or not view.ghost.visible:
+		return false
+	var fp := Vector2i(HomeLayout.HOME, HomeLayout.HOME) if mode == Mode.PLACE_PLOT else world().econ.building_footprint(place_type)
+	var box := AABB(Vector3(place_cell.x, 0.0, place_cell.y), Vector3(fp.x, maxf(ModelLibrary.building_height(place_type), 0.3), fp.y))
+	if box.intersects_ray(camera.camera.project_ray_origin(screen), camera.camera.project_ray_normal(screen)) != null:
+		return true
+	var middle := camera.camera.unproject_position(box.get_center() * Vector3(1.0, 0.0, 1.0))
+	return screen.distance_to(middle) <= _touch_pick_px()
+
+
+## Touch: the mode bar's Build. Places the ghost where it stands, as a click does, and keeps
+## placing while Repeat is on; on a spot that does not work it says why.
+func confirm_placement() -> void:
+	if mode == Mode.PLACE:
+		_try_place(place_repeat)
+	elif mode == Mode.PLACE_PLOT:
+		_try_place_plot()
 
 
 func cancel_mode() -> void:

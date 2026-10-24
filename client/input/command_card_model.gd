@@ -88,6 +88,23 @@ static func _building(w: SimWorld, b: SimBuilding, out: Array[Dictionary]) -> vo
 		out[14] = _slot("dismantle", "Dismantle", "dismantle", "Dismantle\nRefunds %d%% of the cost." % pct, {}, true)
 
 
+## Touch: the mode bar over the bottom row while placing or choosing a rally point, as
+## {slot index: slot}. `mode` is "place" (a building of `place_type`), "plot" (an agent's home)
+## or "rally". Placing a building: Repeat (12, a toggle: keep placing after each one), Build
+## (13) and Cancel (14); a plot has no Repeat and a rally point only Cancel. Build stays
+## clickable while the spot does not work, so the player hears why.
+static func mode_slots(mode: String, place_type: String, can_build: bool, repeat: bool) -> Dictionary:
+	var out := {}
+	if mode == "place":
+		out[12] = _slot("mode_repeat", "Repeat", "resume", "Repeat\nAfter each one, keep placing another.", {}, true, repeat)
+	if mode == "place" or mode == "plot":
+		out[13] = _slot("mode_build", "Build", place_type if mode == "place" else "plot",
+			"Build here\nDrag the outline where you want it, then tap Build.", {}, can_build)
+	out[14] = _slot("mode_cancel", "Cancel", "cancel",
+		"Cancel\nKeep the rally point as it is." if mode == "rally" else "Cancel\nStop placing.", {}, true)
+	return out
+
+
 static func _slot(id: String, label: String, icon: String, tooltip: String, cost: Dictionary,
 		enabled: bool, active: bool = false) -> Dictionary:
 	return {"id": id, "label": label, "icon": icon, "tooltip": tooltip, "cost": cost,
