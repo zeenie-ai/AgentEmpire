@@ -16,9 +16,9 @@ app's private storage. These answers stay true only while the Android preset kee
 - user data backup off (`user_data_backup/allow=false`, Godot's default);
 - the town and settings in `user://` only.
 
-**Still to fill in** from Play Console, here and in `docs/privacy.md` before it is published:
-`CONTACT-EMAIL-TBD` (the public developer email) and `DEVELOPER-NAME-TBD` (the developer name
-shown on the listing; Play wants the privacy policy to name it).
+**From Play Console** (Developer account page), used here and in `docs/privacy.md`: the public
+developer email `flame2talon@gmail.com` and the developer name `flame2talon`, shown on the
+listing (Play wants the privacy policy to name it).
 
 ## Create app
 
@@ -52,7 +52,7 @@ sign-in, membership, code or location requirement; the game starts on the town.
 
 | Step | Answer |
 |---|---|
-| Email address (for IARC's certificate) | CONTACT-EMAIL-TBD |
+| Email address (for IARC's certificate) | flame2talon@gmail.com |
 | Category | Game |
 | Violence | No. Townsfolk gather, farm and build; there is no combat, no enemy, and no one is hurt |
 | Fear | No. Nothing frightening or horror-themed |
@@ -137,7 +137,7 @@ shared with third parties".
 |---|---|
 | App category | Game > Strategy |
 | Tags (up to 5) | Pick from Play's list, in this order: Real-time strategy; City building (or Building); Medieval; Single player; Offline. If one is missing, use Fantasy, Stylized, Casual or Management |
-| Store listing contact email | CONTACT-EMAIL-TBD (public) |
+| Store listing contact email | flame2talon@gmail.com (public) |
 | Phone | Leave empty |
 | Website | `https://github.com/zeenie-ai/AgentEmpire` |
 | External marketing | Leave on (the default) |
@@ -167,7 +167,7 @@ more, which Play asks of games for recommendations (at least three).
 | Track | Closed testing |
 | Testers | The owner's email list |
 | Countries or regions | The owner's choice |
-| Feedback URL or email for testers | CONTACT-EMAIL-TBD |
+| Feedback URL or email for testers | flame2talon@gmail.com |
 | App signing | Play App Signing with a Google-generated key; the upload key is stream A's |
 | Release name | Play's default from the bundle: 1 (0.5.0) |
 | Release notes | `store/release-notes.md` |
