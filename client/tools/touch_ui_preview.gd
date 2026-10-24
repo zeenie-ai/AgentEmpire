@@ -99,18 +99,20 @@ func _take(shot: String) -> void:
 			await _snap(shot)
 			_tip.call("dismiss")
 		"hint":
-			# The ghost in the middle of the view, where a touch placement starts.
+			# The builders selected, and the ghost in the middle of the view, where a touch
+			# placement starts.
+			await _select_townsfolk()
 			var input: Variant = _main.get("input")
 			input.call("begin_placement", "cottage")
 			var band: Rect2 = _hud.call("world_rect")
 			input.call("_update_ghost", band.get_center())
 			await _snap(shot)
 			input.call("cancel_mode")
+			_main.get("selection").call("clear")
 	await _frames(4)
 
 
-## Selects the townsfolk and holds a finger on the Cottage card past the long-press time.
-func _shot_card_tip() -> void:
+func _select_townsfolk() -> void:
 	var w: Variant = root.get_node("Game").get("world")
 	var ids: Array = []
 	for u: Variant in w.get("units").values():
@@ -118,6 +120,11 @@ func _shot_card_tip() -> void:
 			ids.append(u.get("id"))
 	_main.get("selection").call("set_ids", ids)
 	await _frames(10)
+
+
+## Selects the townsfolk and holds a finger on the Cottage card past the long-press time.
+func _shot_card_tip() -> void:
+	await _select_townsfolk()
 	var card: Control = null
 	for b: Node in _hud.get("bottom").get("command_card").get_children():
 		var slot: Dictionary = b.get("slot")
