@@ -1,8 +1,8 @@
 # AgentEmpire store listing (en-US)
 
 The Google Play main store listing for release 1, the offline town on phones and tablets. It
-describes only what the Android app does, plus one line about the PC version. Paste each block
-as it is. Counts are characters as Play counts them, spaces and line breaks included.
+describes only what the Android app does, plus a closing paragraph about the PC version, which
+names no other company's products. Paste each block as it is. Counts are characters as Play counts them, spaces and line breaks included.
 
 ## Title (25 of 30)
 
@@ -21,7 +21,7 @@ A calm town builder: gather food and wood, build cottages and train townsfolk.
 
 Alternative (76 of 80): `Gather food and wood, build cottages and farms, and grow a town of your own.`
 
-## Full description (1,820 of 4,000)
+## Full description (1,931 of 4,000)
 
 ```text
 Found a town in the world of Aurelhaven and grow it at your own pace.
@@ -49,7 +49,7 @@ AgentEmpire needs no internet connection and no account. It has no ads and no in
 
 The town has low-poly buildings and townsfolk, a walled Keep, music and the sounds of a working town.
 
-On PC, AgentEmpire goes further: the villagers you summon at the Keep are real AI coding agents, and the town grows on the work you accept.
+On PC, AgentEmpire is also a productivity game: the villagers you summon at the Keep are real AI coding agents that you direct, and the town grows on the work you accept. This app for phones and tablets is the town builder on its own, without agents.
 ```
 
 ## Before submitting
