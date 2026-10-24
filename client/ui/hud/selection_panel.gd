@@ -370,7 +370,8 @@ func _build_trainer(w: SimWorld, b: SimBuilding, col: VBoxContainer) -> void:
 	var queue_row := HBoxContainer.new()
 	queue_row.add_theme_constant_override("separation", 6)
 	col.add_child(queue_row)
-	var slots := _queue_slots(w, id, queue_row, 40.0)
+	# On a tablet's touch screen the slots are whole touch targets; the panel has the room.
+	var slots := _queue_slots(w, id, queue_row, Platform.TOUCH_TARGET_DP if touch else 40.0)
 	var head := _bar(col)
 	var status := _label(col, "", "BodyLabel")
 	var extra := _label(col, "", "MutedLabel")

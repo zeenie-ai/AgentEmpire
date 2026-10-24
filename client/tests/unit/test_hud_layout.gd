@@ -323,6 +323,13 @@ func test_tablet_layout() -> void:
 		assert_true(hints.contains("Tap to select"), "the hints say Tap at %s" % size)
 		assert_false(hints.contains("click"), "and never click")
 		assert_eq(_off_screen(hud), PackedStringArray(), "everything is on screen at %s" % size)
+		var panel_height := hud.bottom.size.y
+		hud.bottom.selection_panel.selection.set_ids([Game.world.keep_id])
+		await wait_process_frames(2)
+		assert_eq(_small_targets(hud.bottom.selection_panel), PackedStringArray(), "the training queue's slots are touch targets")
+		assert_eq(hud.bottom.size.y, panel_height, "and the bottom panel keeps its height")
+		hud.bottom.selection_panel.selection.clear()
+		await wait_process_frames(2)
 		hud.confirm("Start a new town?", "The town you have now is saved first.", func() -> void: pass)
 		await wait_process_frames(2)
 		assert_eq(_outside(hud.modal_root, hud.get_viewport().get_visible_rect()), PackedStringArray(), "the confirmation fits %s" % size)
