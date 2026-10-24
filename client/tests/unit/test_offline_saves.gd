@@ -1,13 +1,17 @@
 extends GutTest
-## Offline saves on disk: the slot is replaced only by a complete save. Every save goes to a
-## temporary folder (Game.save_dir), never to the player's slots.
+## Offline saves on disk: the slot is replaced only by a complete save, the autosave phones and
+## tablets make when the app goes to the background, and resuming it at the next start. Every
+## save goes to a temporary folder (Game.save_dir), never to the player's slots.
 
 var _dir: String = ""
+## ClientLog lines before the test: _logged() reads only the lines written since.
+var _log_from: int = 0
 
 
 func before_each() -> void:
 	_dir = OS.get_temp_dir().path_join("agentempire-gut-saves-%d" % (randi() & 0xffffff))
 	Game.save_dir = _dir
+	_log_from = ClientLog.lines.size()
 
 
 func after_each() -> void:
@@ -46,6 +50,13 @@ func _busy_town(town_id: String) -> SimWorld:
 	return w
 
 
+func _logged(line: String) -> bool:
+	for l in ClientLog.lines.slice(_log_from):
+		if l.ends_with(line):
+			return true
+	return false
+
+
 func test_save_replaces_the_slot_and_loads_back_the_same_town() -> void:
 	# An older save in the slot, and a temporary file left by a save that never finished.
 	_write("quick.json", "{\"old\": true}")
@@ -72,3 +83,47 @@ func test_a_save_that_cannot_be_written_leaves_the_slot_as_it_was() -> void:
 	_busy_town("gut-blocked")
 	assert_false(await Game.save_offline("quick"))
 	assert_eq(FileAccess.get_file_as_string(_dir.path_join("quick.json")), "{\"old\": true}")
+
+
+func test_the_paused_notification_autosaves_and_pauses_the_town() -> void:
+	var w := _busy_town("gut-paused")
+	assert_false(FileAccess.file_exists(_dir.path_join(Game.AUTOSAVE_SLOT + ".json")))
+	Game.notification(NOTIFICATION_APPLICATION_PAUSED)
+	var doc := _read(Game.AUTOSAVE_SLOT + ".json")
+	var sim: Dictionary = doc.get("sim", {})
+	assert_eq(String(sim.get("town_id", "")), "gut-paused", "the town was autosaved")
+	assert_eq(int(sim.get("tick", -1)), w.tick)
+	assert_true(Game.paused, "the town waits")
+	assert_true(_logged("[game] Autosaved the town."), "quietly, in the log")
+
+
+func test_autosave_needs_an_offline_town() -> void:
+	assert_false(Game.autosave())
+	assert_false(DirAccess.dir_exists_absolute(_dir), "nothing was written")
+
+
+func test_resume_opens_the_autosaved_town() -> void:
+	var w := _busy_town("gut-resume")
+	var saved := _json(w.to_dict())
+	assert_true(Game.autosave())
+	Game.stop_town()
+	var resumed := Game.resume_town(4242)
+	assert_eq(resumed, Game.world)
+	assert_eq(resumed.town_id, "gut-resume")
+	assert_eq(_json(resumed.to_dict()), saved, "the resumed town is the autosaved one")
+	assert_true(_logged("[game] Resumed the autosaved town."))
+
+
+func test_resume_without_an_autosave_starts_a_new_town() -> void:
+	var w := Game.resume_town(4242)
+	assert_not_null(w)
+	assert_eq(w.map_seed, 4242)
+	assert_eq(w.tick, 0)
+
+
+func test_resume_with_an_unreadable_autosave_starts_a_new_town() -> void:
+	_write(Game.AUTOSAVE_SLOT + ".json", "{\"format\": \"aurelhaven-offline\", \"sim\": {\"tow")
+	var w := Game.resume_town(4242)
+	assert_engine_error("Parse JSON failed")
+	assert_eq(w.map_seed, 4242)
+	assert_true(_logged("[game] The autosaved town could not be read; starting a new one."))
