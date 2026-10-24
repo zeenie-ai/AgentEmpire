@@ -102,9 +102,16 @@ func enable(on: bool) -> void:
 		_set_status(STATUS_OFF)
 
 
-## False when the game was started with `-- --offline`.
+## Whether the game looks for a Town Hall at all: not on phones and tablets, which have none
+## (Platform.has_town_hall()), and not when the game was started with `-- --offline`.
 static func wanted() -> bool:
-	return not "--offline" in OS.get_cmdline_user_args()
+	return wanted_for(Platform.has_town_hall(), OS.get_cmdline_user_args())
+
+
+## wanted() for a build that can (`has_town_hall`) or cannot reach a Town Hall, started with
+## `user_args`.
+static func wanted_for(has_town_hall: bool, user_args: PackedStringArray) -> bool:
+	return has_town_hall and not "--offline" in user_args
 
 
 ## Tries again right away (after the player starts the Town Hall, for example).

@@ -132,6 +132,17 @@ static func draw(ci: CanvasItem, icon: String, rect: Rect2, dim: bool = false) -
 			ci.draw_rect(Rect2(c + Vector2(-0.5, -0.75) * s, Vector2(0.75, 1.5) * s), _c(Palette.WOOD_DARK, k))
 			ci.draw_line(c + Vector2(0.0, 0.0) * s, c + Vector2(0.85, 0.0) * s, _c(UiTokens.GOLD_BRIGHT, k), maxf(s * 0.16, 1.5))
 			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0.55, -0.3) * s, c + Vector2(0.95, 0.0) * s, c + Vector2(0.55, 0.3) * s]), _c(UiTokens.GOLD_BRIGHT, k))
+		"map":
+			_map(ci, c, s, k)
+		"menu":
+			# Three bars with rounded ends.
+			var t := maxf(s * 0.22, 2.0)
+			for y in [-0.52, 0.0, 0.52]:
+				var a := c + Vector2(-0.62, y) * s
+				var b := c + Vector2(0.62, y) * s
+				ci.draw_rect(Rect2(a - Vector2(0, t * 0.5), Vector2(b.x - a.x, t)), _c(UiTokens.GOLD, k))
+				ci.draw_circle(a, t * 0.5, _c(UiTokens.GOLD, k))
+				ci.draw_circle(b, t * 0.5, _c(UiTokens.GOLD, k))
 		_:
 			ci.draw_circle(c, s * 0.5, _c(UiTokens.HUD_MUTED, k))
 
@@ -154,6 +165,24 @@ static func _scroll(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
 		ci.draw_line(c + Vector2(-0.35, y) * s, c + Vector2(0.35, y) * s, _c(UiTokens.SEPIA, k), maxf(s * 0.06, 1.0))
 	for y in [-0.55, 0.55]:
 		ci.draw_rect(Rect2(c + Vector2(-0.7, y - 0.12) * s, Vector2(1.4, 0.24) * s), _c(Palette.WOOD_LIGHT, k))
+
+
+## A parchment map folded in three, the middle panel in shade, with a red route to a gold mark.
+static func _map(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
+	var xs: Array[float] = [-0.85, -0.29, 0.29, 0.85]
+	var shades: Array[Color] = [UiTokens.PARCHMENT, UiTokens.PARCHMENT_DARK.darkened(0.16), UiTokens.PARCHMENT_DARK]
+	for i in 3:
+		var x0 := xs[i]
+		var x1 := xs[i + 1]
+		# Panels alternate high and low edges, like a folded sheet seen from above.
+		var lift := 0.12 if i % 2 == 0 else -0.12
+		ci.draw_colored_polygon(PackedVector2Array([c + Vector2(x0, -0.62 + lift) * s, c + Vector2(x1, -0.62 - lift) * s,
+			c + Vector2(x1, 0.7 - lift) * s, c + Vector2(x0, 0.7 + lift) * s]), _c(shades[i], k))
+	var w := maxf(s * 0.1, 1.2)
+	var route := PackedVector2Array([c + Vector2(-0.6, 0.42) * s, c + Vector2(-0.18, 0.05) * s, c + Vector2(0.14, 0.28) * s, c + Vector2(0.52, -0.22) * s])
+	ci.draw_polyline(route, _c(UiTokens.BAD.darkened(0.1), k), w)
+	ci.draw_circle(c + Vector2(0.52, -0.22) * s, s * 0.17, _c(UiTokens.GOLD_DEEP, k))
+	ci.draw_circle(c + Vector2(0.52, -0.22) * s, s * 0.08, _c(UiTokens.INK, k))
 
 
 static func _log(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:

@@ -36,6 +36,8 @@ const MODE_NAMES := {"real": "real", "fake": "practice"}
 var world: SimWorld
 var interp_alpha: float = 0.0
 var paused: bool = false
+## The folder the offline saves go to: SAVE_DIR (tests point it at a temporary folder).
+var save_dir: String = SAVE_DIR
 ## Debug speed-up; 1.0 in normal play.
 var time_scale: float = 1.0
 var income: IncomeTracker = IncomeTracker.new()
@@ -68,7 +70,8 @@ func _ready() -> void:
 
 ## Starts the game: the Town Hall's town when a Town Hall answers within BOOT_WAIT_MS (or one
 ## the game starts, when none is running and townhall/auto_start allows), otherwise an offline
-## town from `map_seed`. `-- --offline` skips the Town Hall.
+## town from `map_seed`. `-- --offline` skips the Town Hall. Phones and tablets have no Town Hall
+## (Net.wanted()), so they start at once, in the town they autosaved (resume_town()).
 func boot(map_seed: int) -> void:
 	booting = true
 	if Net.wanted():
@@ -78,7 +81,10 @@ func boot(map_seed: int) -> void:
 		booting = false
 		return
 	booting = false
-	new_town(map_seed)
+	if Platform.is_mobile():
+		resume_town(map_seed)
+	else:
+		new_town(map_seed)
 
 
 ## Looks for a Town Hall for up to `wait_ms`; when none answers (no runtime file, or a stale one)
@@ -412,14 +418,9 @@ func save_offline(slot: String = "quick") -> bool:
 			await req.done
 			Notify.push("Town saved to the Town Hall." if req.ok else "Could not save: %s" % req.error_message(), "good" if req.ok else "error")
 		return req != null and req.ok
-	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
-	var doc := {"format": "aurelhaven-offline", "sim": world.to_dict(), "ledger": Economy.ledger.to_dict()}
-	var f := FileAccess.open("%s/%s.json" % [SAVE_DIR, slot], FileAccess.WRITE)
-	if f == null:
+	if not _write_save(slot, _offline_doc()):
 		Notify.push("Could not save the town.", "error")
 		return false
-	f.store_string(JSON.stringify(doc, "", true, true))
-	f.close()
 	Notify.push("Town saved.", "good")
 	return true
 
@@ -428,35 +429,106 @@ func load_offline(slot: String = "quick") -> bool:
 	if is_online_town():
 		Notify.push("This town lives in the Town Hall; it saves itself.", "info", "online_load", 2000)
 		return false
-	var path := "%s/%s.json" % [SAVE_DIR, slot]
-	if not FileAccess.file_exists(path):
-		Notify.push("No saved town yet (F5 saves).", "warn")
+	if not FileAccess.file_exists(_slot_path(slot)):
+		Notify.push("No saved town yet (tap Save in the menu)." if Platform.is_mobile() else "No saved town yet (F5 saves).", "warn")
 		return false
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-	if typeof(parsed) != TYPE_DICTIONARY or not (parsed as Dictionary).has("sim"):
+	var doc := _read_save(slot)
+	if doc.is_empty():
 		Notify.push("The saved town could not be read.", "error")
 		return false
-	var doc: Dictionary = parsed
 	if load_town(doc["sim"], doc.get("ledger", {})) == null:
 		return false
 	Notify.push("Town loaded.", "good")
 	return true
 
 
-## Saves an offline town to AUTOSAVE_SLOT without a toast. True when it saved.
-## Stub: the lifecycle stream fills it in.
+## Saves an offline town to AUTOSAVE_SLOT, without a toast: phones and tablets do it when the app
+## goes to the background or quits, and resume it at the next start. True when it saved.
 func autosave() -> bool:
-	return false
+	if world == null or is_online_town():
+		return false
+	if not _write_save(AUTOSAVE_SLOT, _offline_doc()):
+		return false
+	ClientLog.info("game", "Autosaved the town.")
+	return true
 
 
-## Saves the town (the Town Hall's, or an offline one on phones and tablets) and quits.
+## Opens the town in AUTOSAVE_SLOT, or a new town from `map_seed` when there is none or it cannot
+## be read. Phones and tablets start this way.
+func resume_town(map_seed: int) -> SimWorld:
+	if FileAccess.file_exists(_slot_path(AUTOSAVE_SLOT)):
+		var doc := _read_save(AUTOSAVE_SLOT)
+		var w: SimWorld = null
+		if not doc.is_empty():
+			w = load_town(doc["sim"], doc.get("ledger", {}))
+		if w != null:
+			ClientLog.info("game", "Resumed the autosaved town.")
+			return w
+		ClientLog.warn("game", "The autosaved town could not be read; starting a new one.")
+	return new_town(map_seed)
+
+
+## Saves the town and quits: on phones and tablets an offline town goes to AUTOSAVE_SLOT (the
+## next start resumes it); the Town Hall's town is saved by the Town Hall (_quit_after_save()).
 func save_and_quit() -> void:
+	if Platform.is_mobile():
+		autosave()
 	_quit_after_save()
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		_quit_after_save()
+	match what:
+		NOTIFICATION_WM_CLOSE_REQUEST:
+			save_and_quit()
+		NOTIFICATION_APPLICATION_PAUSED:
+			# Android and iOS: the app went to the background, where the system may end it.
+			autosave()
+			paused = true
+
+
+## The offline save document: the simulation and the offline ledger.
+func _offline_doc() -> Dictionary:
+	return {"format": "aurelhaven-offline", "sim": world.to_dict(), "ledger": Economy.ledger.to_dict()}
+
+
+func _slot_path(slot: String) -> String:
+	return save_dir.path_join(slot + ".json")
+
+
+## Writes `doc` to `slot` through `<slot>.json.tmp`, renamed over the slot once it is complete, so
+## a save cut short (the app killed, the disk full) never leaves a broken slot behind. False, with
+## a warning in the log, when it failed; the slot then keeps its last save.
+func _write_save(slot: String, doc: Dictionary) -> bool:
+	DirAccess.make_dir_recursive_absolute(save_dir)
+	var path := _slot_path(slot)
+	var tmp := path + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		ClientLog.warn("game", "Could not save to %s: %s." % [tmp, error_string(FileAccess.get_open_error())])
+		return false
+	var written := f.store_string(JSON.stringify(doc, "", true, true))
+	f.close()
+	if not written:
+		ClientLog.warn("game", "Could not save to %s." % tmp)
+		DirAccess.remove_absolute(tmp)
+		return false
+	var err := DirAccess.rename_absolute(tmp, path)
+	if err != OK:
+		ClientLog.warn("game", "Could not replace %s: %s." % [path, error_string(err)])
+		return false
+	return true
+
+
+## The save document in `slot` ({format, sim, ledger}), or {} when there is none or it cannot be
+## read.
+func _read_save(slot: String) -> Dictionary:
+	var path := _slot_path(slot)
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(parsed) != TYPE_DICTIONARY or not (parsed as Dictionary).has("sim"):
+		return {}
+	return parsed
 
 
 ## Saves the Town Hall's town before closing (waits up to QUIT_SAVE_WAIT_MS).
