@@ -35,16 +35,17 @@ func _phone_at(size: Vector2i) -> Hud:
 	return hud
 
 
-## Connects the HUD to a selection and a (bare) RtsInput, as GameMain does; returns the selection.
-## The command card stays empty: its slots label their hotkeys through the display server, which
-## a headless run does not have, and its slots are not what these tests look at.
-func _connect(hud: Hud) -> Selection:
-	var sel := Selection.new()
+## Connects the HUD to a bare RtsInput and its selection, as GameMain does; returns the input (its
+## selection is input.selection). The command card stays empty: its slots label their hotkeys
+## through the display server, which a headless run does not have, and the slots are not what
+## these tests look at.
+func _connect(hud: Hud) -> RtsInput:
 	var input := RtsInput.new()
 	autofree(input)
-	hud.setup(null, null, sel, input)
+	input.selection = Selection.new()
+	hud.setup(null, null, input.selection, input)
 	hud.bottom.command_card.selection = null
-	return sel
+	return input
 
 
 ## A paused demo town with finished buildings, bound to `hud`.
@@ -109,7 +110,7 @@ func test_desktop_world_band_is_unchanged() -> void:
 
 func test_phone_layout_at_914x411() -> void:
 	var hud: Hud = await _phone_at(Vector2i(914, 411))
-	var sel := _connect(hud)
+	var sel := _connect(hud).selection
 	var w := _town(hud)
 	sel.set_ids([w.keep_id])
 	await wait_process_frames(3)
@@ -136,7 +137,7 @@ func test_phone_layout_at_914x411() -> void:
 
 func test_phone_column_shows_only_with_a_selection() -> void:
 	var hud: Hud = await _phone_at(Vector2i(914, 411))
-	var sel := _connect(hud)
+	var sel := _connect(hud).selection
 	var w := _town(hud)
 	await wait_process_frames(2)
 	var band := hud.world_rect()
@@ -166,7 +167,7 @@ func test_phone_layout_follows_a_resize() -> void:
 func test_phone_layout_fits_the_smallest_phones() -> void:
 	for size: Vector2i in [Vector2i(731, 411), Vector2i(640, 360)]:
 		var hud: Hud = await _phone_at(size)
-		var sel := _connect(hud)
+		var sel := _connect(hud).selection
 		var w := _town(hud)
 		sel.set_ids([w.keep_id])
 		var bar := hud.top_bar
@@ -195,7 +196,7 @@ func test_compact_idle_shows_the_count() -> void:
 
 func test_compact_selection_details_fit() -> void:
 	var hud: Hud = await _phone_at(Vector2i(640, 360))
-	var sel := _connect(hud)
+	var sel := _connect(hud).selection
 	var w := _town(hud)
 	var folk: Array[int] = []
 	for u: SimUnit in w.units.values():
@@ -233,7 +234,7 @@ func test_compact_selection_details_fit() -> void:
 
 func test_the_x_clears_the_selection() -> void:
 	var hud: Hud = await _phone_at(Vector2i(914, 411))
-	var sel := _connect(hud)
+	var sel := _connect(hud).selection
 	var w := _town(hud)
 	sel.set_ids([w.keep_id])
 	await wait_process_frames(2)
@@ -274,9 +275,7 @@ func test_minimap_overlay() -> void:
 
 func test_select_toggle_follows_the_input() -> void:
 	var hud: Hud = await _phone_at(Vector2i(914, 411))
-	var input := RtsInput.new()
-	autofree(input)
-	hud.setup(null, null, Selection.new(), input)
+	var input := _connect(hud)
 	var toggle := hud.select_toggle
 	assert_eq(toggle.size, Vector2.ONE * SelectToggle.SIZE)
 	assert_eq(toggle.get_global_rect().position, Vector2(Hud.PHONE_GAP, 411 - Hud.PHONE_GAP - SelectToggle.SIZE), "bottom left")
