@@ -4,14 +4,30 @@ extends CanvasLayer
 ## drag box, the placement hint and an optional FPS readout. Built in code on the AgentEmpire
 ## theme (ThemeBuilder).
 ##
+## Three layouts (Layout), picked from Platform: the desktop's; a tablet's on touch, the same
+## with a Menu button in the top bar; and a phone's (a safe area under 1200 dp wide), with a
+## slim top bar (resources, population, Idle, Map, Menu) and the command card at the bottom
+## right, in the phone column. Everything but the dim, the drag box and the cursor hint sits in
+## `safe`, inset to the display's safe area (clear of camera cutouts). Without a Town Hall
+## (Platform.has_town_hall()) the Town Hall chip, the Mana orb and the approval tray are hidden.
+##
 ## Agents: the approval tray (top right), and modal windows opened over a dimmed town
 ## (open_window, stacked: the Summoning Font opens its folder browser on top of itself): the
 ## summoning dialog, the task composer, the review window and the Mana budget
 ## (res://ui/agents/).
 
+enum Layout { DESKTOP, TABLET, PHONE }
+
+## Phones: the space between the safe area's edges and the HUD's parts, and between the parts.
+const PHONE_GAP := 8
+
 var root: Control
+## The display's safe area: holds the bars, the phone column, the toasts and the approval tray.
+var safe: Control
 var top_bar: TopBar
 var bottom: BottomPanel
+## Phones: the command card in its frame, at the bottom right.
+var column: VBoxContainer
 var toasts: ToastLayer
 var box_overlay: SelectionBoxOverlay
 var hint: CursorHint
@@ -21,6 +37,10 @@ var modal_root: Control
 var approval_tray: ApprovalTray
 ## Phones and tablets: what Android's Back button does (BackChain).
 var back_chain: BackChain
+## The layout in use; Platform picks it, use_layout() changes it.
+var layout: Layout = Layout.DESKTOP
+## Whether the Town Hall's parts show (the chip, the Mana orb, the approval tray).
+var town_hall: bool = true
 
 var _input: RtsInput
 var _windows: Array[Control] = []
@@ -40,28 +60,36 @@ func _ready() -> void:
 	root.add_child(box_overlay)
 	box_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	safe = Control.new()
+	safe.name = "Safe"
+	safe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(safe)
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	top_bar = TopBar.new()
-	root.add_child(top_bar)
+	safe.add_child(top_bar)
 	top_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE)
 
 	bottom = BottomPanel.new()
-	root.add_child(bottom)
+	safe.add_child(bottom)
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE)
 
+	column = VBoxContainer.new()
+	column.name = "Column"
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_theme_constant_override("separation", PHONE_GAP)
+	safe.add_child(column)
+	column.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, PHONE_GAP)
+	column.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	column.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
 	toasts = ToastLayer.new()
-	root.add_child(toasts)
-	toasts.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	toasts.offset_top = UiTokens.TOP_BAR_HEIGHT + 12
-	toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	safe.add_child(toasts)
 
 	fps_label = Label.new()
 	fps_label.theme_type_variation = "MutedLabel"
 	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(fps_label)
-	fps_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	fps_label.offset_top = UiTokens.TOP_BAR_HEIGHT + 8
-	fps_label.offset_left = -140
-	fps_label.offset_right = -16
+	safe.add_child(fps_label)
 	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fps_label.visible = bool(Settings.get_value("display/show_fps", false))
 
@@ -70,9 +98,8 @@ func _ready() -> void:
 
 	approval_tray = ApprovalTray.new()
 	approval_tray.name = "ApprovalTray"
-	root.add_child(approval_tray)
+	safe.add_child(approval_tray)
 	approval_tray.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	approval_tray.offset_top = UiTokens.TOP_BAR_HEIGHT + 12
 	approval_tray.offset_right = -16
 	approval_tray.offset_left = -16 - ApprovalTray.WIDTH
 	approval_tray.focus_requested.connect(_on_focus_requested)
@@ -85,6 +112,73 @@ func _ready() -> void:
 	top_bar.budget_requested.connect(open_budget)
 	top_bar.town_hall_mode_requested.connect(_on_town_hall_mode_requested)
 	top_bar.town_hall_close_requested.connect(_on_town_hall_close_requested)
+	top_bar.menu_requested.connect(open_game_menu)
+
+	for c: Control in [safe, top_bar, column]:
+		c.item_rect_changed.connect(_place_under_bar)
+	get_viewport().size_changed.connect(_read_safe_area)
+	_read_safe_area()
+	layout = platform_layout(get_viewport())
+	town_hall = Platform.has_town_hall()
+	_apply_layout()
+
+
+## The layout Platform asks for in `vp`: the desktop's, or on touch the phone's below 1200 dp of
+## safe width and the tablet's above.
+static func platform_layout(vp: Viewport) -> Layout:
+	if not Platform.is_mobile():
+		return Layout.DESKTOP
+	return Layout.PHONE if Platform.compact(vp) else Layout.TABLET
+
+
+## Shows `which` layout, with or without the Town Hall's parts. The HUD starts with the one
+## Platform asks for; tools and tests use this to see the others.
+func use_layout(which: Layout, with_town_hall: bool) -> void:
+	layout = which
+	town_hall = with_town_hall
+	_apply_layout()
+
+
+## Fits the bars to `layout` and puts the command card where it belongs: in the bottom panel, or
+## on phones alone in the column at the bottom right.
+func _apply_layout() -> void:
+	var phone := layout == Layout.PHONE
+	top_bar.configure(phone, layout != Layout.DESKTOP, town_hall)
+	approval_tray.visible = town_hall
+	if phone:
+		bottom.card_frame.reparent(column, false)
+	else:
+		bottom.dock()
+	bottom.visible = not phone
+	column.visible = phone
+	toasts.max_toasts = 3 if phone else ToastLayer.MAX_TOASTS
+	toasts.wrap = phone
+	_place_under_bar()
+
+
+## Insets `safe` to the display's safe area (the whole viewport on desktop).
+func _read_safe_area() -> void:
+	var vp := get_viewport()
+	var full := vp.get_visible_rect()
+	var area := Platform.safe_rect(vp)
+	safe.offset_left = area.position.x - full.position.x
+	safe.offset_top = area.position.y - full.position.y
+	safe.offset_right = area.end.x - full.end.x
+	safe.offset_bottom = area.end.y - full.end.y
+
+
+## Hangs the toasts, the FPS readout and the approval tray under the top bar as measured. The
+## toasts and the readout keep to the world band: the whole width, or left of the phone column.
+func _place_under_bar() -> void:
+	var below := top_bar.get_rect().end.y
+	var band_right := column.position.x if layout == Layout.PHONE else safe.size.x
+	toasts.offset_left = 0.0
+	toasts.offset_right = band_right
+	toasts.offset_top = below + 12.0
+	fps_label.offset_left = band_right - 140.0
+	fps_label.offset_right = band_right - 16.0
+	fps_label.offset_top = below + 8.0
+	approval_tray.offset_top = below + 12.0
 
 
 func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsInput) -> void:
@@ -104,21 +198,26 @@ func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsI
 	back_chain.setup(self, input)
 
 
-## The part of the screen the world is seen through: between the top bar and the bottom panel
-## (the whole window while the HUD is hidden), in viewport coordinates.
+## The part of the screen the world is seen through, in viewport coordinates: inside the safe
+## area, below the top bar and above the bottom panel, and on phones left of the column (the
+## whole window while the HUD is hidden).
 func world_rect() -> Rect2:
 	var full := get_viewport().get_visible_rect()
 	if not visible or top_bar == null or bottom == null:
 		return full
-	var top := full.position.y
-	var bottom_y := full.end.y
+	var area := safe.get_global_rect()
+	var top := area.position.y
+	var bottom_y := area.end.y
+	var right := area.end.x
 	if top_bar.visible:
 		top = maxf(top, top_bar.get_global_rect().end.y)
 	if bottom.visible:
 		bottom_y = minf(bottom_y, bottom.get_global_rect().position.y)
+	if column.visible:
+		right = column.get_global_rect().position.x
 	if bottom_y - top < 64.0:
 		return full
-	return Rect2(full.position.x, top, full.size.x, bottom_y - top)
+	return Rect2(area.position.x, top, right - area.position.x, bottom_y - top)
 
 
 ## The game menu (GameMenu): phones and tablets open it from the top bar and with Back.

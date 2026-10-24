@@ -9,6 +9,9 @@ extends SceneTree
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/capture_screens.gd
 ## Options after "--": --out=<dir> --seed=<n> --quality=low|medium|high --size=1600x900
 ##   --only=map,hud,closeup,night
+## and the phone and tablet build (Platform): --mobile --dpi=<n>, the window standing in for the
+## screen, e.g. --size=2400x1080 --mobile --dpi=420 for a phone 914x411 dp. A size larger than the
+## desktop screen gives the same layout at half the size and half the dpi.
 
 const DEFAULT_SIZE := Vector2i(1600, 900)
 

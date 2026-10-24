@@ -3,12 +3,19 @@ extends Control
 ## Toast notifications from Notify, stacked under the top bar in navy status windows whose trim
 ## follows the kind: mint (info), gold (good), amber (warn), red (error). New toasts pop in
 ## (fade and a slight overshoot), the stack glides to make room, and old ones fade up and away.
+## They are centred in the layer's width; the HUD spans it over the part of the screen the world
+## is seen through.
 
 const LIFE_S := 3.8
 const IN_S := 0.28
 const OUT_S := 0.35
 const MAX_TOASTS := 5
 const GAP := 6.0
+
+## How many toasts show at once; a new one pushes out the oldest.
+var max_toasts: int = MAX_TOASTS
+## Phones: a toast too wide for the layer wraps its text onto more lines.
+var wrap: bool = false
 
 var _toasts: Array[Control] = []
 
@@ -49,8 +56,14 @@ func show_toast(text: String, kind: String) -> void:
 	row.add_child(label)
 	panel.modulate.a = 0.0
 	add_child(panel)
+	if wrap:
+		var room := size.x - 2.0 * GAP
+		var wide := panel.get_combined_minimum_size().x
+		if wide > room:
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			label.custom_minimum_size.x = room - (wide - label.get_combined_minimum_size().x)
 	_toasts.append(panel)
-	while _toasts.size() > MAX_TOASTS:
+	while _toasts.size() > max_toasts:
 		_dismiss(_toasts[0])
 	# Wait one frame for the panel's size, then place it and animate it in.
 	await get_tree().process_frame
