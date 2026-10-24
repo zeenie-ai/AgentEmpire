@@ -363,12 +363,19 @@ func open_window(w: Control) -> void:
 	_windows.append(w)
 	modal_root.add_child(w)
 	if not w is WindowFrame:
-		w.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-		w.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		w.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_center(w)
+		w.minimum_size_changed.connect(_center.bind(w))
 	if w.has_signal("open_window_requested"):
 		w.connect("open_window_requested", open_window)
 	w.tree_exited.connect(_on_window_gone.bind(w))
+
+
+## Centres a plain window at its minimum size, again whenever that changes: wrapped text measures
+## tall until it knows its width.
+func _center(w: Control) -> void:
+	w.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	w.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	w.grow_vertical = Control.GROW_DIRECTION_BOTH
 
 
 ## Closes the topmost window.
