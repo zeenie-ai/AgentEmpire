@@ -5,6 +5,9 @@ extends Node3D
 ## - Zoom: mouse wheel toward the cursor, 10 to 70 tiles from the pivot, tilting from 42 to 62
 ##   degrees as it zooms out.
 ## - Rotate: Ctrl+Left/Right in 45-degree steps, or Alt+middle-drag.
+## - Touch (TouchControls) uses the same moves: one finger grabs the ground (grab, drag_to,
+##   release); two fingers zoom at once around their centre (zoom_at without smoothing), twist
+##   (rotate_by) and carry the grabbed ground along.
 ## - The pivot is clamped to the map.
 ## The world is seen through the part of the screen the HUD leaves free (safe_rect(), between
 ## the top bar and the bottom panel): focus() lands its target in the middle of that area, and
@@ -20,6 +23,8 @@ const PITCH_MIN := 42.0
 const PITCH_MAX := 62.0
 const EDGE_PX := 12.0
 const ROTATE_STEP := PI / 4.0
+## Alt+middle-drag turns this much per pixel moved.
+const TURN_PER_PX := 0.008
 const ZOOM_STEP := 1.14
 const FOV := 40.0
 ## The opening view and focus jumps prefer this distance.
@@ -410,6 +415,73 @@ func _notification(what: int) -> void:
 			_edge_wait = EDGE_GRACE_S
 
 
+# --- moving the view: the mouse and keys below, and the touch controls ---------------------------
+
+## Grabs the ground under `screen` (viewport coordinates): drag_to() then keeps it under the
+## pointer until release(). Counts as the player moving the camera.
+func grab(screen: Vector2) -> void:
+	_player_moved()
+	var g: Variant = screen_to_ground(screen)
+	if g != null:
+		_drag_pan = true
+		_drag_anchor = g
+
+
+## Moves the view so the ground grab() took lies under `screen`.
+func drag_to(screen: Vector2) -> void:
+	if not _drag_pan:
+		return
+	_zooming = false
+	var g: Variant = screen_to_ground(screen)
+	if g != null:
+		pivot += _drag_anchor - (g as Vector3)
+		_clamp_pivot()
+		_apply()
+
+
+## Lets go of the ground (and ends a mouse turn).
+func release() -> void:
+	_drag_pan = false
+	_drag_rotate = false
+
+
+## Zooms by `factor` (the new distance over the old; below 1 comes closer) toward `screen`,
+## within the zoom range, keeping the ground under `screen` where it is. `smooth` glides there
+## (the wheel); otherwise the distance changes at once (a pinch, frame by frame).
+func zoom_at(screen: Vector2, factor: float, smooth: bool = true) -> void:
+	_player_moved()
+	target_distance = clampf(target_distance * factor, ZOOM_MIN, ZOOM_MAX)
+	var g: Variant = screen_to_ground(screen)
+	if smooth:
+		if g != null:
+			_zoom_anchor_screen = screen
+			_zoom_anchor_world = g
+			_zooming = true
+		return
+	_zooming = false
+	distance = target_distance
+	_apply()
+	var after: Variant = screen_to_ground(screen)
+	if g != null and after != null:
+		pivot += (g as Vector3) - (after as Vector3)
+		_clamp_pivot()
+		_apply()
+
+
+## Turns the view by `radians` at once, during a drag the player started (Alt+middle-drag, a
+## two-finger twist after grab()).
+func rotate_by(radians: float) -> void:
+	target_yaw += radians
+	yaw = target_yaw
+	_apply()
+
+
+## Turns one 45-degree step (`direction` -1 or 1), snapped to the steps; the turn glides there.
+func rotate_step(direction: int) -> void:
+	_player_moved()
+	target_yaw = snappedf(target_yaw + ROTATE_STEP * float(direction), ROTATE_STEP)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled:
 		return
@@ -418,52 +490,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		match mb.button_index:
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.pressed:
-					_player_moved()
-					var factor := 1.0 / ZOOM_STEP if mb.button_index == MOUSE_BUTTON_WHEEL_UP else ZOOM_STEP
-					target_distance = clampf(target_distance * factor, ZOOM_MIN, ZOOM_MAX)
-					var g: Variant = screen_to_ground(mb.position)
-					if g != null:
-						_zoom_anchor_screen = mb.position
-						_zoom_anchor_world = g
-						_zooming = true
+					zoom_at(mb.position, 1.0 / ZOOM_STEP if mb.button_index == MOUSE_BUTTON_WHEEL_UP else ZOOM_STEP)
 					get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_MIDDLE:
 				if mb.pressed:
-					_player_moved()
 					if mb.alt_pressed:
+						_player_moved()
 						_drag_rotate = true
 					else:
-						var g: Variant = screen_to_ground(mb.position)
-						if g != null:
-							_drag_pan = true
-							_drag_anchor = g
+						grab(mb.position)
 				else:
-					_drag_pan = false
-					_drag_rotate = false
+					release()
 				get_viewport().set_input_as_handled()
 		return
 	var mm := event as InputEventMouseMotion
 	if mm != null:
 		if _drag_rotate:
-			target_yaw -= mm.relative.x * 0.008
-			yaw = target_yaw
+			rotate_by(-mm.relative.x * TURN_PER_PX)
 			get_viewport().set_input_as_handled()
 		elif _drag_pan:
-			_zooming = false
-			var g: Variant = screen_to_ground(mm.position)
-			if g != null:
-				pivot += _drag_anchor - (g as Vector3)
-				_clamp_pivot()
-				_apply()
+			drag_to(mm.position)
 			get_viewport().set_input_as_handled()
 		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.ctrl_pressed:
 		if event.is_action("cam_left"):
-			_player_moved()
-			target_yaw = snappedf(target_yaw - ROTATE_STEP, ROTATE_STEP)
+			rotate_step(-1)
 			get_viewport().set_input_as_handled()
 		elif event.is_action("cam_right"):
-			_player_moved()
-			target_yaw = snappedf(target_yaw + ROTATE_STEP, ROTATE_STEP)
+			rotate_step(1)
 			get_viewport().set_input_as_handled()

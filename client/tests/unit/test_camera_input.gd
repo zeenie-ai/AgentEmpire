@@ -179,6 +179,47 @@ func test_input_ends_a_glide() -> void:
 		_middle(false, s)
 
 
+func test_an_instant_zoom_keeps_the_ground_under_its_point() -> void:
+	var s := _at(0.35, 0.4)
+	var under := _ground(s)
+	cam.zoom_at(s, 0.8, false)
+	assert_almost_eq(cam.distance, 24.0, 0.0001, "at once")
+	assert_almost_eq(cam.target_distance, 24.0, 0.0001)
+	assert_true(cam.user_moved_since_frame)
+	_assert_near(_ground(s), under, 0.001, "the ground under the fingers stays")
+	cam._process(FRAME)
+	_assert_near(_ground(s), under, 0.001, "and the next frame leaves it there")
+	cam.zoom_at(s, 0.01, false)
+	assert_almost_eq(cam.distance, RtsCamera.ZOOM_MIN, 0.0001, "within the zoom range")
+
+
+func test_two_fingers_carry_the_ground_while_zooming_and_turning() -> void:
+	var c0 := _at(0.5, 0.55)
+	var grabbed := _ground(c0)
+	cam.grab(c0)
+	assert_true(cam.user_moved_since_frame)
+	var c1 := _at(0.42, 0.5)
+	cam.zoom_at(c1, 0.9, false)
+	cam.rotate_by(0.3)
+	cam.drag_to(c1)
+	assert_almost_eq(cam.distance, 27.0, 0.0001)
+	assert_almost_eq(cam.yaw, 0.3, 0.00001)
+	_assert_near(_ground(c1), grabbed, 0.001, "the ground between the fingers follows them")
+	var c2 := _at(0.55, 0.6)
+	cam.zoom_at(c2, 1.2, false)
+	cam.rotate_by(-0.5)
+	cam.drag_to(c2)
+	assert_almost_eq(cam.distance, 32.4, 0.0001)
+	assert_almost_eq(cam.yaw, -0.2, 0.00001)
+	_assert_near(_ground(c2), grabbed, 0.001, "every frame of the pinch")
+	cam.release()
+	var pivot := cam.pivot
+	cam.drag_to(_at(0.3, 0.3))
+	assert_eq(cam.pivot, pivot, "released")
+	cam._process(FRAME)
+	assert_almost_eq(cam.yaw, -0.2, 0.00001, "the twist stays")
+
+
 func test_disabled_input_is_ignored() -> void:
 	cam.input_enabled = false
 	var s := _at(0.5, 0.5)
