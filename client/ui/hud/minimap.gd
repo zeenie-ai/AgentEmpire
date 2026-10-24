@@ -2,9 +2,12 @@ class_name Minimap
 extends Control
 ## 128x128 minimap image, refreshed about twice a second: terrain and resources (redrawn when
 ## the grid changes), buildings, units, the build zone and the camera's view. Left-click or drag
-## to move the camera; right-click to give the selection an order there.
+## to move the camera (on touch: tap or drag); right-click to give the selection an order there.
 
 const REFRESH_S := 0.5
+## Its size in the bottom panel, and in the phone's overlay.
+const SIZE := 190.0
+const PHONE_SIZE := 216.0
 const COL_GRASS := Color("#7d8b4f")
 const COL_TREE := Color("#3f5a2e")
 const COL_BUSH := Color("#b8324a")
@@ -30,7 +33,7 @@ var _dragging: bool = false
 
 
 func _init() -> void:
-	custom_minimum_size = Vector2(190, 190)
+	custom_minimum_size = Vector2(SIZE, SIZE)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	tooltip_text = ""
 

@@ -5,11 +5,15 @@ extends CanvasLayer
 ## theme (ThemeBuilder).
 ##
 ## Three layouts (Layout), picked from Platform: the desktop's; a tablet's on touch, the same
-## with a Menu button in the top bar; and a phone's (a safe area under 1200 dp wide), with a
-## slim top bar (resources, population, Idle, Map, Menu) and the command card at the bottom
-## right, in the phone column. Everything but the dim, the drag box and the cursor hint sits in
-## `safe`, inset to the display's safe area (clear of camera cutouts). Without a Town Hall
-## (Platform.has_town_hall()) the Town Hall chip, the Mana orb and the approval tray are hidden.
+## with a Menu button in the top bar; and a phone's (a safe area under 1200 dp wide):
+## - a slim top bar: resources, population, Idle, Map and Menu;
+## - the phone column at the bottom right: the compact selection details over the command card,
+##   shown while something is selected;
+## - the minimap in an overlay under the Map button;
+## - the Select toggle at the bottom left (RtsInput.drag_selects).
+## Everything but the dim, the drag box and the cursor hint sits in `safe`, inset to the
+## display's safe area (clear of camera cutouts). Without a Town Hall (Platform.has_town_hall())
+## the Town Hall chip, the Mana orb and the approval tray are hidden.
 ##
 ## Agents: the approval tray (top right), and modal windows opened over a dimmed town
 ## (open_window, stacked: the Summoning Font opens its folder browser on top of itself): the
@@ -26,8 +30,14 @@ var root: Control
 var safe: Control
 var top_bar: TopBar
 var bottom: BottomPanel
-## Phones: the command card in its frame, at the bottom right.
+## Phones: the selection details over the command card, at the bottom right. It keeps the
+## card's width when they hide, so the world band beside it never moves.
 var column: VBoxContainer
+## Phones: the minimap opened from the Map button, top right under the bar. It catches the taps
+## around the minimap, which close it.
+var map_overlay: Control
+## Phones: the Select toggle, bottom left.
+var select_toggle: SelectToggle
 var toasts: ToastLayer
 var box_overlay: SelectionBoxOverlay
 var hint: CursorHint
@@ -43,6 +53,7 @@ var layout: Layout = Layout.DESKTOP
 var town_hall: bool = true
 
 var _input: RtsInput
+var _selection: Selection
 var _windows: Array[Control] = []
 var _dim: ColorRect
 
@@ -83,6 +94,15 @@ func _ready() -> void:
 	column.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	column.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
+	select_toggle = SelectToggle.new()
+	select_toggle.name = "SelectToggle"
+	safe.add_child(select_toggle)
+	select_toggle.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	select_toggle.offset_left = PHONE_GAP
+	select_toggle.offset_right = PHONE_GAP + SelectToggle.SIZE
+	select_toggle.offset_top = -PHONE_GAP - SelectToggle.SIZE
+	select_toggle.offset_bottom = -PHONE_GAP
+
 	toasts = ToastLayer.new()
 	safe.add_child(toasts)
 
@@ -104,6 +124,13 @@ func _ready() -> void:
 	approval_tray.offset_left = -16 - ApprovalTray.WIDTH
 	approval_tray.focus_requested.connect(_on_focus_requested)
 
+	map_overlay = Control.new()
+	map_overlay.name = "MapOverlay"
+	map_overlay.visible = false
+	safe.add_child(map_overlay)
+	map_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map_overlay.gui_input.connect(_on_map_overlay_input)
+
 	modal_root = Control.new()
 	modal_root.name = "Modal"
 	modal_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -113,6 +140,7 @@ func _ready() -> void:
 	top_bar.town_hall_mode_requested.connect(_on_town_hall_mode_requested)
 	top_bar.town_hall_close_requested.connect(_on_town_hall_close_requested)
 	top_bar.menu_requested.connect(open_game_menu)
+	top_bar.map_requested.connect(_toggle_map)
 
 	for c: Control in [safe, top_bar, column]:
 		c.item_rect_changed.connect(_place_under_bar)
@@ -139,21 +167,45 @@ func use_layout(which: Layout, with_town_hall: bool) -> void:
 	_apply_layout()
 
 
-## Fits the bars to `layout` and puts the command card where it belongs: in the bottom panel, or
-## on phones alone in the column at the bottom right.
+## Fits the HUD to `layout`: the bars, and where the minimap, the selection details and the
+## command card live (the bottom panel, or on phones the map overlay and the column).
 func _apply_layout() -> void:
 	var phone := layout == Layout.PHONE
-	top_bar.configure(phone, layout != Layout.DESKTOP, town_hall)
+	var touch := layout != Layout.DESKTOP
+	top_bar.configure(phone, touch, town_hall)
 	approval_tray.visible = town_hall
 	if phone:
-		bottom.card_frame.reparent(column, false)
+		_gather(column, [bottom.selection_panel, bottom.card_frame])
+		column.custom_minimum_size.x = bottom.card_frame.get_combined_minimum_size().x
+		_gather(map_overlay, [bottom.map_frame])
+		bottom.minimap.custom_minimum_size = Vector2.ONE * Minimap.PHONE_SIZE
+		bottom.map_frame.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, PHONE_GAP)
 	else:
+		close_overlay()
+		bottom.minimap.custom_minimum_size = Vector2.ONE * Minimap.SIZE
 		bottom.dock()
+	bottom.selection_panel.set_look(phone, touch)
 	bottom.visible = not phone
 	column.visible = phone
-	toasts.max_toasts = 3 if phone else ToastLayer.MAX_TOASTS
-	toasts.wrap = phone
+	select_toggle.visible = phone
+	toasts.compact = phone
+	_update_column()
 	_place_under_bar()
+
+
+## Moves `parts` into `parent`, in this order.
+static func _gather(parent: Control, parts: Array[Control]) -> void:
+	for i in parts.size():
+		if parts[i].get_parent() != parent:
+			parts[i].reparent(parent, false)
+		parent.move_child(parts[i], i)
+
+
+## On phones the selection details and the command card show while something is selected.
+func _update_column() -> void:
+	var shown := layout != Layout.PHONE or (_selection != null and not _selection.ids.is_empty())
+	bottom.selection_panel.visible = shown
+	bottom.card_frame.visible = shown
 
 
 ## Insets `safe` to the display's safe area (the whole viewport on desktop).
@@ -179,10 +231,16 @@ func _place_under_bar() -> void:
 	fps_label.offset_right = band_right - 16.0
 	fps_label.offset_top = below + 8.0
 	approval_tray.offset_top = below + 12.0
+	if layout == Layout.PHONE:
+		bottom.map_frame.offset_top = below + PHONE_GAP
 
 
 func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsInput) -> void:
 	_input = input
+	_selection = selection
+	selection.changed.connect(_update_column)
+	select_toggle.bind(input)
+	_update_column()
 	top_bar.input = input
 	bottom.minimap.camera = camera
 	bottom.minimap.input = input
@@ -225,10 +283,42 @@ func open_game_menu() -> void:
 	open_window(GameMenu.new().setup(self, _input))
 
 
+## Opens the phone's minimap overlay; false in the layouts without one.
+func open_map() -> bool:
+	if layout != Layout.PHONE:
+		return false
+	map_overlay.visible = true
+	top_bar.set_map_open(true)
+	var frame := bottom.map_frame
+	frame.pivot_offset = Vector2(frame.size.x, 0.0)
+	frame.scale = Vector2.ONE * 0.94
+	frame.modulate.a = 0.0
+	var tw := frame.create_tween().set_parallel(true)
+	tw.tween_property(frame, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(frame, "modulate:a", 1.0, 0.1)
+	return true
+
+
 ## Closes an overlay that is not a window (the phone's minimap). True when one was open.
-## Stub: the HUD stream fills it in.
 func close_overlay() -> bool:
-	return false
+	if not map_overlay.visible:
+		return false
+	map_overlay.visible = false
+	top_bar.set_map_open(false)
+	return true
+
+
+func _toggle_map() -> void:
+	if not close_overlay():
+		open_map()
+
+
+## A press on the overlay beside the minimap closes it.
+func _on_map_overlay_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed:
+		close_overlay()
+		map_overlay.accept_event()
 
 
 func bind_world(w: SimWorld) -> void:
@@ -273,12 +363,19 @@ func open_window(w: Control) -> void:
 	_windows.append(w)
 	modal_root.add_child(w)
 	if not w is WindowFrame:
-		w.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-		w.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		w.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_center(w)
+		w.minimum_size_changed.connect(_center.bind(w))
 	if w.has_signal("open_window_requested"):
 		w.connect("open_window_requested", open_window)
 	w.tree_exited.connect(_on_window_gone.bind(w))
+
+
+## Centres a plain window at its minimum size, again whenever that changes: wrapped text measures
+## tall until it knows its width.
+func _center(w: Control) -> void:
+	w.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	w.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	w.grow_vertical = Control.GROW_DIRECTION_BOTH
 
 
 ## Closes the topmost window.
@@ -366,14 +463,16 @@ func confirm(title: String, text: String, on_yes: Callable) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 10)
 	box.add_child(row)
+	# On touch the buttons are whole touch targets.
+	var button_size := Vector2(96, Platform.TOUCH_TARGET_DP if layout != Layout.DESKTOP else 34.0)
 	var no := Button.new()
 	no.text = "No"
-	no.custom_minimum_size = Vector2(96, 34)
+	no.custom_minimum_size = button_size
 	no.pressed.connect(panel.queue_free)
 	row.add_child(no)
 	var yes := Button.new()
 	yes.text = "Yes"
-	yes.custom_minimum_size = Vector2(96, 34)
+	yes.custom_minimum_size = button_size
 	yes.pressed.connect(func() -> void:
 		panel.queue_free()
 		on_yes.call())

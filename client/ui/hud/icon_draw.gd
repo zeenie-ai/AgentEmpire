@@ -134,6 +134,14 @@ static func draw(ci: CanvasItem, icon: String, rect: Rect2, dim: bool = false) -
 			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0.55, -0.3) * s, c + Vector2(0.95, 0.0) * s, c + Vector2(0.55, 0.3) * s]), _c(UiTokens.GOLD_BRIGHT, k))
 		"map":
 			_map(ci, c, s, k)
+		"select":
+			_select(ci, c, s, k)
+		"close":
+			var w := maxf(s * 0.18, 2.0)
+			for d: Vector2 in [Vector2(1, 1), Vector2(1, -1)]:
+				ci.draw_line(c - d * s * 0.5, c + d * s * 0.5, _c(UiTokens.HUD_SUBTLE, k), w)
+				ci.draw_circle(c - d * s * 0.5, w * 0.5, _c(UiTokens.HUD_SUBTLE, k))
+				ci.draw_circle(c + d * s * 0.5, w * 0.5, _c(UiTokens.HUD_SUBTLE, k))
 		"menu":
 			# Three bars with rounded ends.
 			var t := maxf(s * 0.22, 2.0)
@@ -183,6 +191,30 @@ static func _map(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
 	ci.draw_polyline(route, _c(UiTokens.BAD.darkened(0.1), k), w)
 	ci.draw_circle(c + Vector2(0.52, -0.22) * s, s * 0.17, _c(UiTokens.GOLD_DEEP, k))
 	ci.draw_circle(c + Vector2(0.52, -0.22) * s, s * 0.08, _c(UiTokens.INK, k))
+
+
+## A dashed selection box with corner handles, and a pointer at its lower right: drag to select.
+static func _select(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
+	var box := Rect2(c + Vector2(-0.82, -0.72) * s, Vector2(1.36, 1.16) * s)
+	var w := maxf(s * 0.09, 1.4)
+	var col := _c(UiTokens.MINT, k)
+	ci.draw_rect(box, Color(col, 0.16))
+	var corners := [box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)]
+	for i in 4:
+		var a: Vector2 = corners[i]
+		var b: Vector2 = corners[(i + 1) % 4]
+		ci.draw_dashed_line(a, b, col, w, s * 0.2, false)
+	for p: Vector2 in corners:
+		ci.draw_rect(Rect2(p - Vector2.ONE * s * 0.09, Vector2.ONE * s * 0.18), col)
+	# The pointer, tip on the box's lower-right corner.
+	var tip := box.end - Vector2(0.12, 0.12) * s
+	var arrow := PackedVector2Array()
+	for v: Vector2 in [Vector2(0, 0), Vector2(0, 0.86), Vector2(0.21, 0.66), Vector2(0.37, 0.98),
+			Vector2(0.52, 0.91), Vector2(0.36, 0.6), Vector2(0.63, 0.6)]:
+		arrow.append(tip + v * s * 0.7)
+	ci.draw_colored_polygon(arrow, _c(UiTokens.HUD_TEXT, k))
+	arrow.append(arrow[0])
+	ci.draw_polyline(arrow, _c(UiTokens.INK, k), maxf(s * 0.06, 1.0), true)
 
 
 static func _log(ci: CanvasItem, c: Vector2, s: float, k: float) -> void:
