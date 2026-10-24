@@ -3,8 +3,8 @@ extends Node
 ## Android's Back button. It undoes the most recent thing and never quits: in order, it closes a
 ## touch tip or the minimap overlay, closes the top window, cancels placement or rally, turns the
 ## Select toggle off, clears the selection, and otherwise opens the game menu (which has Quit).
-## When the app comes back from the background it opens the game menu, so the town waits paused.
-## Hud creates it in setup().
+## When the app comes back from the background (where Game pauses the town) it opens the game
+## menu, so the town waits until Resume. Hud creates it in setup().
 
 var hud: Hud
 var input: RtsInput
@@ -44,7 +44,8 @@ func go_back() -> void:
 		hud.open_game_menu()
 
 
-## Back from the background: the town waits in the game menu, unless a window is open already.
+## Back from the background: the town waits in the game menu (over any other window, so there is
+## always a Resume), unless one is open already.
 func _on_resumed() -> void:
-	if not hud.has_window():
+	if not GameMenu.is_open():
 		hud.open_game_menu()

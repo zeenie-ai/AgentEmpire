@@ -83,15 +83,18 @@ func _button(panel: Control, text: String) -> Button:
 func test_the_town_waits_while_the_menu_is_open() -> void:
 	var m := _menu()
 	assert_true(_game.paused, "paused while open")
+	assert_true(GameMenu.is_open())
 	remove_child(m)
 	assert_false(_game.paused, "running again once it closes")
+	assert_false(GameMenu.is_open())
 
 
-func test_a_town_paused_before_stays_paused() -> void:
+func test_a_town_paused_in_the_background_runs_again_when_the_menu_closes() -> void:
+	# Game pauses the town when the app goes to the background; BackChain opens the menu on return.
 	_game.paused = true
 	var m := _menu()
 	remove_child(m)
-	assert_true(_game.paused)
+	assert_false(_game.paused)
 
 
 func test_every_button_is_a_touch_target() -> void:

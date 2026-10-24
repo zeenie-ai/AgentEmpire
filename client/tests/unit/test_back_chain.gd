@@ -5,6 +5,14 @@ extends GutTest
 
 const FakeHud = preload("res://tests/fixtures/fake_hud.gd")
 
+
+## What a game menu reads and pauses, in place of the Game autoload.
+class FakeGame:
+	extends RefCounted
+	var paused: bool = false
+	var world: SimWorld = null
+
+
 var _hud: FakeHud
 var _input: RtsInput
 var _chain: BackChain
@@ -85,12 +93,23 @@ func test_coming_back_on_a_phone_opens_the_menu() -> void:
 	assert_eq(_hud.menus, 1)
 
 
-func test_coming_back_to_an_open_window_leaves_it() -> void:
+func test_coming_back_opens_the_menu_over_another_window() -> void:
+	# The help, say: the town was paused in the background, so it needs the menu's Resume.
 	_chain.mobile = true
 	_hud.open_window(Control.new())
 	_chain.notification(NOTIFICATION_APPLICATION_RESUMED)
 	await wait_process_frames(2)
-	assert_eq(_hud.menus, 0)
+	assert_eq(_hud.menus, 1)
+
+
+func test_coming_back_to_an_open_menu_leaves_it() -> void:
+	_chain.mobile = true
+	var menu := GameMenu.new()
+	menu.game = FakeGame.new()
+	add_child_autofree(menu.setup(_hud, _input))
+	_chain.notification(NOTIFICATION_APPLICATION_RESUMED)
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 0, "no second menu")
 
 
 func test_desktop_does_not_open_the_menu_on_resume() -> void:

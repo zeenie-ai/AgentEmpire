@@ -2,9 +2,10 @@ class_name GameMenu
 extends PanelContainer
 ## The game menu on phones and tablets: Resume, Save, Load, New town, How to play, Sound,
 ## Graphics, Privacy policy and Quit, under a line with the town's age and townsfolk. The town is
-## paused while it is open; closing it puts Game.paused back to what it was. Opened with
-## Hud.open_game_menu() from the top bar's Menu button and by Back. Parchment, like Hud.confirm,
-## and every button is a full touch target (Platform.TOUCH_TARGET_DP).
+## paused while it is open, and runs again when it closes, however it closes: Game pauses the town
+## when the app goes to the background, and BackChain opens this menu when it comes back. Opened
+## with Hud.open_game_menu() from the top bar's Menu button and by Back. Parchment, like
+## Hud.confirm, and every button is a full touch target (Platform.TOUCH_TARGET_DP).
 ##
 ## Save, Load and New town close the menu, so their toast shows over the town; Sound and Graphics
 ## apply at once and keep it open.
@@ -12,6 +13,9 @@ extends PanelContainer
 const PRIVACY_URL := "https://zeenie-ai.github.io/AgentEmpire/privacy/"
 const BUTTON_WIDTH := 168.0
 const CHOICE_WIDTH := 72.0
+
+## Game menus in the tree.
+static var _open: int = 0
 
 var hud: Hud
 var input: RtsInput
@@ -21,7 +25,10 @@ var game: Object = Game
 var settings: Object = Settings
 var open_url: Callable = OS.shell_open
 
-var _was_paused: bool = false
+
+## True while a game menu is open.
+static func is_open() -> bool:
+	return _open > 0
 
 
 func setup(hud_layer: Hud, rts_input: RtsInput) -> GameMenu:
@@ -31,12 +38,13 @@ func setup(hud_layer: Hud, rts_input: RtsInput) -> GameMenu:
 
 
 func _enter_tree() -> void:
-	_was_paused = game.paused
+	_open += 1
 	game.paused = true
 
 
 func _exit_tree() -> void:
-	game.paused = _was_paused
+	_open -= 1
+	game.paused = false
 
 
 func _ready() -> void:
