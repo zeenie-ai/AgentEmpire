@@ -8,11 +8,12 @@ extends SceneTree
 ## and, asked for by name only, more of the HUD:
 ##   out/hud_group.png  every townsperson selected
 ##   out/hud_unit.png   one townsperson selected
+##   out/hud_place.png  one townsperson placing a Cottage (on touch, the card's mode bar)
 ##   out/hud_map.png    phones: the minimap opened from the top bar's Map button
 ## out/ is at the repository root (next to client/). Needs a window, so do not pass --headless:
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/capture_screens.gd
 ## Options after "--": --out=<dir> --seed=<n> --quality=low|medium|high --size=1600x900
-##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_map
+##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_place,hud_map
 ## and the phone and tablet build (Platform): --mobile --dpi=<n>, the window standing in for the
 ## screen, e.g. --size=2400x1080 --mobile --dpi=420 for a phone 914x411 dp. A size larger than the
 ## desktop screen gives the same layout at half the size and half the dpi.
@@ -67,6 +68,11 @@ func _run() -> void:
 	var w: SimWorld = _game().new_town(map_seed, "demo")
 	DemoTown.build(w, 12, 70.0)
 	main.camera.input_enabled = false
+	# The scene frames a new town again a couple of frames after it starts: let that pass, so the
+	# shots' own camera placements are the ones that stand.
+	main.camera.user_moved_since_frame = true
+	for i in 3:
+		await process_frame
 
 	var out := DemoTown.out_dir(_args)
 	DirAccess.make_dir_recursive_absolute(out)
@@ -75,7 +81,7 @@ func _run() -> void:
 	# 1. The town from high above, HUD hidden.
 	if _wanted("map"):
 		main.hud.visible = false
-		main.camera.set_view(Vector3(k.center().x + 1.0, 0.0, k.center().y + 3.0), 70.0, deg_to_rad(-20.0))
+		_aim(main, Vector3(k.center().x + 1.0, 0.0, k.center().y + 3.0), 70.0, -20.0)
 		await _shot(30, out.path_join("map.png"))
 
 	# 2. The game screen with the HUD: the Keep selected while training.
@@ -84,11 +90,12 @@ func _run() -> void:
 		w.commands.push(GameCommands.train(k.id, "townsfolk"))
 		w.step(1)
 		main.selection.set_ids([k.id])
-		main.camera.set_view(Vector3(k.center().x + 2.0, 0.0, k.center().y + 2.5), 29.0, deg_to_rad(-20.0))
+		_aim(main, Vector3(k.center().x + 2.0, 0.0, k.center().y + 2.5), 29.0, -20.0)
 		_game().paused = false
 		await _shot(45, out.path_join("hud.png"))
 
-	# More of the HUD, only when asked for by name: a group, one townsperson, the phone's minimap.
+	# More of the HUD, only when asked for by name: a group, one townsperson, a cottage being
+	# placed by one townsperson (on touch with the mode bar), the phone's minimap.
 	var folk: Array[int] = []
 	for u: SimUnit in w.units.values():
 		if u.kind == "townsfolk":
@@ -101,6 +108,12 @@ func _run() -> void:
 		main.hud.visible = true
 		main.selection.set_ids([folk[0]])
 		await _shot(20, out.path_join("hud_unit.png"))
+	if _named("hud_place"):
+		main.hud.visible = true
+		main.selection.set_ids([folk[0]])
+		main.input.begin_placement("cottage")
+		await _shot(20, out.path_join("hud_place.png"))
+		main.input.cancel_mode()
 	if _named("hud_map"):
 		main.hud.visible = true
 		main.selection.clear()
@@ -114,7 +127,7 @@ func _run() -> void:
 		main.selection.clear()
 		_game().paused = false
 		var focus := _busy_spot(w)
-		main.camera.set_view(Vector3(focus.x, 0.0, focus.y), 13.0, deg_to_rad(-28.0))
+		_aim(main, Vector3(focus.x, 0.0, focus.y), 13.0, -28.0)
 		await _shot(90, out.path_join("closeup.png"))
 		_print_animation(main.world_view)
 
@@ -122,10 +135,20 @@ func _run() -> void:
 	if _wanted("night"):
 		main.hud.visible = true
 		main.world_view.environment_view.set_night(1.0)
-		main.camera.set_view(Vector3(k.center().x + 1.0, 0.0, k.center().y + 2.0), 32.0, deg_to_rad(-20.0))
+		_aim(main, Vector3(k.center().x + 1.0, 0.0, k.center().y + 2.0), 32.0, -20.0)
 		await _shot(40, out.path_join("night.png"))
 		main.world_view.environment_view.set_night(0.0)
 	quit(0)
+
+
+## Points the camera at `at` from `distance` and `yaw_deg`: with the HUD showing, in the middle of
+## the part of the screen it leaves free (RtsCamera.focus). Marked as the player's own view, so the
+## scene's re-framing (after a start or a window resize) leaves it be.
+func _aim(main: Variant, at: Vector3, distance: float, yaw_deg: float) -> void:
+	main.camera.set_view(at, distance, deg_to_rad(yaw_deg))
+	if main.hud.visible:
+		main.camera.focus(at, true)
+	main.camera.user_moved_since_frame = true
 
 
 ## Puts a new Cottage site next to the Keep with three builders, and returns a point between
