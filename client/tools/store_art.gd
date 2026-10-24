@@ -16,12 +16,18 @@ extends SceneTree
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/store_art.gd
 ## Options after "--":
 ##   --only=icons,feature   render only these (both by default); --check renders nothing
-##   --seed=<n>             the town in the feature graphic
-##   --shots                store screenshots of the phone and tablet build into out/store/shots/,
-##                          at the window size --size=WxH; pass --mobile and --dpi=<n> too:
-##                            phone   --size=1920x1080 --mobile --dpi=420
-##                            tablets --size=1920x1200 --mobile --dpi=280
-##                                    --size=2560x1600 --mobile --dpi=320
+##   --seed=<n>             the town in the feature graphic and the screenshots
+##   --shots                store screenshots of the phone and tablet build, at the window size
+##                          --size=WxH, into out/store/shots/<WxH>-<n>-<scene>.png, best first.
+##                          They need the renderer phones use and the phone build's flags:
+##     <godot> --rendering-method mobile --path client -s res://tools/store_art.gd -- --shots
+##       phone          --size=1920x1080 --mobile --dpi=420
+##       small tablet   --size=1920x1200 --mobile --dpi=280 --only=town,unit,build
+##       large tablet   --size=2560x1440 --mobile --dpi=320 --only=keep,unit,group,build
+##                          (not town there: the full layout shows an empty command grid
+##                          while nothing is selected)
+##                          --only=<scenes> picks scenes in that order from SHOT_SCENES; the
+##                          graphics are the build's default on phones (Low) unless --quality=.
 
 const ICON_SVG := "res://icon.svg"
 const LAUNCHER_DIR := "res://art/launcher"
@@ -64,6 +70,13 @@ const PNG_RGB := 2
 const PNG_RGBA := 6
 
 const SEED := 4127
+## The phone's screenshot scenes, best first: the walled town; a townsperson farming, close up;
+## a cottage being placed; every townsperson selected; the Keep training; the minimap; How to
+## play.
+const SHOT_SCENES: Array[String] = ["town", "unit", "build", "group", "keep", "map", "help"]
+## The group shot frames the townsfolk this close to the Keep (tiles): inside the Keep Ring and
+## at the groves by its gates.
+const GROUP_RADIUS := 16.0
 
 var _args: PackedStringArray
 var _failures: int = 0
@@ -480,11 +493,14 @@ func _shots_dir() -> String:
 	return _repo_path("out/store/shots")
 
 
-## Store screenshots at the window size, from the phone and tablet build (--mobile): the town with
-## the HUD, the Keep training townsfolk, townsfolk gathering, and a cottage being placed.
+## Store screenshots at the window size, from the phone and tablet build (--mobile) on the
+## renderer phones use: one per scene in --only (SHOT_SCENES by default), numbered in that order.
 func _shots() -> void:
 	if DisplayServer.get_name() == "headless" or not Platform.is_mobile():
 		_fail("--shots needs a real window and --mobile --dpi=<n>")
+		return
+	if RenderingServer.get_current_rendering_method() != "mobile":
+		_fail("--shots needs --rendering-method mobile, the renderer phones use")
 		return
 	var dims := _arg("size", "1920x1080").split("x")
 	var size := Vector2i(int(dims[0]), int(dims[1]))
@@ -496,34 +512,116 @@ func _shots() -> void:
 	await process_frame
 	game.paused = true
 	var w: SimWorld = game.new_town(int(_arg("seed", str(SEED))), "store")
-	DemoTown.build(w, 12, 70.0)
+	# Long enough for the demo town's training and building to finish, so no "is ready" or
+	# "completed" toast lands on a later shot.
+	DemoTown.build(w, 12, 100.0)
+	print("store_art: the Keep has %d in training" % w.keep().queue.size())
 	main.camera.input_enabled = false
 	main.world_view.hover_id = 0
+	# Two "+10" gains landing together overlap into a smudge.
+	main.world_view.floating.visible = false
+	# The scene frames a new town again a couple of frames after it starts: let that pass, so the
+	# shots' own views are the ones that stand.
+	main.camera.user_moved_since_frame = true
+	for i in 3:
+		await process_frame
 	game.paused = false
 	# The toasts from building the town ("Cottage completed." and so on) last about 4 seconds.
 	await create_timer(4.5).timeout
-	var k := w.keep()
 	var prefix := _shots_dir().path_join("%dx%d" % [size.x, size.y])
+	var scenes := _arg("only", ",".join(PackedStringArray(SHOT_SCENES))).split(",")
+	for i in scenes.size():
+		var frames: int = await _stage(scenes[i], main, w)
+		if frames > 0:
+			await _shot(size, "%s-%d-%s.png" % [prefix, i + 1, scenes[i]], frames)
+		main.input.cancel_mode()
+		main.hud.close_overlay()
+		if main.hud.has_window():
+			main.hud.close_window()
+		main.selection.clear()
 
-	main.frame_town()
-	await _shot(size, prefix + "-1-town.png", 60)
 
-	w.commands.push(GameCommands.train(k.id, "townsfolk"))
-	main.selection.set_ids([k.id])
-	await _shot(size, prefix + "-2-keep.png", 30)
+## Sets up one screenshot (SHOT_SCENES) and returns how many frames to let it settle, or 0 when
+## it cannot be staged.
+func _stage(scene: String, main: Variant, w: SimWorld) -> int:
+	var k := w.keep()
+	var keep := Vector3(k.center().x, 0.0, k.center().y)
+	var folk := _townsfolk(w)
+	match scene:
+		"town":
+			# Nothing selected, so the town in the middle of the whole screen.
+			main.camera.set_view(keep + Vector3(0.0, 0.0, 1.5), 30.0, deg_to_rad(-20.0))
+			main.camera.user_moved_since_frame = true
+			return 30
+		"keep":
+			if w.ledger.can_afford(w.econ.unit_cost("townsfolk")):
+				w.commands.push(GameCommands.train(k.id, "townsfolk"))
+			main.selection.set_ids([k.id])
+			_look_at(main, keep, 22.0, -20.0)
+			return 45
+		"group":
+			# Everyone selected, framed on the Keep and the townsfolk inside the walls and at the
+			# groves by their gates.
+			main.selection.set_ids(folk)
+			var points := PackedVector3Array([keep])
+			for id: int in folk:
+				var p := w.units[id].pos
+				if p.distance_to(k.center()) <= GROUP_RADIUS:
+					points.append(Vector3(p.x, 0.0, p.y))
+			main.camera.frame(points, 24.0, 0.06, true, 40.0, deg_to_rad(-20.0))
+			main.camera.user_moved_since_frame = true
+			return 20
+		"unit":
+			# A townsperson farming, close up: the wheat is low and open, where trees, bushes by
+			# the walls and the walls themselves hide gatherers from the town's view.
+			var farmer: SimUnit = null
+			for id: int in folk:
+				if w.units[id].gather_kind == "farm":
+					farmer = w.units[id]
+			if farmer == null:
+				_fail("unit: nobody works a farm")
+				return 0
+			main.selection.set_ids([farmer.id])
+			_look_at(main, Vector3(farmer.pos.x, 0.0, farmer.pos.y), 11.0, -20.0)
+			return 20
+		"build":
+			# A cottage being placed on open ground beside the Keep's square: the ghost starts in the
+			# middle of the free part of the screen, where the camera puts the spot.
+			var spot := DemoTown.find_spot(w, "cottage", Vector2i(k.center()) + Vector2i(-4, 3), 4)
+			if spot == Pathing.NO_CELL:
+				_fail("build: no room for a cottage near the Keep")
+				return 0
+			main.selection.set_ids(folk.slice(0, 3))
+			_look_at(main, Vector3(spot.x + 1.0, 0.0, spot.y + 1.0), 26.0, -20.0)
+			main.input.begin_placement("cottage")
+			return 30
+		"map":
+			_look_at(main, keep + Vector3(0.0, 0.0, 1.5), 28.0, -20.0)
+			if not main.hud.open_map():
+				_fail("map: this layout has no minimap overlay")
+				return 0
+			return 20
+		"help":
+			main.hud.open_window(load("res://ui/hud/help_panel.gd").new())
+			return 20
+	_fail("no screenshot scene called %s" % scene)
+	return 0
 
-	var tree := w.find_nearest_node(k.center(), ["tree"], 30.0)
-	var crew: Array = w.units.keys().slice(0, 5)
-	if tree != null:
-		w.commands.push(GameCommands.gather(crew, tree.id))
-		main.camera.focus(Vector3(tree.cell.x + 0.5, 0.0, tree.cell.y + 0.5), true)
-	main.selection.set_ids(crew)
-	await _shot(size, prefix + "-3-gather.png", 120)
 
-	main.camera.focus(Vector3(k.center().x + 4.0, 0.0, k.center().y + 5.0), true)
-	main.input.begin_placement("cottage")
-	await _shot(size, prefix + "-4-build.png", 30)
-	main.input.cancel_mode()
+func _townsfolk(w: SimWorld) -> Array[int]:
+	var out: Array[int] = []
+	for u: SimUnit in w.units.values():
+		if u.kind == "townsfolk":
+			out.append(u.id)
+	return out
+
+
+## Points the camera at `at` from `distance` and `yaw_deg`, in the middle of the part of the screen
+## the HUD leaves free (RtsCamera.focus), as the player's own view so the scene leaves it be.
+func _look_at(main: Variant, at: Vector3, distance: float, yaw_deg: float) -> void:
+	main.camera.set_view(at, distance, deg_to_rad(yaw_deg))
+	main.camera.focus(at, true)
+	main.camera.user_moved_since_frame = true
 
 
 func _shot(size: Vector2i, path: String, frames: int) -> void:

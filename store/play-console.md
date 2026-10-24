@@ -24,7 +24,7 @@ shown on the listing; Play wants the privacy policy to name it).
 
 | Field | Answer |
 |---|---|
-| App name | AgentEmpire |
+| App name | AgentEmpire: Town Builder (the store title, 25 of 30; the phone's launcher shows AgentEmpire) |
 | Default language | English (United States) - en-US |
 | App or game | Game |
 | Free or paid | Free (a free app can never become paid; there are no purchases, so this is fine) |
@@ -149,12 +149,16 @@ shared with third parties".
 | App name, short description, full description | `store/listing.md` |
 | App icon (512 x 512, 32-bit PNG) | `store/graphics/icon-512.png` |
 | Feature graphic (1024 x 500, 24-bit PNG) | `store/graphics/feature-1024x500.png` |
-| Phone screenshots | after the phone HUD is finished: 1920 x 1080, 4 to 8 of them |
-| 7-inch and 10-inch tablet screenshots | after the phone HUD is finished: 1920 x 1200 and 2560 x 1600, 2 to 4 each |
+| Phone screenshots | 7 at 1920 x 1080, in this order: `out/store/shots/1920x1080-1-town.png` to `-7-help.png` |
+| 7-inch tablet screenshots | 3 at 1920 x 1200: `out/store/shots/1920x1200-1-town.png` to `-3-build.png` |
+| 10-inch tablet screenshots | 4 at 2560 x 1440: `out/store/shots/2560x1440-1-keep.png` to `-4-build.png` |
 | Video | None |
 
-`client/tools/store_art.gd` renders the icon and the feature graphic and checks every file
-against Play's limits.
+`client/tools/store_art.gd` renders the icon, the feature graphic and the screenshots (`--shots`,
+with the commands in its header), and checks every file against Play's limits. The screenshots
+are not committed (`out/` is ignored); they show the phone and tablet build on the renderer
+phones use, at the Low graphics phones start with. The phone shots are 16:9 at 1920 x 1080 or
+more, which Play asks of games for recommendations (at least three).
 
 ## Closed testing
 
