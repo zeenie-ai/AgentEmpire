@@ -447,19 +447,20 @@ func release() -> void:
 
 ## Zooms by `factor` (the new distance over the old; below 1 comes closer) toward `screen`,
 ## within the zoom range, keeping the ground under `screen` where it is. `smooth` glides there
-## (the wheel); otherwise the distance changes at once (a pinch, frame by frame).
+## (the wheel); otherwise the distance the player sees changes at once (a pinch, frame by frame).
 func zoom_at(screen: Vector2, factor: float, smooth: bool = true) -> void:
 	_player_moved()
-	target_distance = clampf(target_distance * factor, ZOOM_MIN, ZOOM_MAX)
 	var g: Variant = screen_to_ground(screen)
 	if smooth:
+		target_distance = clampf(target_distance * factor, ZOOM_MIN, ZOOM_MAX)
 		if g != null:
 			_zoom_anchor_screen = screen
 			_zoom_anchor_world = g
 			_zooming = true
 		return
 	_zooming = false
-	distance = target_distance
+	distance = clampf(distance * factor, ZOOM_MIN, ZOOM_MAX)
+	target_distance = distance
 	_apply()
 	var after: Variant = screen_to_ground(screen)
 	if g != null and after != null:

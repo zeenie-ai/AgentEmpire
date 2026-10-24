@@ -220,6 +220,38 @@ func test_two_fingers_carry_the_ground_while_zooming_and_turning() -> void:
 	assert_almost_eq(cam.yaw, -0.2, 0.00001, "the twist stays")
 
 
+func test_an_instant_zoom_starts_from_the_distance_on_screen() -> void:
+	cam.target_distance = 50.0
+	cam._process(FRAME)
+	var seen := cam.distance
+	assert_gt(seen, 30.0, "a zoom is gliding out")
+	cam.zoom_at(_at(0.5, 0.5), 0.9, false)
+	assert_almost_eq(cam.distance, seen * 0.9, 0.0001, "the pinch scales what the player sees")
+	assert_almost_eq(cam.target_distance, cam.distance, 0.0001, "and the glide is over")
+
+
+## How far the ground under a finger ends up from that finger after two fingers either side of
+## the middle turn `turn` radians on screen and the camera turns by `yaw_turn`.
+func _twist_error(turn: float, yaw_turn: float) -> float:
+	cam.set_view(Vector3(64, 0, 64), 30.0, 0.0)
+	var mid := _at(0.5, 0.5)
+	var arm := Vector2(_at(0.15, 0.0).x, 0.0)
+	var under := _ground(mid + arm)
+	cam.grab(mid)
+	cam.rotate_by(yaw_turn)
+	cam.drag_to(mid)
+	cam.release()
+	return _ground(mid + arm.rotated(turn)).distance_to(under)
+
+
+func test_a_twist_turns_the_ground_with_the_fingers() -> void:
+	var moved := _twist_error(0.25, 0.0)
+	var with := _twist_error(0.25, 0.25)
+	var against := _twist_error(0.25, -0.25)
+	assert_lt(with, moved * 0.25, "turning the yaw by the twist keeps the ground near the finger")
+	assert_lt(with, against * 0.2, "and the other way round does not")
+
+
 func test_disabled_input_is_ignored() -> void:
 	cam.input_enabled = false
 	var s := _at(0.5, 0.5)
