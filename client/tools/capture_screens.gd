@@ -10,13 +10,18 @@ extends SceneTree
 ##   out/hud_unit.png   one townsperson selected
 ##   out/hud_place.png  one townsperson placing a Cottage (on touch, the card's mode bar)
 ##   out/hud_map.png    phones: the minimap opened from the top bar's Map button
+##   out/hud_idle.png   nothing selected
+##   out/hud_menu.png   the game menu
+##   out/hud_confirm.png  a confirmation (the game menu's New town)
 ## out/ is at the repository root (next to client/). Needs a window, so do not pass --headless:
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/capture_screens.gd
 ## Options after "--": --out=<dir> --seed=<n> --quality=low|medium|high --size=1600x900
-##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_place,hud_map
+##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_place,hud_map,hud_idle,hud_menu,hud_confirm
 ## and the phone and tablet build (Platform): --mobile --dpi=<n>, the window standing in for the
 ## screen, e.g. --size=2400x1080 --mobile --dpi=420 for a phone 914x411 dp. A size larger than the
-## desktop screen gives the same layout at half the size and half the dpi.
+## desktop screen gives the same layout at half the size and half the dpi. --safe-inset=<dp>
+## stands in for a camera cutout and a rounded corner: the HUD keeps that far from the left and
+## right edges, as it does from a phone's display safe area.
 
 const DEFAULT_SIZE := Vector2i(1600, 900)
 
@@ -73,6 +78,12 @@ func _run() -> void:
 	main.camera.user_moved_since_frame = true
 	for i in 3:
 		await process_frame
+	var inset := float(_arg("safe-inset", "0"))
+	if inset > 0.0:
+		main.hud.safe_area_provider = func() -> Rect2:
+			return main.get_viewport().get_visible_rect().grow_individual(-inset, 0.0, -inset, 0.0)
+		# As when the app comes back: the HUD reads the safe area again.
+		main.hud.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 
 	var out := DemoTown.out_dir(_args)
 	DirAccess.make_dir_recursive_absolute(out)
@@ -120,6 +131,21 @@ func _run() -> void:
 		if main.hud.open_map():
 			await _shot(20, out.path_join("hud_map.png"))
 			main.hud.close_overlay()
+	if _named("hud_idle"):
+		main.hud.visible = true
+		main.selection.clear()
+		await _shot(20, out.path_join("hud_idle.png"))
+	if _named("hud_menu"):
+		main.hud.visible = true
+		main.selection.clear()
+		main.hud.open_game_menu()
+		await _shot(20, out.path_join("hud_menu.png"))
+		main.hud.close_window()
+	if _named("hud_confirm"):
+		main.hud.visible = true
+		main.hud.confirm("Start a new town?", "A new map with a fresh Keep. This town is lost unless you saved it.", func() -> void: pass)
+		await _shot(20, out.path_join("hud_confirm.png"))
+		main.hud.close_window()
 
 	# 3. A close-up of townsfolk at work near the buildings (a fresh site keeps builders busy).
 	if _wanted("closeup"):

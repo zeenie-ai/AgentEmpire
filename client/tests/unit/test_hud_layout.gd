@@ -287,6 +287,101 @@ func test_select_toggle_follows_the_input() -> void:
 	assert_true(toggle.button_pressed)
 
 
+## Visible controls under `under` outside `area`, as "name rect" lines.
+func _outside(under: Control, area: Rect2) -> PackedStringArray:
+	var out := PackedStringArray()
+	for c in _controls(under):
+		var r := c.get_global_rect()
+		if r.size != Vector2.ZERO and not area.grow(0.5).encloses(r):
+			out.append("%s %s" % [c.name, r])
+	return out
+
+
+func test_tablet_layout() -> void:
+	for size: Vector2i in [Vector2i(1280, 800), Vector2i(1430, 994)]:
+		var hud: Hud = await _hud_at(size)
+		hud.use_layout(Hud.Layout.TABLET, false)
+		_connect(hud)
+		_town(hud)
+		await wait_process_frames(3)
+		var bar := hud.top_bar
+		assert_eq(bar.size.y, float(TopBar.TOUCH_HEIGHT), "the bar is one touch target tall at %s" % size)
+		assert_true(bar.get_combined_minimum_size().x <= float(size.x), "the full bar fits %s" % size)
+		for part: Control in [bar._menu_button, bar._age, bar._mark, hud.select_toggle, hud.bottom]:
+			assert_true(part.is_visible_in_tree(), "%s shows at %s" % [part.name, size])
+		for part: Control in [bar._hall, bar._mana, bar._map_button, hud.approval_tray, hud.column]:
+			assert_false(part.is_visible_in_tree(), "%s is hidden at %s" % [part.name, size])
+		var toggle := hud.select_toggle.get_global_rect()
+		assert_eq(toggle.position.x, float(Hud.PHONE_GAP), "the Select toggle is at the left")
+		assert_eq(toggle.end.y, hud.bottom.get_global_rect().position.y - Hud.PHONE_GAP, "just above the bottom panel")
+		assert_eq(hud.world_rect(), Rect2(0, bar.size.y, size.x, hud.bottom.get_global_rect().position.y - bar.size.y),
+			"the world band spans the width between the bars")
+		var hints := ""
+		for c in _controls(hud.bottom.selection_panel):
+			if c is Label:
+				hints += (c as Label).text + "\n"
+		assert_true(hints.contains("Tap to select"), "the hints say Tap at %s" % size)
+		assert_false(hints.contains("click"), "and never click")
+		assert_eq(_off_screen(hud), PackedStringArray(), "everything is on screen at %s" % size)
+		var panel_height := hud.bottom.size.y
+		hud.bottom.selection_panel.selection.set_ids([Game.world.keep_id])
+		await wait_process_frames(2)
+		assert_eq(_small_targets(hud.bottom.selection_panel), PackedStringArray(), "the training queue's slots are touch targets")
+		assert_eq(hud.bottom.size.y, panel_height, "and the bottom panel keeps its height")
+		hud.bottom.selection_panel.selection.clear()
+		await wait_process_frames(2)
+		hud.confirm("Start a new town?", "The town you have now is saved first.", func() -> void: pass)
+		await wait_process_frames(2)
+		assert_eq(_outside(hud.modal_root, hud.get_viewport().get_visible_rect()), PackedStringArray(), "the confirmation fits %s" % size)
+		hud.close_window()
+		hud.open_game_menu()
+		await wait_process_frames(3)
+		assert_eq(_outside(hud.modal_root, hud.get_viewport().get_visible_rect()), PackedStringArray(), "the game menu fits %s" % size)
+		hud.close_window()
+		await wait_process_frames(2)
+		Game.stop_town()
+
+
+func test_the_full_bar_fits_the_narrowest_tablet() -> void:
+	var hud: Hud = await _hud_at(Vector2i(int(Platform.COMPACT_BELOW_DP), 750))
+	hud.use_layout(Hud.Layout.TABLET, false)
+	_connect(hud)
+	_town(hud)
+	hud.top_bar._refresh()
+	await wait_process_frames(2)
+	assert_true(hud.top_bar.get_combined_minimum_size().x <= Platform.COMPACT_BELOW_DP, "%s" % hud.top_bar.get_combined_minimum_size())
+
+
+func test_the_safe_area_insets_the_hud() -> void:
+	for layout: Hud.Layout in [Hud.Layout.PHONE, Hud.Layout.TABLET]:
+		var size := Vector2i(914, 411) if layout == Hud.Layout.PHONE else Vector2i(1280, 800)
+		var hud: Hud = await _hud_at(size)
+		hud.use_layout(layout, false)
+		var sel := _connect(hud).selection
+		var w := _town(hud)
+		sel.set_ids([w.keep_id])
+		# A camera cutout at the left and a rounded corner at the right: 40 dp each.
+		var area := Rect2(40, 0, size.x - 80, size.y)
+		hud.safe_area_provider = func() -> Rect2: return area
+		(hud.get_parent() as SubViewport).size = size + Vector2i(0, 1)
+		(hud.get_parent() as SubViewport).size = size
+		await wait_process_frames(3)
+		assert_eq(hud.safe.get_global_rect(), area, "the HUD keeps to the safe area")
+		assert_eq(_outside(hud.safe, area), PackedStringArray(), "everything is inside it")
+		assert_eq(hud.world_rect().position.x, 40.0, "the world band starts at the safe area")
+		assert_eq(hud.select_toggle.get_global_rect().position.x, 40.0 + Hud.PHONE_GAP, "the Select toggle keeps its gap")
+		if layout == Hud.Layout.PHONE:
+			assert_eq(hud.column.get_global_rect().end.x, area.end.x - Hud.PHONE_GAP, "and so does the column")
+		# Back from the background with the inset gone from the right: the HUD reads it again.
+		var resumed := Rect2(40, 0, size.x - 40, size.y)
+		hud.safe_area_provider = func() -> Rect2: return resumed
+		hud.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+		await wait_process_frames(3)
+		assert_eq(hud.safe.get_global_rect(), resumed, "resuming reads the safe area again")
+		assert_eq(_outside(hud.safe, resumed), PackedStringArray())
+		Game.stop_town()
+
+
 func test_confirm_buttons_are_touch_targets_on_touch() -> void:
 	var hud: Hud = await _phone_at(Vector2i(640, 360))
 	hud.confirm("Start a new town?", "The town you have now is saved first.", func() -> void: pass)
