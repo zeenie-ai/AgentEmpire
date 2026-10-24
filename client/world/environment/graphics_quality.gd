@@ -97,9 +97,17 @@ static func apply_shadow_atlas(q: Dictionary) -> void:
 	RenderingServer.directional_soft_shadow_filter_set_quality(int(q["shadow_filter"]))
 
 
-## True when decals (selection rings) are available and wanted.
+## True when the selection rings are Decals: on Forward+, with a preset that wants them. Other
+## renderers get the MultiMesh rings: the Compatibility renderer has no decals, and the Mobile
+## renderer applies at most 8 to each mesh, so on the one ground mesh a group's rings vanish.
 static func use_decals(q: Dictionary) -> bool:
-	return bool(q.get("decals", false)) and not is_compatibility()
+	return decals_for(q, RenderingServer.get_current_rendering_method())
+
+
+## use_decals() under the rendering method `method` ("forward_plus", "mobile" or
+## "gl_compatibility").
+static func decals_for(q: Dictionary, method: String) -> bool:
+	return bool(q.get("decals", false)) and method == "forward_plus"
 
 
 ## True when GPU particles should be used (CPU particles on the Compatibility renderer).
