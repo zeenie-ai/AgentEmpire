@@ -287,6 +287,32 @@ func test_select_toggle_follows_the_input() -> void:
 	assert_true(toggle.button_pressed)
 
 
+func test_confirm_buttons_are_touch_targets_on_touch() -> void:
+	var hud: Hud = await _phone_at(Vector2i(640, 360))
+	hud.confirm("Start a new town?", "The town you have now is saved first.", func() -> void: pass)
+	await wait_process_frames(2)
+	var buttons := 0
+	var screen := hud.get_viewport().get_visible_rect()
+	for c in _controls(hud.modal_root):
+		if c is Button:
+			buttons += 1
+			assert_true(c.size.y >= Platform.TOUCH_TARGET_DP, "%s is a touch target: %s" % [(c as Button).text, c.size])
+			assert_true(screen.encloses(c.get_global_rect()), "%s is on screen" % (c as Button).text)
+	assert_eq(buttons, 2, "Yes and No")
+	hud.close_window()
+
+
+func test_touch_theme_has_no_hover_look() -> void:
+	# Nothing hovers on touch, and the emulated mouse stays where the finger lifted.
+	var touch := ThemeBuilder.build(true)
+	var desk := ThemeBuilder.build(false)
+	for type in ["Button", "CardButton", "FlatButton"]:
+		assert_eq(touch.get_stylebox("hover", type), touch.get_stylebox("normal", type), "%s on touch" % type)
+		assert_ne(desk.get_stylebox("hover", type), desk.get_stylebox("normal", type), "%s on desktop" % type)
+	assert_eq(touch.get_color("font_hover_color", "Button"), touch.get_color("font_color", "Button"))
+	assert_eq(touch.get_color("font_hover_color", "FlatButton"), touch.get_color("font_color", "FlatButton"))
+
+
 func test_toasts_stay_in_the_phone_world_band() -> void:
 	var hud: Hud = await _phone_at(Vector2i(640, 360))
 	for i in 5:

@@ -463,14 +463,16 @@ func confirm(title: String, text: String, on_yes: Callable) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 10)
 	box.add_child(row)
+	# On touch the buttons are whole touch targets.
+	var button_size := Vector2(96, Platform.TOUCH_TARGET_DP if layout != Layout.DESKTOP else 34.0)
 	var no := Button.new()
 	no.text = "No"
-	no.custom_minimum_size = Vector2(96, 34)
+	no.custom_minimum_size = button_size
 	no.pressed.connect(panel.queue_free)
 	row.add_child(no)
 	var yes := Button.new()
 	yes.text = "Yes"
-	yes.custom_minimum_size = Vector2(96, 34)
+	yes.custom_minimum_size = button_size
 	yes.pressed.connect(func() -> void:
 		panel.queue_free()
 		on_yes.call())
