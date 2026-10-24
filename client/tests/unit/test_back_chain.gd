@@ -79,10 +79,113 @@ func test_rally_mode_is_cancelled_like_placement() -> void:
 
 func test_the_back_button_goes_back() -> void:
 	_input.selection.set_ids([5])
-	_chain.notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+	_go_back_notice()
+	await wait_process_frames(2)
 	assert_true(_input.selection.is_empty())
-	_chain.notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+	_go_back_notice()
+	await wait_process_frames(2)
 	assert_eq(_hud.menus, 1)
+
+
+# --- one press, one step (godotengine/godot#123454) ----------------------------------------------
+# Each Back step below opens a game menu on the empty town, so _hud.menus counts the steps. Key
+# events reach the game at the start of a frame; the key's own go-back notification follows its
+# event in the same frame; the back dispatcher's arrives between frames.
+
+func _key(pressed: bool, echo: bool = false) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = KEY_BACK
+	e.keycode = KEY_BACK
+	e.pressed = pressed
+	e.echo = echo
+	_chain._input(e)
+
+
+func _go_back_notice() -> void:
+	_chain.notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+
+
+func test_a_back_key_tap_on_android_16_takes_one_step() -> void:
+	# adb's keyevent or a quick tap: the dispatcher's notification comes before the key events.
+	_go_back_notice()
+	_key(true)
+	_key(false)
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 1)
+
+
+func test_a_held_back_key_on_android_16_takes_one_step() -> void:
+	_key(true)
+	_go_back_notice()
+	await wait_process_frames(1)
+	assert_eq(_hud.menus, 1, "the step comes with the key's down event")
+	for i in 3:
+		_key(true, true)
+		_go_back_notice()
+		await wait_process_frames(1)
+	_go_back_notice()
+	await wait_process_frames(1)
+	_key(false)
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 1, "repeats and the dispatcher's notification add none")
+
+
+func test_the_dispatcher_may_answer_after_the_key_is_up() -> void:
+	_key(true)
+	_go_back_notice()
+	await wait_process_frames(1)
+	_key(false)
+	await wait_process_frames(1)
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 1)
+
+
+func test_each_back_gesture_takes_one_step() -> void:
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 1)
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 2)
+
+
+func test_the_back_key_takes_one_step_before_android_16() -> void:
+	# Android 15 and older: no dispatcher notification, only the key's own.
+	_key(true)
+	_go_back_notice()
+	await wait_process_frames(1)
+	_key(true, true)
+	_go_back_notice()
+	await wait_process_frames(1)
+	_key(false)
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 1, "a held press")
+	_key(true)
+	_key(false)
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 2, "a tap")
+
+
+func test_two_quick_taps_take_two_steps() -> void:
+	# Both dispatcher notifications arrive before the frame that brings both key presses.
+	_go_back_notice()
+	_go_back_notice()
+	_key(true)
+	_key(false)
+	_key(true)
+	_key(false)
+	_go_back_notice()
+	_go_back_notice()
+	await wait_process_frames(2)
+	assert_eq(_hud.menus, 2)
+
+
+func test_desktop_leaves_the_back_key_alone() -> void:
+	# A keyboard's Back (browser) key must not open the game menu on desktop.
+	assert_false(_chain.is_processing_input())
 
 
 func test_coming_back_on_a_phone_opens_the_menu() -> void:
