@@ -191,6 +191,9 @@ func _apply_layout() -> void:
 		bottom.minimap.custom_minimum_size = Vector2.ONE * Minimap.SIZE
 		bottom.dock()
 	bottom.selection_panel.set_look(phone, touch)
+	# On their own over the town, the phone's frames float.
+	for frame: Control in [bottom.card_frame, bottom.map_frame]:
+		frame.theme_type_variation = "FloatPanel" if phone else "InsetPanel"
 	bottom.visible = not phone
 	column.visible = phone
 	select_toggle.visible = touch

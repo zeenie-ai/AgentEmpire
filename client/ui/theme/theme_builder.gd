@@ -6,9 +6,9 @@ extends RefCounted
 ## - documents and tooltips: parchment #f7ecd8 with ink #2a1d14;
 ## - status windows (toasts, hints): navy with a mint #a9f0d0 trim;
 ## - buttons: terracotta #8f3b25, hover #a8472b with a glowing gold trim, pressed sunk in.
-## Type variations: HudPanel, HudBar, InsetPanel, DocumentPanel, StatusPanel, TitleLabel,
-## DisplayLabel, BodyLabel, MonoLabel, MutedLabel, DocumentLabel, StatusLabel, CardButton,
-## FlatButton.
+## Type variations: HudPanel, HudBar, InsetPanel, FloatPanel, DocumentPanel, StatusPanel,
+## TitleLabel, DisplayLabel, BodyLabel, MonoLabel, MutedLabel, DocumentLabel, StatusLabel,
+## CardButton, FlatButton.
 ## On touch (phones and tablets) nothing hovers, but the mouse the engine emulates from touch
 ## stays where the finger lifted: there buttons look the same hovered as not, so a tapped one does
 ## not stay lit.
@@ -34,6 +34,7 @@ static func build(touch: bool = Platform.is_mobile()) -> Theme:
 	_panel_variation(t, "HudPanel", hud_box())
 	_panel_variation(t, "HudBar", bar_box())
 	_panel_variation(t, "InsetPanel", inset_box())
+	_panel_variation(t, "FloatPanel", float_box())
 	_panel_variation(t, "DocumentPanel", document_box())
 	_panel_variation(t, "StatusPanel", status_box(UiTokens.MINT))
 
@@ -174,6 +175,19 @@ static func inset_box() -> CraftedBox:
 	s.shadow_size = 0.0
 	s.grain = 0.035
 	s.set_content_margin_all(6)
+	return s
+
+
+## The recess on its own over the town (the phone's selection details, command card and
+## minimap): the inset's sunken body and size, with a gold hairline like the top bar's and a drop
+## shadow that lifts it off the ground.
+static func float_box() -> CraftedBox:
+	var s := inset_box()
+	s.trim_color = Color(UiTokens.GOLD, 0.55)
+	s.trim_inset = 2.0
+	s.shadow_size = 9.0
+	s.shadow_alpha = 0.5
+	s.shadow_offset = Vector2(0, 3)
 	return s
 
 

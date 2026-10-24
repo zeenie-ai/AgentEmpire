@@ -63,6 +63,7 @@ func bind(sel: Selection, rts_input: RtsInput) -> void:
 func set_look(is_compact: bool, is_touch: bool) -> void:
 	compact = is_compact
 	touch = is_touch
+	theme_type_variation = "FloatPanel" if compact else "InsetPanel"
 	custom_minimum_size.y = COMPACT_HEIGHT if compact else 0.0
 	for side in ["left", "right", "top", "bottom"]:
 		_margin.add_theme_constant_override("margin_" + side, 0 if compact else 8)
