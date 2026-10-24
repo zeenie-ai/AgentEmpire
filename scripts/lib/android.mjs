@@ -13,6 +13,9 @@ export const ACTIVITY = 'com.godot.game.GodotAppLauncher';
 /** The SDK packages Godot 4.7.2's Gradle build template names (config.gradle in android_source.zip). */
 export const BUILD_TOOLS = '36.1.0';
 export const NDK = '29.0.14206865';
+/** The template's SDK levels; Google Play requires target 36. */
+export const TARGET_SDK = 36;
+export const MIN_SDK = 24;
 
 /** The emulators for the smoke test and the device profiles they copy, from the installed image. */
 export const SYSTEM_IMAGE = 'system-images;android-36;google_apis_playstore;x86_64';
@@ -26,6 +29,14 @@ export const BUNDLETOOL_URL = `https://github.com/google/bundletool/releases/dow
 export function bundletoolJar(root) {
   return join(toolsDir(root), 'bundletool', `bundletool-all-${BUNDLETOOL_VERSION}.jar`);
 }
+
+/**
+ * Godot's defaults for export/android/debug_keystore_user and _pass: the alias and password of the
+ * debug keystore Android Studio makes. Godot leaves a setting out of the file while it holds its
+ * default.
+ */
+export const GODOT_DEBUG_KEYSTORE_USER = 'androiddebugkey';
+export const GODOT_DEBUG_KEYSTORE_PASSWORD = 'android';
 
 const exe = process.platform === 'win32' ? '.exe' : '';
 const bat = process.platform === 'win32' ? '.bat' : '';
@@ -73,8 +84,8 @@ export function androidTools(sdk, jdk) {
 }
 
 /**
- * The SDK and JDK the editor settings name, the tools in them, and the environment to run them
- * with (JAVA_HOME is the JDK: the `java` on PATH may be an older one).
+ * The SDK, JDK and debug keystore the editor settings name, the tools in the SDK and JDK, and the
+ * environment to run them with (JAVA_HOME is the JDK: the `java` on PATH may be an older one).
  */
 export function androidToolchain(root) {
   const file = editorSettingsFile(root);
@@ -86,5 +97,23 @@ export function androidToolchain(root) {
   }
   const sdk = resolve(sdkSetting);
   const jdk = resolve(jdkSetting);
-  return { sdk, jdk, tools: androidTools(sdk, jdk), env: { ...process.env, JAVA_HOME: jdk } };
+  const debugKeystore = {
+    path: readSetting(text, 'export/android/debug_keystore') ?? '',
+    user: readSetting(text, 'export/android/debug_keystore_user') ?? GODOT_DEBUG_KEYSTORE_USER,
+    password: readSetting(text, 'export/android/debug_keystore_pass') ?? GODOT_DEBUG_KEYSTORE_PASSWORD,
+  };
+  return { sdk, jdk, debugKeystore, tools: androidTools(sdk, jdk), env: { ...process.env, JAVA_HOME: jdk } };
+}
+
+/** The [preset.N.options] values of the export preset called `name`, as raw strings. */
+export function presetOptions(presetsText, name) {
+  const blocks = presetsText.split(/^\[(preset\.\d+(?:\.options)?)\]\r?$/m);
+  for (let i = 1; i < blocks.length; i += 2) {
+    if (!/^preset\.\d+$/.test(blocks[i]) || !new RegExp(`^name="${name}"\\r?$`, 'm').test(blocks[i + 1])) continue;
+    const options = blocks.indexOf(`${blocks[i]}.options`);
+    const values = {};
+    for (const m of (blocks[options + 1] ?? '').matchAll(/^([^=\s]+)=(.*?)\r?$/gm)) values[m[1]] = m[2];
+    return values;
+  }
+  throw new Error(`no export preset called "${name}"`);
 }

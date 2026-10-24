@@ -19,8 +19,9 @@ import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  AVDS, BUILD_TOOLS, BUNDLETOOL_SHA256, BUNDLETOOL_URL, BUNDLETOOL_VERSION, NDK, SYSTEM_IMAGE,
-  androidTools, bundletoolJar, editorSettingsFile, readSetting, writeSetting,
+  AVDS, BUILD_TOOLS, BUNDLETOOL_SHA256, BUNDLETOOL_URL, BUNDLETOOL_VERSION, GODOT_DEBUG_KEYSTORE_PASSWORD,
+  GODOT_DEBUG_KEYSTORE_USER, NDK, SYSTEM_IMAGE, androidTools, bundletoolJar, editorSettingsFile, readSetting,
+  writeSetting,
 } from './lib/android.mjs';
 import { checksumFor, download, fetchText } from './lib/download.mjs';
 import { ANDROID_TEMPLATE_FILES, GODOT_RELEASES, TEMPLATES_ARCHIVE, templatesDir, toolsDir } from './lib/godot.mjs';
@@ -96,17 +97,22 @@ async function setupTemplates() {
 
 function setupEditorSettings(jdk, tools) {
   step("Godot's Android editor settings");
-  // The keystore Android Studio makes for debug builds, with its well-known alias and password.
+  // The keystore Android Studio makes for debug builds, with its well-known alias and password,
+  // which are also Godot's defaults.
   const keystore = join(os.homedir(), '.android', 'debug.keystore');
-  const check = spawnSync(tools.keytool, ['-list', '-keystore', keystore, '-storepass', 'android', '-alias', 'androiddebugkey'], { encoding: 'utf8' });
-  if (check.status !== 0) throw new Error(`${keystore} does not open as androiddebugkey / android:\n${check.stdout}${check.stderr}`);
+  const user = GODOT_DEBUG_KEYSTORE_USER;
+  const password = GODOT_DEBUG_KEYSTORE_PASSWORD;
+  const check = spawnSync(tools.keytool, ['-list', '-keystore', keystore, '-storepass', password, '-alias', user], { encoding: 'utf8' });
+  if (check.status !== 0) throw new Error(`${keystore} does not open as ${user} / ${password}:\n${check.stdout}${check.stderr}`);
+  const before = readFileSync(settingsFile, 'utf8');
   const wanted = {
     'export/android/java_sdk_path': godotPath(jdk),
     'export/android/debug_keystore': godotPath(keystore),
-    'export/android/debug_keystore_user': 'androiddebugkey',
-    'export/android/debug_keystore_pass': 'android',
+    'export/android/debug_keystore_pass': password,
   };
-  const before = readFileSync(settingsFile, 'utf8');
+  // Godot leaves the user out of the file while it holds the default; set it only when another is named.
+  const userKey = 'export/android/debug_keystore_user';
+  if ((readSetting(before, userKey) ?? user) !== user) wanted[userKey] = user;
   let text = before;
   for (const [key, value] of Object.entries(wanted)) text = writeSetting(text, key, value);
   if (text === before) {
