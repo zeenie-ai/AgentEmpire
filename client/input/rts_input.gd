@@ -10,6 +10,9 @@ extends Node
 ##   agent's plot (PLACE_PLOT) is placed the same way and goes to the Town Hall first.
 ## - Agents: their card offers tasks, review, approvals, add-ons; townsfolk right-clicked onto
 ##   an agent's home carry its scroll; Space jumps to the approval that has waited longest.
+## - Touch (touch_mode; TouchControls calls in): tap_at() selects, or gives selected townsfolk
+##   the order a right-click would (RightClickRules.tap_action); select_at() takes a long press,
+##   box_select() the Select toggle's box. Mouse events that stand for touches are left alone.
 ## Everything that changes the game goes out as a GameCommands command via Game.issue(), or
 ## through TownLink when the Town Hall must agree first.
 
@@ -92,15 +95,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var mb := event as InputEventMouseButton
 	if mb != null:
-		_mouse_button(mb)
+		if not _touch_owns(mb):
+			_mouse_button(mb)
 		return
 	var mm := event as InputEventMouseMotion
 	if mm != null:
-		_mouse_motion(mm)
+		if not _touch_owns(mm):
+			_mouse_motion(mm)
 		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo:
 		_key(key)
+
+
+## Touch mode: mouse events that stand for a touch belong to TouchControls. On a device the
+## engine emulates them from touches (DEVICE_ID_EMULATION); in the desktop preview the mouse
+## itself is turned into touches. A real mouse on a tablet still plays as on desktop.
+func _touch_owns(e: InputEvent) -> bool:
+	return touch_mode and (e.device == InputEvent.DEVICE_ID_EMULATION or Input.emulate_touch_from_mouse)
 
 
 func _mouse_button(e: InputEventMouseButton) -> void:
@@ -116,7 +128,7 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 					get_viewport().set_input_as_handled()
 					return
 				if mode == Mode.RALLY:
-					_rally_at(e.position)
+					rally_at(e.position)
 					cancel_mode()
 					get_viewport().set_input_as_handled()
 					return
@@ -129,7 +141,7 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 				if _dragging:
 					_dragging = false
 					hud.set_box(Rect2())
-					_box_select(Rect2(_press_pos, e.position - _press_pos).abs(), e.shift_pressed)
+					box_select(Rect2(_press_pos, e.position - _press_pos).abs(), e.shift_pressed)
 				else:
 					_click_select(e.position, e.shift_pressed, _double)
 				get_viewport().set_input_as_handled()
@@ -147,10 +159,7 @@ func _mouse_motion(e: InputEventMouseMotion) -> void:
 		_dragging = true
 	if _dragging:
 		hud.set_box(Rect2(_press_pos, e.position - _press_pos).abs())
-	if mode == Mode.PLACE:
-		_update_ghost(e.position)
-	elif mode == Mode.PLACE_PLOT:
-		_update_plot_ghost(e.position)
+	move_ghost(e.position)
 
 
 func _key(e: InputEventKey) -> void:
@@ -225,8 +234,46 @@ func _process(delta: float) -> void:
 # --- selection ------------------------------------------------------------------------------
 
 func _click_select(pos: Vector2, shift: bool, double: bool) -> void:
+	_select_hit(Picking.pick(world(), view, camera.camera, pos), shift, double)
+
+
+## Touch: a tap in the world. Placing, it moves the ghost there; choosing a rally point, it sets
+## it. Otherwise, with townsfolk selected, it gives them the order a right-click would
+## (RightClickRules.tap_action); anything else selects what is under it, as a left click does
+## (`double`: everything of that kind on screen).
+func tap_at(pos: Vector2, double: bool) -> void:
 	var w := world()
-	var hit := Picking.pick(w, view, camera.camera, pos)
+	if w == null:
+		return
+	match mode:
+		Mode.PLACE, Mode.PLACE_PLOT:
+			move_ghost(pos)
+		Mode.RALLY:
+			rally_at(pos)
+			cancel_mode()
+		_:
+			var hit := Picking.pick(w, view, camera.camera, pos, _touch_pick_px())
+			if RightClickRules.tap_action(w, selection.ids, hit) != RightClickRules.ACTION_NONE:
+				_order(hit)
+			else:
+				_select_hit(hit, false, double)
+
+
+## Selects what is under `pos` as a left click does, never giving an order (touch: a long
+## press).
+func select_at(pos: Vector2) -> void:
+	_select_hit(Picking.pick(world(), view, camera.camera, pos, _touch_pick_px()), false, false)
+
+
+## How far from a unit a touch still picks it: half a touch target.
+func _touch_pick_px() -> float:
+	return Platform.TOUCH_TARGET_DP * 0.5 * Platform.px_per_dp(get_viewport())
+
+
+## Selects a picked `hit`: a unit or building (`shift` adds or removes it, `double` takes every
+## one of its kind on screen), a resource, or nothing.
+func _select_hit(hit: Dictionary, shift: bool, double: bool) -> void:
+	var w := world()
 	var kind := String(hit["kind"])
 	var id := int(hit["id"])
 	if kind == "unit" or kind == "building":
@@ -251,7 +298,8 @@ func _same_category(id: int) -> bool:
 	return w.category_of(selection.ids[0]) == w.category_of(id)
 
 
-func _box_select(rect: Rect2, shift: bool) -> void:
+## Selects the townsfolk inside `rect` (screen space); `shift` adds them.
+func box_select(rect: Rect2, shift: bool = false) -> void:
 	var w := world()
 	var ids := Picking.units_in_rect(w, view, camera.camera, rect)
 	if shift:
@@ -320,7 +368,7 @@ func _centroid(ids: Array[int]) -> Vector3:
 
 func _update_hover() -> void:
 	var w := world()
-	if mode != Mode.SELECT or get_viewport().gui_get_hovered_control() != null:
+	if touch_mode or mode != Mode.SELECT or get_viewport().gui_get_hovered_control() != null:
 		view.hover_id = 0
 		return
 	var hit := Picking.pick(w, view, camera.camera, get_viewport().get_mouse_position())
@@ -530,7 +578,8 @@ func _return_goods() -> void:
 		Game.issue(GameCommands.deposit(by_drop[drop_id], drop_id))
 
 
-func _rally_at(pos: Vector2) -> void:
+## Sets the selected trainer's rally point to what is under `pos`.
+func rally_at(pos: Vector2) -> void:
 	var w := world()
 	var b := selection.single_building(w)
 	if b == null:
@@ -614,6 +663,14 @@ func _try_place_plot() -> void:
 	Notify.push("%s heads to the plot to build." % J.gs(Realm.agent(agent_id), "name", "The agent"), "good", "plot", 0)
 	if mode == Mode.PLACE_PLOT and place_agent_id == agent_id:
 		cancel_mode()
+
+
+## Moves the ghost being placed (a building or an agent's plot) to the ground under `screen`.
+func move_ghost(screen: Vector2) -> void:
+	if mode == Mode.PLACE:
+		_update_ghost(screen)
+	elif mode == Mode.PLACE_PLOT:
+		_update_plot_ghost(screen)
 
 
 func cancel_mode() -> void:
