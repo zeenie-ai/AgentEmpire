@@ -10,6 +10,9 @@ extends Node
 ##   agent's plot (PLACE_PLOT) is placed the same way and goes to the Town Hall first.
 ## - Agents: their card offers tasks, review, approvals, add-ons; townsfolk right-clicked onto
 ##   an agent's home carry its scroll; Space jumps to the approval that has waited longest.
+## - Touch (touch_mode; TouchControls calls in): tap_at() selects, or gives selected townsfolk
+##   the order a right-click would (RightClickRules.tap_action); select_at() takes a long press,
+##   box_select() the Select toggle's box. Mouse events that stand for touches are left alone.
 ## Everything that changes the game goes out as a GameCommands command via Game.issue(), or
 ## through TownLink when the Town Hall must agree first.
 
@@ -36,6 +39,9 @@ var place_cell: Vector2i = Pathing.NO_CELL
 var place_check: Dictionary = {}
 ## PLACE_PLOT: the agent whose plot is being chosen.
 var place_agent_id: String = ""
+## Touch: the mode bar's Repeat. Building one keeps the ghost up for the next (Shift does this
+## with a mouse). Off at each new placement.
+var place_repeat: bool = false
 
 ## Phones and tablets: the world takes touches through TouchControls, so RtsInput leaves the
 ## world's mouse events alone (the engine emulates them from touch). Set by GameMain.
@@ -92,15 +98,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var mb := event as InputEventMouseButton
 	if mb != null:
-		_mouse_button(mb)
+		if not _touch_owns(mb):
+			_mouse_button(mb)
 		return
 	var mm := event as InputEventMouseMotion
 	if mm != null:
-		_mouse_motion(mm)
+		if not _touch_owns(mm):
+			_mouse_motion(mm)
 		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo:
 		_key(key)
+
+
+## Touch mode: mouse events that stand for a touch belong to TouchControls. On a device the
+## engine emulates them from touches (DEVICE_ID_EMULATION); in the desktop preview the mouse
+## itself is turned into touches. A real mouse on a tablet still plays as on desktop.
+func _touch_owns(e: InputEvent) -> bool:
+	return touch_mode and (e.device == InputEvent.DEVICE_ID_EMULATION or Input.emulate_touch_from_mouse)
 
 
 func _mouse_button(e: InputEventMouseButton) -> void:
@@ -116,7 +131,7 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 					get_viewport().set_input_as_handled()
 					return
 				if mode == Mode.RALLY:
-					_rally_at(e.position)
+					rally_at(e.position)
 					cancel_mode()
 					get_viewport().set_input_as_handled()
 					return
@@ -129,7 +144,7 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 				if _dragging:
 					_dragging = false
 					hud.set_box(Rect2())
-					_box_select(Rect2(_press_pos, e.position - _press_pos).abs(), e.shift_pressed)
+					box_select(Rect2(_press_pos, e.position - _press_pos).abs(), e.shift_pressed)
 				else:
 					_click_select(e.position, e.shift_pressed, _double)
 				get_viewport().set_input_as_handled()
@@ -147,10 +162,7 @@ func _mouse_motion(e: InputEventMouseMotion) -> void:
 		_dragging = true
 	if _dragging:
 		hud.set_box(Rect2(_press_pos, e.position - _press_pos).abs())
-	if mode == Mode.PLACE:
-		_update_ghost(e.position)
-	elif mode == Mode.PLACE_PLOT:
-		_update_plot_ghost(e.position)
+	move_ghost(e.position)
 
 
 func _key(e: InputEventKey) -> void:
@@ -225,8 +237,46 @@ func _process(delta: float) -> void:
 # --- selection ------------------------------------------------------------------------------
 
 func _click_select(pos: Vector2, shift: bool, double: bool) -> void:
+	_select_hit(Picking.pick(world(), view, camera.camera, pos), shift, double)
+
+
+## Touch: a tap in the world. Placing, it moves the ghost there; choosing a rally point, it sets
+## it. Otherwise, with townsfolk selected, it gives them the order a right-click would
+## (RightClickRules.tap_action); anything else selects what is under it, as a left click does
+## (`double`: everything of that kind on screen).
+func tap_at(pos: Vector2, double: bool) -> void:
 	var w := world()
-	var hit := Picking.pick(w, view, camera.camera, pos)
+	if w == null:
+		return
+	match mode:
+		Mode.PLACE, Mode.PLACE_PLOT:
+			move_ghost(pos)
+		Mode.RALLY:
+			rally_at(pos)
+			cancel_mode()
+		_:
+			var hit := Picking.pick(w, view, camera.camera, pos, _touch_pick_px())
+			if RightClickRules.tap_action(w, selection.ids, hit) != RightClickRules.ACTION_NONE:
+				_order(hit)
+			else:
+				_select_hit(hit, false, double)
+
+
+## Selects what is under `pos` as a left click does, never giving an order (touch: a long
+## press).
+func select_at(pos: Vector2) -> void:
+	_select_hit(Picking.pick(world(), view, camera.camera, pos, _touch_pick_px()), false, false)
+
+
+## How far from a unit a touch still picks it: half a touch target.
+func _touch_pick_px() -> float:
+	return Platform.TOUCH_TARGET_DP * 0.5 * Platform.px_per_dp(get_viewport())
+
+
+## Selects a picked `hit`: a unit or building (`shift` adds or removes it, `double` takes every
+## one of its kind on screen), a resource, or nothing.
+func _select_hit(hit: Dictionary, shift: bool, double: bool) -> void:
+	var w := world()
 	var kind := String(hit["kind"])
 	var id := int(hit["id"])
 	if kind == "unit" or kind == "building":
@@ -251,7 +301,8 @@ func _same_category(id: int) -> bool:
 	return w.category_of(selection.ids[0]) == w.category_of(id)
 
 
-func _box_select(rect: Rect2, shift: bool) -> void:
+## Selects the townsfolk inside `rect` (screen space); `shift` adds them.
+func box_select(rect: Rect2, shift: bool = false) -> void:
 	var w := world()
 	var ids := Picking.units_in_rect(w, view, camera.camera, rect)
 	if shift:
@@ -320,7 +371,7 @@ func _centroid(ids: Array[int]) -> Vector3:
 
 func _update_hover() -> void:
 	var w := world()
-	if mode != Mode.SELECT or get_viewport().gui_get_hovered_control() != null:
+	if touch_mode or mode != Mode.SELECT or get_viewport().gui_get_hovered_control() != null:
 		view.hover_id = 0
 		return
 	var hit := Picking.pick(w, view, camera.camera, get_viewport().get_mouse_position())
@@ -420,9 +471,21 @@ func execute_slot(i: int) -> void:
 	var w := world()
 	if w == null:
 		return
-	var slots := CommandCardModel.slots(w, selection.ids)
+	var slots := card_slots()
 	if i >= 0 and i < slots.size() and not slots[i].is_empty():
 		activate(slots[i])
+
+
+## The command card as shown: the selection's slots, and on touch, while placing or choosing a
+## rally point, the mode bar over the bottom row (CommandCardModel.mode_slots).
+func card_slots() -> Array[Dictionary]:
+	var slots := CommandCardModel.slots(world(), selection.ids)
+	if touch_mode and mode != Mode.SELECT:
+		var kind := "rally" if mode == Mode.RALLY else ("plot" if mode == Mode.PLACE_PLOT else "place")
+		var bar := CommandCardModel.mode_slots(kind, place_type, bool(place_check.get("ok", false)), place_repeat)
+		for i: int in bar:
+			slots[i] = bar[i]
+	return slots
 
 
 func activate(slot: Dictionary) -> void:
@@ -477,7 +540,7 @@ func activate(slot: Dictionary) -> void:
 		_notify_result(Game.link.detach_tool(id.substr(7)), "Dismantled.")
 	elif id == "rally" and b != null:
 		mode = Mode.RALLY
-		hint_changed.emit("Click to set the rally point. Right-click cancels.", true)
+		hint_changed.emit("Tap where new townsfolk should go." if touch_mode else "Click to set the rally point. Right-click cancels.", true)
 	elif id.begins_with("focus:") and b != null:
 		Game.issue(GameCommands.set_gather_focus(b.id, id.substr(6)))
 	elif id == "cancel_train" and b != null:
@@ -486,6 +549,12 @@ func activate(slot: Dictionary) -> void:
 		Game.issue(GameCommands.cancel_site(b.id))
 	elif id == "dismantle" and b != null:
 		Game.issue(GameCommands.dismantle(b.id))
+	elif id == "mode_repeat":
+		place_repeat = not place_repeat
+	elif id == "mode_build":
+		confirm_placement()
+	elif id == "mode_cancel":
+		cancel_mode()
 
 
 func _add_tool(agent_id: String, type: String, slot: Dictionary) -> void:
@@ -530,7 +599,8 @@ func _return_goods() -> void:
 		Game.issue(GameCommands.deposit(by_drop[drop_id], drop_id))
 
 
-func _rally_at(pos: Vector2) -> void:
+## Sets the selected trainer's rally point to what is under `pos`.
+func rally_at(pos: Vector2) -> void:
 	var w := world()
 	var b := selection.single_building(w)
 	if b == null:
@@ -548,8 +618,14 @@ func begin_placement(type: String) -> void:
 	mode = Mode.PLACE
 	place_type = type
 	place_cell = Pathing.NO_CELL
+	place_repeat = false
 	view.ghost.show_type(type, w.econ.building_footprint(type))
-	_update_ghost(get_viewport().get_mouse_position())
+	_update_ghost(_ghost_start())
+
+
+## Where a new ghost appears: under the mouse, or on touch in the middle of the world's view.
+func _ghost_start() -> Vector2:
+	return camera.safe_rect().get_center() if touch_mode else get_viewport().get_mouse_position()
 
 
 ## Chooses a plot for an agent's home: a 7x7 ghost with the home in its middle.
@@ -565,7 +641,7 @@ func begin_plot_placement(agent_id: String) -> void:
 	place_type = Game.link.home_type(agent_id)
 	place_cell = Pathing.NO_CELL
 	view.ghost.show_plot(place_type)
-	_update_plot_ghost(get_viewport().get_mouse_position())
+	_update_plot_ghost(_ghost_start())
 
 
 func _update_plot_ghost(screen: Vector2) -> void:
@@ -588,7 +664,8 @@ func _set_plot_check(check: Dictionary) -> void:
 	var ok := bool(check.get("ok", false))
 	var who := J.gs(Realm.agent(place_agent_id), "name", "The agent")
 	var bname := world().econ.building_name(place_type)
-	hint_changed.emit("%s's %s: click to choose this plot. Right-click cancels." % [who, bname] if ok else "%s: %s" % [bname, String(check.get("reason", ""))], ok)
+	var choose := "%s's %s: tap or drag to move the plot, then tap Build." if touch_mode else "%s's %s: click to choose this plot. Right-click cancels."
+	hint_changed.emit(choose % [who, bname] if ok else "%s: %s" % [bname, String(check.get("reason", ""))], ok)
 	if view.ghost.visible and place_cell != Pathing.NO_CELL:
 		view.ghost.place_at(place_cell, Vector2i(HomeLayout.HOME, HomeLayout.HOME), ok)
 
@@ -614,6 +691,36 @@ func _try_place_plot() -> void:
 	Notify.push("%s heads to the plot to build." % J.gs(Realm.agent(agent_id), "name", "The agent"), "good", "plot", 0)
 	if mode == Mode.PLACE_PLOT and place_agent_id == agent_id:
 		cancel_mode()
+
+
+## Moves the ghost being placed (a building or an agent's plot) to the ground under `screen`.
+func move_ghost(screen: Vector2) -> void:
+	if mode == Mode.PLACE:
+		_update_ghost(screen)
+	elif mode == Mode.PLACE_PLOT:
+		_update_plot_ghost(screen)
+
+
+## Touch: whether `screen` is on the ghost being placed, its model or its footprint, or within
+## half a touch target of its middle; a drag that starts there moves the ghost.
+func ghost_contains(screen: Vector2) -> bool:
+	if (mode != Mode.PLACE and mode != Mode.PLACE_PLOT) or place_cell == Pathing.NO_CELL or not view.ghost.visible:
+		return false
+	var fp := Vector2i(HomeLayout.HOME, HomeLayout.HOME) if mode == Mode.PLACE_PLOT else world().econ.building_footprint(place_type)
+	var box := AABB(Vector3(place_cell.x, 0.0, place_cell.y), Vector3(fp.x, maxf(ModelLibrary.building_height(place_type), 0.3), fp.y))
+	if box.intersects_ray(camera.camera.project_ray_origin(screen), camera.camera.project_ray_normal(screen)) != null:
+		return true
+	var middle := camera.camera.unproject_position(box.get_center() * Vector3(1.0, 0.0, 1.0))
+	return screen.distance_to(middle) <= _touch_pick_px()
+
+
+## Touch: the mode bar's Build. Places the ghost where it stands, as a click does, and keeps
+## placing while Repeat is on; on a spot that does not work it says why.
+func confirm_placement() -> void:
+	if mode == Mode.PLACE:
+		_try_place(place_repeat)
+	elif mode == Mode.PLACE_PLOT:
+		_try_place_plot()
 
 
 func cancel_mode() -> void:
@@ -647,7 +754,8 @@ func _set_check(check: Dictionary) -> void:
 	var w := world()
 	var ok := bool(check.get("ok", false))
 	var bname := w.econ.building_name(place_type)
-	var text := "%s: click to place. Shift places more; right-click cancels." % bname if ok else "%s: %s" % [bname, String(check.get("reason", ""))]
+	var place := "%s: tap or drag to move it, then tap Build." if touch_mode else "%s: click to place. Shift places more; right-click cancels."
+	var text := place % bname if ok else "%s: %s" % [bname, String(check.get("reason", ""))]
 	hint_changed.emit(text, ok)
 	if view.ghost.visible and place_cell != Pathing.NO_CELL:
 		view.ghost.place_at(place_cell, w.econ.building_footprint(place_type), ok)

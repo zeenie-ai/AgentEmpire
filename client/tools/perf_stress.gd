@@ -2,10 +2,13 @@ extends SceneTree
 ## Stress test: 90 townsfolk that keep walking around the town, with the full scene and HUD.
 ## Prints the average FPS over 10 seconds (after a 2 second warm-up), every frame longer than
 ## 60 ms ("hitch") and every render longer than 30 ms ("draw"), and how much frame time the
-## engine reported against real time (it clamps long frames). Needs a real window:
+## engine reported against real time (it clamps long frames). Also the average per frame of what
+## the main view and the shadow maps drew (draw calls and primitives), and the GPU and CPU time
+## of rendering the main view. Needs a real window:
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/perf_stress.gd
 ## Options after "--": --units=90 --seconds=10 --vsync (keep vsync on; off by default so the
-## number is not capped by the monitor's refresh rate).
+## number is not capped by the monitor's refresh rate). For the phone renderer and preset, put
+## `--rendering-method mobile` before -s and `--quality=low` after "--".
 
 var _args: PackedStringArray
 
@@ -73,6 +76,16 @@ func _run() -> void:
 	var start_paths := w.path_service.total_served
 	var last := Time.get_ticks_usec()
 	var measure_start := 0
+	var vp := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(vp, true)
+	# Summed over the measured frames: the main view's and the shadow maps' draw calls and
+	# primitives, and the main view's render times.
+	var calls := 0
+	var shadow_calls := 0
+	var prims := 0
+	var shadow_prims := 0
+	var gpu_ms := 0.0
+	var cpu_ms := 0.0
 	while true:
 		await process_frame
 		var now := Time.get_ticks_usec()
@@ -90,6 +103,12 @@ func _run() -> void:
 			start_paths = w.path_service.total_served
 		frames += 1
 		engine_delta += get_root().get_process_delta_time()
+		calls += root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		shadow_calls += root.get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		prims += root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
+		shadow_prims += root.get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
+		gpu_ms += RenderingServer.viewport_get_measured_render_time_gpu(vp)
+		cpu_ms += RenderingServer.viewport_get_measured_render_time_cpu(vp)
 		if dt > 0.06:
 			print("PERF hitch t=%.2f frame_ms=%.1f engine_delta_ms=%.1f since_orders=%.2f" % [t, dt * 1000.0, get_root().get_process_delta_time() * 1000.0, t - (next_orders - orders_every)])
 		frame_ms.append(dt * 1000.0)
@@ -108,6 +127,10 @@ func _run() -> void:
 		w.units.size(), moving, elapsed, frames, float(frames) / elapsed, p95, worst,
 		w.tick - start_tick, w.path_service.total_served - start_paths, "on" if vsync else "off",
 		RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name()])
+	var n := float(frames)
+	print("PERF per_frame draw_calls=%.0f shadow_draw_calls=%.0f primitives=%.0f shadow_primitives=%.0f gpu_ms=%.2f render_cpu_ms=%.2f quality=%s" % [
+		calls / n, shadow_calls / n, prims / n, shadow_prims / n, gpu_ms / n, cpu_ms / n,
+		GraphicsQuality.current_name()])
 	quit(0)
 
 

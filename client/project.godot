@@ -39,6 +39,7 @@ window/size/viewport_width=1600
 window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/frame_pacing/android/enable_frame_pacing=false
 
 [editor_plugins]
 

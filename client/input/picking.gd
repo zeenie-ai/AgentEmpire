@@ -10,7 +10,9 @@ const UNIT_PICK_PX := 22.0
 const NODE_HEIGHTS := {"tree": 2.2, "berry_bush": 0.6}
 
 
-static func pick(world: SimWorld, view: WorldView, cam: Camera3D, screen: Vector2) -> Dictionary:
+## `unit_px`: how far from a unit's projected position (in viewport pixels) it is still picked;
+## touch passes half a touch target.
+static func pick(world: SimWorld, view: WorldView, cam: Camera3D, screen: Vector2, unit_px: float = UNIT_PICK_PX) -> Dictionary:
 	var ground_hit: Variant = _ground(cam, screen)
 	var ground_cell := Pathing.NO_CELL
 	if ground_hit != null:
@@ -18,7 +20,7 @@ static func pick(world: SimWorld, view: WorldView, cam: Camera3D, screen: Vector
 		ground_cell = Vector2i(floori(g.x), floori(g.z))
 	# Units first: they are small and stand in front of everything else.
 	var best_id := 0
-	var best_d := UNIT_PICK_PX
+	var best_d := unit_px
 	for id: int in view.unit_views:
 		var p := view.unit_visual_position(id) + Vector3(0, 0.45, 0)
 		if cam.is_position_behind(p):
