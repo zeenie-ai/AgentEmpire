@@ -19,7 +19,9 @@ extends SceneTree
 ##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_place,hud_map,hud_idle,hud_menu,hud_confirm
 ## and the phone and tablet build (Platform): --mobile --dpi=<n>, the window standing in for the
 ## screen, e.g. --size=2400x1080 --mobile --dpi=420 for a phone 914x411 dp. A size larger than the
-## desktop screen gives the same layout at half the size and half the dpi.
+## desktop screen gives the same layout at half the size and half the dpi. --safe-inset=<dp>
+## stands in for a camera cutout and a rounded corner: the HUD keeps that far from the left and
+## right edges, as it does from a phone's display safe area.
 
 const DEFAULT_SIZE := Vector2i(1600, 900)
 
@@ -76,6 +78,12 @@ func _run() -> void:
 	main.camera.user_moved_since_frame = true
 	for i in 3:
 		await process_frame
+	var inset := float(_arg("safe-inset", "0"))
+	if inset > 0.0:
+		main.hud.safe_area_provider = func() -> Rect2:
+			return main.get_viewport().get_visible_rect().grow_individual(-inset, 0.0, -inset, 0.0)
+		# As when the app comes back: the HUD reads the safe area again.
+		main.hud.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 
 	var out := DemoTown.out_dir(_args)
 	DirAccess.make_dir_recursive_absolute(out)
