@@ -73,6 +73,42 @@ func test_commands_for_actions() -> void:
 	assert_eq(RightClickRules.command_for(w, [u.id], target, "none"), {})
 
 
+func test_tap_action_table() -> void:
+	var w := SimFixture.empty_world(SimFixture.big_purse())
+	var u := w.add_unit("townsfolk", Vector2(70.5, 70.5))
+	var other := w.add_unit("townsfolk", Vector2(66.5, 70.5))
+	var tree := w.add_node("tree", Vector2i(72, 70))
+	var bush := w.add_node("berry_bush", Vector2i(72, 72))
+	var farm := w.add_building("farm", Vector2i(74, 60), true, "")
+	var site := w.add_building("cottage", Vector2i(74, 56), false, "")
+	var house := w.add_building("cottage", Vector2i(58, 70), true, "")
+	var keep := w.keep()
+	var ground := {"kind": "ground", "id": 0, "cell": Vector2i(60, 60)}
+	var rows: Array[Array] = [
+		# [selection, target, action, why]
+		[[u.id], ground, "move", "ground: walk there"],
+		[[u.id], {"kind": "node", "id": tree.id, "cell": tree.cell}, "gather", "a tree"],
+		[[u.id], {"kind": "node", "id": bush.id, "cell": bush.cell}, "gather", "a bush"],
+		[[u.id], {"kind": "building", "id": farm.id, "cell": farm.cell}, "gather", "a farm"],
+		[[u.id], {"kind": "building", "id": site.id, "cell": site.cell}, "build", "a site"],
+		[[u.id], {"kind": "building", "id": keep.id, "cell": keep.cell}, "none", "a drop-off with nothing to carry selects it"],
+		[[u.id], {"kind": "building", "id": house.id, "cell": house.cell}, "none", "a building they would walk to selects it"],
+		[[u.id], {"kind": "unit", "id": other.id, "cell": other.cell()}, "none", "a unit selects it"],
+		[[u.id], {"kind": "none", "id": 0, "cell": Pathing.NO_CELL}, "none", "off the map"],
+		[[], {"kind": "node", "id": tree.id, "cell": tree.cell}, "none", "nothing selected"],
+		[[keep.id], ground, "none", "the Keep's rally point is set from its card on touch"],
+		[[house.id], ground, "none", "a building takes no orders"],
+	]
+	for row in rows:
+		var sel: Array = row[0]
+		var target: Dictionary = row[1]
+		assert_eq(RightClickRules.tap_action(w, sel, target), String(row[2]), String(row[3]))
+	u.carry_res = "wood"
+	u.carry_m = 4000
+	assert_eq(RightClickRules.tap_action(w, [u.id], {"kind": "building", "id": keep.id, "cell": keep.cell}), "deposit",
+		"carrying: the drop-off takes it")
+
+
 func test_right_click_end_to_end() -> void:
 	var w := SimFixture.empty_world()
 	var u := w.add_unit("townsfolk", Vector2(70.5, 64.5))

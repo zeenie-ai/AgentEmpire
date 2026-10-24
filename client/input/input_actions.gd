@@ -71,9 +71,10 @@ static func rebind(action: String, physical_keycode: int) -> void:
 	InputMap.action_add_event(action, _key_event(physical_keycode))
 
 
-## Label of the first key bound to `action` ("Q", "Period", ...).
+## Label of the first key bound to `action` ("Q", "Period", ...); "" on phones and tablets, which
+## show no key caps (and lack the keyboard layout lookup).
 static func key_label(action: StringName) -> String:
-	if not InputMap.has_action(action):
+	if Platform.is_mobile() or not InputMap.has_action(action):
 		return ""
 	for e in InputMap.action_get_events(action):
 		var k := e as InputEventKey

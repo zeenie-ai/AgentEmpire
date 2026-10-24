@@ -2,7 +2,8 @@ class_name RightClickRules
 extends RefCounted
 ## What a right-click does, as a pure table. The input layer describes the situation as a
 ## context, resolve() returns the action of the first matching row, and command_for() turns it
-## into a GameCommands command. No nodes involved, so the table is unit-tested headless.
+## into a GameCommands command. No nodes involved, so the table is unit-tested headless. On
+## touch, tap_action() decides whether a tap gives that order or selects.
 ##
 ## Context:
 ##   selection: "units" | "rally_building" | "building" | "agent" | "none"
@@ -45,6 +46,21 @@ static func resolve(ctx: Dictionary) -> String:
 			continue
 		return String(row["action"])
 	return ACTION_NONE
+
+
+## What a tap on touch does to a picked `target`: the action a right-click would take, or
+## ACTION_NONE when the tap selects instead. Only selected townsfolk take orders from a tap, and
+## a tap on a unit or a building they would only walk to selects it: ground, trees, bushes,
+## fields, sites and (while carrying) drop-offs give orders.
+static func tap_action(w: SimWorld, selection: Array, target: Dictionary) -> String:
+	var ctx := context_for(w, selection, target)
+	var kind := String(target.get("kind", "none"))
+	if String(ctx["selection"]) != "units" or kind == "none":
+		return ACTION_NONE
+	var action := resolve(ctx)
+	if action == ACTION_MOVE and (kind == "unit" or kind == "building"):
+		return ACTION_NONE
+	return action
 
 
 ## Builds the context for `selection` (entity ids) and a picked `target`
