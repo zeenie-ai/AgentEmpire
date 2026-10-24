@@ -68,6 +68,8 @@ func _run() -> void:
 	await _frames(10)
 	print("touch_smoke: %s at %s dpi, %s dp, world %s" % [str(DisplayServer.window_get_size()), _arg("dpi", "?"),
 		str(root.get_visible_rect().size), str(_main.world_rect())])
+	var px_per_dp: float = _main.get_node("TouchControls").gestures.px_per_dp
+	_check(absf(px_per_dp - 1.0) < 0.001, "touches are measured in dp (%.3f px per dp)" % px_per_dp)
 	var k := w.keep()
 	cam.set_view(Vector3(k.center().x, 0.0, k.center().y), 26.0, 0.0)
 	await _focus(Vector3(k.center().x, 0.0, k.center().y))
