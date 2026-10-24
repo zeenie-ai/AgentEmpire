@@ -16,15 +16,15 @@ app's private storage. These answers stay true only while the Android preset kee
 - user data backup off (`user_data_backup/allow=false`, Godot's default);
 - the town and settings in `user://` only.
 
-**Still to fill in** from Play Console, here and in `docs/privacy.md` before it is published:
-`CONTACT-EMAIL-TBD` (the public developer email) and `DEVELOPER-NAME-TBD` (the developer name
-shown on the listing; Play wants the privacy policy to name it).
+**From Play Console** (Developer account page), used here and in `docs/privacy.md`: the public
+developer email `flame2talon@gmail.com` and the developer name `flame2talon`, shown on the
+listing (Play wants the privacy policy to name it).
 
 ## Create app
 
 | Field | Answer |
 |---|---|
-| App name | AgentEmpire |
+| App name | AgentEmpire: Town Builder (the store title, 25 of 30; the phone's launcher shows AgentEmpire) |
 | Default language | English (United States) - en-US |
 | App or game | Game |
 | Free or paid | Free (a free app can never become paid; there are no purchases, so this is fine) |
@@ -52,7 +52,7 @@ sign-in, membership, code or location requirement; the game starts on the town.
 
 | Step | Answer |
 |---|---|
-| Email address (for IARC's certificate) | CONTACT-EMAIL-TBD |
+| Email address (for IARC's certificate) | flame2talon@gmail.com |
 | Category | Game |
 | Violence | No. Townsfolk gather, farm and build; there is no combat, no enemy, and no one is hurt |
 | Fear | No. Nothing frightening or horror-themed |
@@ -137,7 +137,7 @@ shared with third parties".
 |---|---|
 | App category | Game > Strategy |
 | Tags (up to 5) | Pick from Play's list, in this order: Real-time strategy; City building (or Building); Medieval; Single player; Offline. If one is missing, use Fantasy, Stylized, Casual or Management |
-| Store listing contact email | CONTACT-EMAIL-TBD (public) |
+| Store listing contact email | flame2talon@gmail.com (public) |
 | Phone | Leave empty |
 | Website | `https://github.com/zeenie-ai/AgentEmpire` |
 | External marketing | Leave on (the default) |
@@ -149,12 +149,16 @@ shared with third parties".
 | App name, short description, full description | `store/listing.md` |
 | App icon (512 x 512, 32-bit PNG) | `store/graphics/icon-512.png` |
 | Feature graphic (1024 x 500, 24-bit PNG) | `store/graphics/feature-1024x500.png` |
-| Phone screenshots | after the phone HUD is finished: 1920 x 1080, 4 to 8 of them |
-| 7-inch and 10-inch tablet screenshots | after the phone HUD is finished: 1920 x 1200 and 2560 x 1600, 2 to 4 each |
+| Phone screenshots | 7 at 1920 x 1080, in this order: `out/store/shots/1920x1080-1-town.png` to `-7-help.png` |
+| 7-inch tablet screenshots | 3 at 1920 x 1200: `out/store/shots/1920x1200-1-town.png` to `-3-build.png` |
+| 10-inch tablet screenshots | 4 at 2560 x 1440: `out/store/shots/2560x1440-1-keep.png` to `-4-build.png` |
 | Video | None |
 
-`client/tools/store_art.gd` renders the icon and the feature graphic and checks every file
-against Play's limits.
+`client/tools/store_art.gd` renders the icon, the feature graphic and the screenshots (`--shots`,
+with the commands in its header), and checks every file against Play's limits. The screenshots
+are not committed (`out/` is ignored); they show the phone and tablet build on the renderer
+phones use, at the Low graphics phones start with. The phone shots are 16:9 at 1920 x 1080 or
+more, which Play asks of games for recommendations (at least three).
 
 ## Closed testing
 
@@ -163,7 +167,7 @@ against Play's limits.
 | Track | Closed testing |
 | Testers | The owner's email list |
 | Countries or regions | The owner's choice |
-| Feedback URL or email for testers | CONTACT-EMAIL-TBD |
+| Feedback URL or email for testers | flame2talon@gmail.com |
 | App signing | Play App Signing with a Google-generated key; the upload key is stream A's |
 | Release name | Play's default from the bundle: 1 (0.5.0) |
 | Release notes | `store/release-notes.md` |

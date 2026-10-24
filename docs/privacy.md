@@ -8,7 +8,7 @@ permalink: /privacy/
 Effective date: 24 October 2026
 
 This policy covers AgentEmpire, the town-building game published on Google Play by
-DEVELOPER-NAME-TBD.
+flame2talon.
 
 ## The Android app
 
@@ -49,4 +49,4 @@ effective date.
 
 ## Contact
 
-Questions about this policy: CONTACT-EMAIL-TBD
+Questions about this policy: flame2talon@gmail.com

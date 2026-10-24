@@ -63,6 +63,7 @@ func bind(sel: Selection, rts_input: RtsInput) -> void:
 func set_look(is_compact: bool, is_touch: bool) -> void:
 	compact = is_compact
 	touch = is_touch
+	theme_type_variation = "FloatPanel" if compact else "InsetPanel"
 	custom_minimum_size.y = COMPACT_HEIGHT if compact else 0.0
 	for side in ["left", "right", "top", "bottom"]:
 		_margin.add_theme_constant_override("margin_" + side, 0 if compact else 8)
@@ -151,7 +152,8 @@ func _view(portrait: Portrait) -> VBoxContainer:
 	return col
 
 
-## The phone's X: clears the selection.
+## The phone's X: clears the selection. A whole touch target in the panel's top-right corner, its
+## glyph in the corner of the target, level with the title.
 func _close_button() -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "FlatButton"
@@ -161,9 +163,8 @@ func _close_button() -> Button:
 	b.tooltip_text = "Clear the selection"
 	var x := IconView.new("close", 16)
 	b.add_child(x)
-	x.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	x.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	x.grow_vertical = Control.GROW_DIRECTION_BOTH
+	x.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_KEEP_SIZE, 6)
+	x.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	b.pressed.connect(func() -> void:
 		if selection != null:
 			selection.clear())
@@ -369,7 +370,8 @@ func _build_trainer(w: SimWorld, b: SimBuilding, col: VBoxContainer) -> void:
 	var queue_row := HBoxContainer.new()
 	queue_row.add_theme_constant_override("separation", 6)
 	col.add_child(queue_row)
-	var slots := _queue_slots(w, id, queue_row, 40.0)
+	# On a tablet's touch screen the slots are whole touch targets; the panel has the room.
+	var slots := _queue_slots(w, id, queue_row, Platform.TOUCH_TARGET_DP if touch else 40.0)
 	var head := _bar(col)
 	var status := _label(col, "", "BodyLabel")
 	var extra := _label(col, "", "MutedLabel")
