@@ -4,18 +4,18 @@ extends Control
 ## follows the kind: mint (info), gold (good), amber (warn), red (error). New toasts pop in
 ## (fade and a slight overshoot), the stack glides to make room, and old ones fade up and away.
 ## They are centred in the layer's width; the HUD spans it over the part of the screen the world
-## is seen through.
+## is seen through. Phones get compact toasts: two at most, slimmer, and wrapped onto a second
+## line only when one is wider than the layer.
 
 const LIFE_S := 3.8
 const IN_S := 0.28
 const OUT_S := 0.35
 const MAX_TOASTS := 5
+const MAX_TOASTS_COMPACT := 2
 const GAP := 6.0
 
-## How many toasts show at once; a new one pushes out the oldest.
-var max_toasts: int = MAX_TOASTS
-## Phones: a toast too wide for the layer wraps its text onto more lines.
-var wrap: bool = false
+## Phones: the compact toasts.
+var compact: bool = false
 
 var _toasts: Array[Control] = []
 
@@ -41,9 +41,9 @@ func show_toast(text: String, kind: String) -> void:
 	var col := kind_color(kind)
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", ThemeBuilder.status_box(col))
+	var box := ThemeBuilder.status_box(col)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 8 if compact else 10)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(row)
 	var gem := _Gem.new()
@@ -54,16 +54,23 @@ func show_toast(text: String, kind: String) -> void:
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(label)
+	if compact:
+		box.content_margin_left = 12
+		box.content_margin_right = 12
+		box.content_margin_top = 5
+		box.content_margin_bottom = 5
+		label.add_theme_font_size_override("font_size", 14)
+	panel.add_theme_stylebox_override("panel", box)
 	panel.modulate.a = 0.0
 	add_child(panel)
-	if wrap:
+	if compact:
 		var room := size.x - 2.0 * GAP
 		var wide := panel.get_combined_minimum_size().x
 		if wide > room:
 			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			label.custom_minimum_size.x = room - (wide - label.get_combined_minimum_size().x)
 	_toasts.append(panel)
-	while _toasts.size() > max_toasts:
+	while _toasts.size() > (MAX_TOASTS_COMPACT if compact else MAX_TOASTS):
 		_dismiss(_toasts[0])
 	# Wait one frame for the panel's size, then place it and animate it in.
 	await get_tree().process_frame

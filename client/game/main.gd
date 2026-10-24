@@ -75,6 +75,8 @@ func _ready() -> void:
 		_on_world_started(Game.world)
 	elif autostart:
 		Game.boot(int(Settings.get_value("game/seed", 4127)))
+		if Platform.is_mobile():
+			HelpPanel.show_once(hud, Settings)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--capture="):
 			_capture_and_quit(a.substr(10))

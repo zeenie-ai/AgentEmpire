@@ -70,8 +70,11 @@ screenshot tools need a real window, so leave out `--headless`.
 | `agent_showcase.gd` | Screenshots of agents in a real town against a Town Hall (`AURELHAVEN_RUNTIME=<data>\runtime.json`, `-- --work=<git repo>`) |
 | `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png` |
 | `capture_screens.gd`, `snap_main.gd` | Screenshots of a demo town and of the main scene |
-| `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames and draw time |
+| `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames, draw time, and per frame the draw calls, primitives (main view and shadows) and GPU time. For the phone build: `--rendering-method mobile -s res://tools/perf_stress.gd -- --quality=low` |
 | `input_smoke.gd` | Injects mouse and keyboard input into the main scene and checks the results |
+| `touch_smoke.gd` | Injects screen touches into the main scene as on a phone (tap, double tap, the Select box, a gather order, placement and Build, rally, pan, pinch, twist) and checks the results; run it with `-- --mobile --dpi=420` |
+| `store_art.gd` | Renders the Google Play icon and feature graphic and the Android launcher icons, and checks them against Play's limits (`--check` only checks) |
+| `touch_ui_preview.gd` | Screenshots of the phone and tablet panels over a demo town: the game menu, the touch help, a card's long-press tip, a chip's tip and the placement hint (`-- --mobile --dpi=<n> --size=WxH`) |
 | `char_check.gd`, `prop_check.gd` | Look-development renders for characters and carried props |
 | `walls_showcase.gd` | Renders towns at Age I to IV and a wall mid-rise |
 | `audio_check.gd` | Renders every sound cue to a WAV file for review, with loudness figures |
@@ -90,6 +93,80 @@ window:
 
 For example, a 6.5-inch phone: `<godot> --path client --resolution 2400x1080 -- --mobile --dpi=420`.
 A smaller window at half the density gives the same layout: `--resolution 1200x540 -- --mobile --dpi=210`.
+
+A phone or tablet saves the town to the `auto` slot (`user://saves/auto.json`) when the app goes
+to the background or quits, and the next start resumes it; closing the `--mobile` preview window
+does the same. Graphics default to Low there.
+
+### Android builds
+
+Two presets in `client/export_presets.cfg` build for phones and tablets: "Android APK", a debug
+APK from Godot's prebuilt template for quick emulator rounds, and "Android", the release App
+Bundle (`.aab`) for Google Play, built with Gradle. Both are for arm64-v8a and x86_64, package
+`ai.zeenie.agentempire`, minimum SDK 24, target SDK 36. The scripts were made and tested on
+Windows.
+
+**Setup, once per computer.** Install the Android SDK command-line tools (Android Studio's SDK
+Manager puts them in `%LOCALAPPDATA%\Android\Sdk`) and a JDK 17 (Godot's Gradle build runs on
+it). Close the Godot editor, which writes its settings back when it quits, then run
+`node scripts/setup-android.mjs --jdk=<JDK 17 folder>`. It writes the JDK and the Android debug
+keystore (`%USERPROFILE%\.android\debug.keystore`) into Godot's editor settings, adds the NDK and
+build-tools 36.1.0 the Gradle build needs, creates the `ae_phone` (Pixel 7) and `ae_tablet`
+(Pixel Tablet) emulators, and downloads a pinned, checksum-checked bundletool into
+`.tools/bundletool/`. Later runs only check. The other Android scripts take the SDK and the JDK
+from Godot's editor settings.
+
+| What | Command |
+|---|---|
+| Debug APK (under a minute) | `node scripts/build-android.mjs --apk`, writes `client/export/android/AgentEmpire-debug.apk` |
+| Release App Bundle | `node scripts/build-android.mjs --aab`, writes `client/export/android/AgentEmpire.aab` |
+| Smoke test on an emulator | `node scripts/android-smoke.mjs --avd=ae_phone` (or `ae_tablet`; `--aab` for the bundle) |
+
+The first `--aab` build installs Godot's Gradle template into `client/android/` (git-ignored),
+and Gradle downloads itself and its packages (about 1 GB); later bundle builds take about a
+minute and a half.
+
+**Signing.** The debug APK is signed with the Android debug key. The App Bundle is signed with
+the upload key, kept outside the repository in `%USERPROFILE%\AgentEmpireKeys\`
+(`agentempire-upload.jks`, alias `upload`, and its password in
+`agentempire-upload-password.txt`). Keep a backup of both, and never commit, print or log them.
+Google Play signs the installed app with its own key; the upload key only proves that an upload
+comes from us. Set three variables before `--aab` (the script names any that are missing):
+
+```powershell
+$env:GODOT_ANDROID_KEYSTORE_RELEASE_PATH = "$env:USERPROFILE\AgentEmpireKeys\agentempire-upload.jks"
+$env:GODOT_ANDROID_KEYSTORE_RELEASE_USER = "upload"
+$env:GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD = Get-Content -Raw "$env:USERPROFILE\AgentEmpireKeys\agentempire-upload-password.txt"
+```
+
+`jarsigner -verify -certs client\export\android\AgentEmpire.aab` (JDK 17's) checks a bundle.
+
+**Smoke test.** `android-smoke.mjs` boots the emulator unless one runs (one at a time), installs
+the build (an `.aab` through bundletool, signed with the debug key), starts the game, presses
+Home and comes back, force-stops and restarts it, and presses Back, which must leave the game
+running in front. It then checks the installed APKs (package, version code, target SDK 36, min
+SDK 24, no INTERNET or AD_ID permission, Android backup off, landscape, 16 KB alignment), fails on
+an ERROR, SCRIPT ERROR, FATAL, crash or ANR in logcat, and reports the renderer. Screenshots and
+`logcat.txt` go to `out/android/<avd>-<apk|aab>/`. The emulator keeps running afterwards; stop it
+with the SDK's adb (`%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe -s emulator-5554 emu
+kill`), not an older adb on PATH.
+
+**A new build for Google Play.** Every upload needs a higher version code: raise `version/code`
+in the "Android" preset and in "Android APK" (the smoke test compares them), change
+`version/name` when the game's version changes, build the bundle again and run the smoke test
+with `--aab` before uploading.
+
+**Deliberate settings.**
+- Android frame pacing (Swappy) is off until we move to Godot 4.8
+  (`window/frame_pacing/android/enable_frame_pacing=false` in `project.godot`): in 4.7 the
+  emulator's GPU driver breaks it and the game shows a black screen there
+  (godotengine/godot#121035, fixed in 4.8). Phones present with plain vsync meanwhile.
+- Neither Android preset is runnable: with a runnable Android preset, every Godot editor run
+  (`--import` included) polls adb and stops the adb server when it quits, cutting off a running
+  emulator session. Use the scripts, not the editor's one-click deploy.
+- The minimum SDK 24 is set in the "Android" preset; Godot's Gradle build would default to 29
+  for the Vulkan renderer. Android 7 to 9 devices without Vulkan 1.1 fall back to OpenGL ES 3
+  (`rendering/rendering_device/fallback_to_opengl3`, on by default).
 
 ## Working on the code
 

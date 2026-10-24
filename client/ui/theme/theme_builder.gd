@@ -9,6 +9,9 @@ extends RefCounted
 ## Type variations: HudPanel, HudBar, InsetPanel, DocumentPanel, StatusPanel, TitleLabel,
 ## DisplayLabel, BodyLabel, MonoLabel, MutedLabel, DocumentLabel, StatusLabel, CardButton,
 ## FlatButton.
+## On touch (phones and tablets) nothing hovers, but the mouse the engine emulates from touch
+## stays where the finger lifted: there buttons look the same hovered as not, so a tapped one does
+## not stay lit.
 
 static var _theme: Theme
 
@@ -19,7 +22,7 @@ static func theme() -> Theme:
 	return _theme
 
 
-static func build() -> Theme:
+static func build(touch: bool = Platform.is_mobile()) -> Theme:
 	var t := Theme.new()
 	t.default_font = UiFonts.spectral("Regular")
 	t.default_font_size = 16
@@ -46,17 +49,17 @@ static func build() -> Theme:
 		t.set_constant("shadow_offset_x", v, 0)
 		t.set_constant("shadow_offset_y", v, 1)
 
-	_button_styles(t, "Button")
+	_button_styles(t, "Button", touch)
 	t.set_font("font", "Button", UiFonts.cinzel(700, 1))
 	t.set_font_size("font_size", "Button", 13)
 	t.set_color("font_color", "Button", UiTokens.BTN_TEXT)
-	t.set_color("font_hover_color", "Button", Color.WHITE)
+	t.set_color("font_hover_color", "Button", UiTokens.BTN_TEXT if touch else Color.WHITE)
 	t.set_color("font_pressed_color", "Button", UiTokens.GOLD_BRIGHT)
 	t.set_color("font_focus_color", "Button", UiTokens.BTN_TEXT)
 	t.set_color("font_disabled_color", "Button", UiTokens.HUD_MUTED.darkened(0.2))
 
 	t.set_type_variation("CardButton", "Button")
-	_button_styles(t, "CardButton")
+	_button_styles(t, "CardButton", touch)
 
 	t.set_type_variation("FlatButton", "Button")
 	var flat := StyleBoxEmpty.new()
@@ -65,7 +68,7 @@ static func build() -> Theme:
 	flat_hover.trim_color = Color(UiTokens.GOLD, 0.5)
 	flat_hover.set_content_margin_all(4)
 	t.set_stylebox("normal", "FlatButton", flat)
-	t.set_stylebox("hover", "FlatButton", flat_hover)
+	t.set_stylebox("hover", "FlatButton", flat if touch else flat_hover)
 	t.set_stylebox("pressed", "FlatButton", flat_hover)
 	t.set_stylebox("hover_pressed", "FlatButton", flat_hover)
 	t.set_stylebox("disabled", "FlatButton", flat)
@@ -73,6 +76,8 @@ static func build() -> Theme:
 	t.set_font("font", "FlatButton", UiFonts.mono(500, 1))
 	t.set_font_size("font_size", "FlatButton", 14)
 	t.set_color("font_color", "FlatButton", UiTokens.HUD_TEXT)
+	if touch:
+		t.set_color("font_hover_color", "FlatButton", UiTokens.HUD_TEXT)
 
 	# Tooltips: parchment; CraftedTooltip lays out the contents of rich ones.
 	var tip := document_box()
@@ -226,7 +231,7 @@ static func button_box(top: Color, bottom: Color, trim: Color = UiTokens.BTN_BOR
 	return s
 
 
-static func _button_styles(t: Theme, type: String) -> void:
+static func _button_styles(t: Theme, type: String, touch: bool) -> void:
 	var normal := button_box(Color("#9c4329"), Color("#6f2c1b"))
 	var hover := button_box(Color("#b8553a"), Color("#853822"), UiTokens.GOLD_BRIGHT)
 	hover.glow = 1.0
@@ -238,7 +243,7 @@ static func _button_styles(t: Theme, type: String) -> void:
 	disabled.sunken = true
 	disabled.shadow_size = 0.0
 	t.set_stylebox("normal", type, normal)
-	t.set_stylebox("hover", type, hover)
+	t.set_stylebox("hover", type, normal if touch else hover)
 	t.set_stylebox("pressed", type, pressed)
 	t.set_stylebox("hover_pressed", type, pressed)
 	t.set_stylebox("disabled", type, disabled)
