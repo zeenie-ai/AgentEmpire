@@ -1,9 +1,10 @@
 class_name GraphicsQuality
 extends RefCounted
 ## Low, Medium and High graphics presets (Settings "graphics/quality"; High by default on
-## desktop, Low on the web). A preset is plain data that SkyEnvironment, the viewport and the
-## views apply. Features a renderer lacks (the web's Compatibility renderer has no SSAO, SSIL,
-## volumetric fog, depth of field or decals) are skipped there, so every preset runs everywhere.
+## desktop, Low on the web and on phones and tablets). A preset is plain data that
+## SkyEnvironment, the viewport and the views apply. Features a renderer lacks (the web's
+## Compatibility renderer has no SSAO, SSIL, volumetric fog, depth of field or decals) are
+## skipped there, so every preset runs everywhere.
 ##
 ## Anti-aliasing: MSAA 4x resolves geometry edges (roof lines, fences, grass blades) crisply,
 ## and SMAA on top cleans up shader and texture aliasing without the smearing that TAA gives
@@ -17,8 +18,14 @@ const LABELS := {LOW: "Low", MEDIUM: "Medium", HIGH: "High"}
 const SETTING := "graphics/quality"
 
 
+## The preset used until the player picks one: Low on the web and on phones and tablets (also in
+## the desktop `--mobile` preview), High elsewhere.
 static func default_name() -> String:
-	return LOW if OS.has_feature("web") else HIGH
+	return default_for(OS.has_feature("web"), Platform.is_mobile())
+
+
+static func default_for(web: bool, mobile: bool) -> String:
+	return LOW if web or mobile else HIGH
 
 
 ## The preset name in effect (a command-line "--quality=<name>" wins over the saved setting).
