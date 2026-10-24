@@ -540,7 +540,7 @@ func activate(slot: Dictionary) -> void:
 		_notify_result(Game.link.detach_tool(id.substr(7)), "Dismantled.")
 	elif id == "rally" and b != null:
 		mode = Mode.RALLY
-		hint_changed.emit("Click to set the rally point. Right-click cancels.", true)
+		hint_changed.emit("Tap where new townsfolk should go." if touch_mode else "Click to set the rally point. Right-click cancels.", true)
 	elif id.begins_with("focus:") and b != null:
 		Game.issue(GameCommands.set_gather_focus(b.id, id.substr(6)))
 	elif id == "cancel_train" and b != null:
@@ -664,7 +664,8 @@ func _set_plot_check(check: Dictionary) -> void:
 	var ok := bool(check.get("ok", false))
 	var who := J.gs(Realm.agent(place_agent_id), "name", "The agent")
 	var bname := world().econ.building_name(place_type)
-	hint_changed.emit("%s's %s: click to choose this plot. Right-click cancels." % [who, bname] if ok else "%s: %s" % [bname, String(check.get("reason", ""))], ok)
+	var choose := "%s's %s: tap or drag to move the plot, then tap Build." if touch_mode else "%s's %s: click to choose this plot. Right-click cancels."
+	hint_changed.emit(choose % [who, bname] if ok else "%s: %s" % [bname, String(check.get("reason", ""))], ok)
 	if view.ghost.visible and place_cell != Pathing.NO_CELL:
 		view.ghost.place_at(place_cell, Vector2i(HomeLayout.HOME, HomeLayout.HOME), ok)
 
@@ -753,7 +754,8 @@ func _set_check(check: Dictionary) -> void:
 	var w := world()
 	var ok := bool(check.get("ok", false))
 	var bname := w.econ.building_name(place_type)
-	var text := "%s: click to place. Shift places more; right-click cancels." % bname if ok else "%s: %s" % [bname, String(check.get("reason", ""))]
+	var place := "%s: tap or drag to move it, then tap Build." if touch_mode else "%s: click to place. Shift places more; right-click cancels."
+	var text := place % bname if ok else "%s: %s" % [bname, String(check.get("reason", ""))]
 	hint_changed.emit(text, ok)
 	if view.ghost.visible and place_cell != Pathing.NO_CELL:
 		view.ghost.place_at(place_cell, w.econ.building_footprint(place_type), ok)

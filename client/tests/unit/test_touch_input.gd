@@ -325,6 +325,25 @@ func test_rally_mode_bar_only_cancels() -> void:
 	assert_true(k.rally.is_empty(), "no rally point was set")
 
 
+func test_touch_hints_say_tap_and_build() -> void:
+	var hints: Array[String] = []
+	input.hint_changed.connect(func(text: String, _ok: bool) -> void: hints.append(text))
+	_select_townsfolk()
+	input.begin_placement("cottage")
+	input.move_ghost(_footprint_screen("cottage", _cottage_spot()))
+	assert_eq(hints.back(), "Cottage: tap or drag to move it, then tap Build.")
+	input.cancel_mode()
+	selection.set_ids([w.keep().id])
+	input.activate({"id": "rally"})
+	assert_eq(hints.back(), "Tap where new townsfolk should go.")
+	for text in hints:
+		assert_false(text.to_lower().contains("click"), "no clicks on touch: %s" % text)
+	input.cancel_mode()
+	input.touch_mode = false
+	input.activate({"id": "rally"})
+	assert_eq(hints.back(), "Click to set the rally point. Right-click cancels.", "desktop wording stays")
+
+
 func test_mouse_events_made_from_touches_are_left_alone() -> void:
 	var id := _townsfolk()[0]
 	var at := _unit_screen(id)

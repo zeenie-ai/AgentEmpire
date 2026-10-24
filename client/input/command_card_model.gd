@@ -8,7 +8,8 @@ extends RefCounted
 ##
 ## Agents (their figure, home or add-ons) get their own card: send a task, review, answer
 ## approvals, choose a plot, add add-ons, resume or cancel work, retire. It reads the Town
-## Hall's state from Realm; everything it offers goes through TownLink.
+## Hall's state from Realm; everything it offers goes through TownLink. Without a Town Hall
+## (phones and tablets) the Keep offers no Summon.
 
 const SLOTS := 15
 
@@ -69,8 +70,12 @@ static func _building(w: SimWorld, b: SimBuilding, out: Array[Dictionary]) -> vo
 			var ok := w.ledger.can_afford(cost) and b.queue.size() < w.econ.training_queue_max()
 			out[0] = _slot("train:" + unit, "Townsperson", unit,
 				"Train a townsperson (%d s)\nGathers Food and Wood, builds houses, carries scrolls." % int(w.econ.unit_train_s(unit)), cost, ok)
-		out[1] = _summon_slot(w)
-		out[3] = _slot("rally", "Rally", "rally", "Set rally point\nNew townsfolk walk there; a resource means start gathering it. Right-click also works.", {}, true)
+		if Platform.has_town_hall():
+			out[1] = _summon_slot(w)
+		var rally_tip := "Set rally point\nNew townsfolk walk there; a resource means start gathering it. Right-click also works."
+		if Platform.is_mobile():
+			rally_tip = "Set rally point\nThen tap where new townsfolk should go; a resource means start gathering it."
+		out[3] = _slot("rally", "Rally", "rally", rally_tip, {}, true)
 		var focus := b.gather_focus
 		out[5] = _slot("focus:auto", "Auto", "focus_auto", "Gather Focus: auto\nIdle townsfolk gather whichever of Food or Wood is lower.", {}, true, focus == "auto")
 		var k := 6
