@@ -15,6 +15,8 @@ extends Node
 
 ## Emitted when the placement/rally hint changes (text "" hides it).
 signal hint_changed(text: String, ok: bool)
+## Touch: the Select toggle changed (drag_selects).
+signal drag_selects_changed(on: bool)
 
 enum Mode { SELECT, PLACE, RALLY, PLACE_PLOT }
 
@@ -34,6 +36,13 @@ var place_cell: Vector2i = Pathing.NO_CELL
 var place_check: Dictionary = {}
 ## PLACE_PLOT: the agent whose plot is being chosen.
 var place_agent_id: String = ""
+
+## Phones and tablets: the world takes touches through TouchControls, so RtsInput leaves the
+## world's mouse events alone (the engine emulates them from touch). Set by GameMain.
+var touch_mode: bool = false
+## Touch: the next one-finger drag draws a selection box instead of panning (the HUD's Select
+## toggle). Change it with set_drag_selects().
+var drag_selects: bool = false
 
 var _plot_pending: bool = false
 var _bell_cursor: int = 0
@@ -61,6 +70,12 @@ func setup(world_view: WorldView, rts_camera: RtsCamera, sel: Selection, hud_lay
 
 func world() -> SimWorld:
 	return Game.world
+
+
+## Touch: turns the Select toggle on or off.
+func set_drag_selects(on: bool) -> void:
+	drag_selects = on
+	drag_selects_changed.emit(on)
 
 
 func _on_world_started(w: SimWorld) -> void:

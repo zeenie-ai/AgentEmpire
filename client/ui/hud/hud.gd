@@ -19,6 +19,8 @@ var fps_label: Label
 ## Modal windows over a dimmed town, the newest on top.
 var modal_root: Control
 var approval_tray: ApprovalTray
+## Phones and tablets: what Android's Back button does (BackChain).
+var back_chain: BackChain
 
 var _input: RtsInput
 var _windows: Array[Control] = []
@@ -96,6 +98,38 @@ func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsI
 	bottom.selection_panel.agent_approvals_requested.connect(focus_approvals)
 	bottom.command_card.bind(selection, input)
 	input.hint_changed.connect(hint.set_hint)
+	back_chain = BackChain.new()
+	back_chain.name = "BackChain"
+	add_child(back_chain)
+	back_chain.setup(self, input)
+
+
+## The part of the screen the world is seen through: between the top bar and the bottom panel
+## (the whole window while the HUD is hidden), in viewport coordinates.
+func world_rect() -> Rect2:
+	var full := get_viewport().get_visible_rect()
+	if not visible or top_bar == null or bottom == null:
+		return full
+	var top := full.position.y
+	var bottom_y := full.end.y
+	if top_bar.visible:
+		top = maxf(top, top_bar.get_global_rect().end.y)
+	if bottom.visible:
+		bottom_y = minf(bottom_y, bottom.get_global_rect().position.y)
+	if bottom_y - top < 64.0:
+		return full
+	return Rect2(full.position.x, top, full.size.x, bottom_y - top)
+
+
+## The game menu (GameMenu): phones and tablets open it from the top bar and with Back.
+func open_game_menu() -> void:
+	open_window(GameMenu.new().setup(self, _input))
+
+
+## Closes an overlay that is not a window (the phone's minimap). True when one was open.
+## Stub: the HUD stream fills it in.
+func close_overlay() -> bool:
+	return false
 
 
 func bind_world(w: SimWorld) -> void:

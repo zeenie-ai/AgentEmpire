@@ -24,6 +24,8 @@ const DEFAULTS := {
 	# new agents (the Summoning dialog's default).
 	"onboarding/done": false,
 	"onboarding/work_folder": "",
+	# Phones and tablets: whether the touch controls help has been shown once.
+	"onboarding/touch_help": false,
 	# Start the Town Hall when the game opens and none is running (desktop).
 	"townhall/auto_start": true,
 	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed

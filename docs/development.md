@@ -76,6 +76,21 @@ screenshot tools need a real window, so leave out `--headless`.
 | `walls_showcase.gd` | Renders towns at Age I to IV and a wall mid-rise |
 | `audio_check.gd` | Renders every sound cue to a WAV file for review, with loudness figures |
 
+## Phones and tablets
+
+The Android build plays the offline town: there is no Town Hall on a phone, so no agents yet.
+It uses touch controls and a HUD sized in dp (one logical pixel is one Android dp, 1/160 inch);
+`client/game/platform.gd` decides both. On desktop, two options after `--` preview it in a
+window:
+
+| Option | What it does |
+|---|---|
+| `--mobile` | Plays the phone and tablet build: offline, touch controls, the dp-sized HUD; the mouse acts as a finger |
+| `--dpi=<n>` | The screen density `--mobile` assumes (a phone is about 420, a 10-inch tablet about 320) |
+
+For example, a 6.5-inch phone: `<godot> --path client --resolution 2400x1080 -- --mobile --dpi=420`.
+A smaller window at half the density gives the same layout: `--resolution 1200x540 -- --mobile --dpi=210`.
+
 ## Working on the code
 
 **Keep the main checkout runnable.** The game and its exe are played straight from the main

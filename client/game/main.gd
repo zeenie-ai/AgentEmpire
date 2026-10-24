@@ -12,6 +12,10 @@ extends Node
 ##   --age=<1..4>                    start at that age (its walls standing)
 ##   --advance-age-after=<seconds>   advance one age after that long (watch a wall rise)
 ##   --capture=<png path>            save a screenshot of the startup after two seconds and quit
+## and on any town:
+##   --mobile                        play the phone and tablet build in a window (offline, touch
+##                                   controls, a HUD sized in dp; the mouse acts as a finger)
+##   --dpi=<n>                       the screen density --mobile assumes (a phone is about 420)
 
 ## When false the scene waits for someone else (a tool, a test) to call Game.new_town().
 @export var autostart: bool = true
@@ -37,6 +41,8 @@ var _started_ms: int = 0
 
 
 func _ready() -> void:
+	Platform.apply_scale(get_window())
+	Platform.apply_input_mode()
 	world_view = WorldView.new()
 	world_view.name = "World"
 	add_child(world_view)
@@ -54,6 +60,13 @@ func _ready() -> void:
 	add_child(input)
 	input.setup(world_view, camera, selection, hud)
 	hud.setup(world_view, camera, selection, input)
+	if Platform.is_mobile():
+		input.touch_mode = true
+		camera.edge_scroll = false
+		var touch := TouchControls.new()
+		touch.name = "TouchControls"
+		add_child(touch)
+		touch.setup(world_view, camera, selection, input, hud)
 	world_view.wall_rise_started.connect(_on_wall_rise_started)
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	Game.world_started.connect(_on_world_started)
@@ -67,21 +80,11 @@ func _ready() -> void:
 			_capture_and_quit(a.substr(10))
 
 
-## The part of the screen the world is seen through: between the HUD's top bar and its bottom
-## panel (the whole window while the HUD is hidden), in viewport coordinates.
+## The part of the screen the world is seen through (Hud.world_rect()), in viewport coordinates.
 func world_rect() -> Rect2:
-	var full := get_viewport().get_visible_rect()
-	if hud == null or not hud.visible or hud.top_bar == null or hud.bottom == null:
-		return full
-	var top := full.position.y
-	var bottom := full.end.y
-	if hud.top_bar.visible:
-		top = maxf(top, hud.top_bar.get_global_rect().end.y)
-	if hud.bottom.visible:
-		bottom = minf(bottom, hud.bottom.get_global_rect().position.y)
-	if bottom - top < 64.0:
-		return full
-	return Rect2(full.position.x, top, full.size.x, bottom - top)
+	if hud == null:
+		return get_viewport().get_visible_rect()
+	return hud.world_rect()
 
 
 ## Debug aid: `-- --capture=<png path>` saves a screenshot of the normal startup after two

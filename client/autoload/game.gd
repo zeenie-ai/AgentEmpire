@@ -18,6 +18,8 @@ const Protocol = preload("res://net/protocol.gd")
 
 const MAX_FRAME_DELTA := 1.0
 const SAVE_DIR := "user://saves"
+## The slot phones and tablets save to when the app goes to the background, and resume from.
+const AUTOSAVE_SLOT := "auto"
 ## How long boot() waits for the Town Hall before starting an offline town.
 const BOOT_WAIT_MS := 3000
 ## How long the game waits for a Town Hall it started itself (a real one probes the harnesses
@@ -439,6 +441,17 @@ func load_offline(slot: String = "quick") -> bool:
 		return false
 	Notify.push("Town loaded.", "good")
 	return true
+
+
+## Saves an offline town to AUTOSAVE_SLOT without a toast. True when it saved.
+## Stub: the lifecycle stream fills it in.
+func autosave() -> bool:
+	return false
+
+
+## Saves the town (the Town Hall's, or an offline one on phones and tablets) and quits.
+func save_and_quit() -> void:
+	_quit_after_save()
 
 
 func _notification(what: int) -> void:
