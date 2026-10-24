@@ -5,15 +5,17 @@ extends CanvasLayer
 ## theme (ThemeBuilder).
 ##
 ## Three layouts (Layout), picked from Platform: the desktop's; a tablet's on touch, the same
-## with a Menu button in the top bar; and a phone's (a safe area under 1200 dp wide):
+## with a Menu button in the top bar and the Select toggle (RtsInput.drag_selects) above the bottom
+## panel's left end; and a phone's (a safe area under 1200 dp wide):
 ## - a slim top bar: resources, population, Idle, Map and Menu;
 ## - the phone column at the bottom right: the compact selection details over the command card,
 ##   shown while something is selected;
 ## - the minimap in an overlay under the Map button;
-## - the Select toggle at the bottom left (RtsInput.drag_selects).
+## - the Select toggle at the bottom left.
 ## Everything but the dim, the drag box and the cursor hint sits in `safe`, inset to the
-## display's safe area (clear of camera cutouts). Without a Town Hall (Platform.has_town_hall())
-## the Town Hall chip, the Mana orb and the approval tray are hidden.
+## display's safe area (clear of camera cutouts), read again when the window resizes and when the
+## app comes back; on phones and tablets the layout follows its width. Without a Town Hall
+## (Platform.has_town_hall()) the Town Hall chip, the Mana orb and the approval tray are hidden.
 ##
 ## Agents: the approval tray (top right), and modal windows opened over a dimmed town
 ## (open_window, stacked: the Summoning Font opens its folder browser on top of itself): the
@@ -36,7 +38,7 @@ var column: VBoxContainer
 ## Phones: the minimap opened from the Map button, top right under the bar. It catches the taps
 ## around the minimap, which close it.
 var map_overlay: Control
-## Phones: the Select toggle, bottom left.
+## Phones and tablets: the Select toggle, bottom left (on tablets above the bottom panel).
 var select_toggle: SelectToggle
 var toasts: ToastLayer
 var box_overlay: SelectionBoxOverlay
@@ -51,6 +53,9 @@ var back_chain: BackChain
 var layout: Layout = Layout.DESKTOP
 ## Whether the Town Hall's parts show (the chip, the Mana orb, the approval tray).
 var town_hall: bool = true
+## Returns the display's safe area (Rect2, viewport coordinates) when set; else the HUD asks
+## Platform.safe_rect(). Tests stand in for a camera cutout with it.
+var safe_area_provider: Callable = Callable()
 
 var _input: RtsInput
 var _selection: Selection
@@ -97,11 +102,6 @@ func _ready() -> void:
 	select_toggle = SelectToggle.new()
 	select_toggle.name = "SelectToggle"
 	safe.add_child(select_toggle)
-	select_toggle.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	select_toggle.offset_left = PHONE_GAP
-	select_toggle.offset_right = PHONE_GAP + SelectToggle.SIZE
-	select_toggle.offset_top = -PHONE_GAP - SelectToggle.SIZE
-	select_toggle.offset_bottom = -PHONE_GAP
 
 	toasts = ToastLayer.new()
 	safe.add_child(toasts)
@@ -142,13 +142,19 @@ func _ready() -> void:
 	top_bar.menu_requested.connect(open_game_menu)
 	top_bar.map_requested.connect(_toggle_map)
 
-	for c: Control in [safe, top_bar, column]:
-		c.item_rect_changed.connect(_place_under_bar)
+	for c: Control in [safe, top_bar, bottom, column]:
+		c.item_rect_changed.connect(_place)
+	town_hall = Platform.has_town_hall()
+	layout = platform_layout(get_viewport())
 	get_viewport().size_changed.connect(_read_safe_area)
 	_read_safe_area()
-	layout = platform_layout(get_viewport())
-	town_hall = Platform.has_town_hall()
 	_apply_layout()
+
+
+func _notification(what: int) -> void:
+	# Back from the background, the display may have turned or the cutout moved.
+	if what == NOTIFICATION_APPLICATION_RESUMED:
+		_read_safe_area()
 
 
 ## The layout Platform asks for in `vp`: the desktop's, or on touch the phone's below 1200 dp of
@@ -187,10 +193,10 @@ func _apply_layout() -> void:
 	bottom.selection_panel.set_look(phone, touch)
 	bottom.visible = not phone
 	column.visible = phone
-	select_toggle.visible = phone
+	select_toggle.visible = touch
 	toasts.compact = phone
 	_update_column()
-	_place_under_bar()
+	_place()
 
 
 ## Moves `parts` into `parent`, in this order.
@@ -208,20 +214,33 @@ func _update_column() -> void:
 	bottom.card_frame.visible = shown
 
 
-## Insets `safe` to the display's safe area (the whole viewport on desktop).
+## The display's safe area in viewport coordinates: safe_area_provider's when set, else
+## Platform.safe_rect() (the whole viewport on desktop).
+func safe_area() -> Rect2:
+	if safe_area_provider.is_valid():
+		return safe_area_provider.call()
+	return Platform.safe_rect(get_viewport())
+
+
+## Insets `safe` to the display's safe area. On phones and tablets the layout follows its width
+## (a foldable unfolding, a window resized).
 func _read_safe_area() -> void:
-	var vp := get_viewport()
-	var full := vp.get_visible_rect()
-	var area := Platform.safe_rect(vp)
+	var full := get_viewport().get_visible_rect()
+	var area := safe_area()
 	safe.offset_left = area.position.x - full.position.x
 	safe.offset_top = area.position.y - full.position.y
 	safe.offset_right = area.end.x - full.end.x
 	safe.offset_bottom = area.end.y - full.end.y
+	if Platform.is_mobile():
+		var which := Layout.PHONE if Platform.compact_at(area.size.x) else Layout.TABLET
+		if which != layout:
+			use_layout(which, town_hall)
 
 
-## Hangs the toasts, the FPS readout and the approval tray under the top bar as measured. The
-## toasts and the readout keep to the world band: the whole width, or left of the phone column.
-func _place_under_bar() -> void:
+## Places what goes by the measured bars: the toasts, the FPS readout and the approval tray under
+## the top bar, the phone's minimap under it, and the Select toggle. The toasts and the readout
+## keep to the world band: the whole width, or left of the phone column.
+func _place() -> void:
 	var below := top_bar.get_rect().end.y
 	var band_right := column.position.x if layout == Layout.PHONE else safe.size.x
 	toasts.offset_left = 0.0
@@ -233,6 +252,12 @@ func _place_under_bar() -> void:
 	approval_tray.offset_top = below + 12.0
 	if layout == Layout.PHONE:
 		bottom.map_frame.offset_top = below + PHONE_GAP
+	# Bottom left: on phones in the corner, on tablets just above the bottom panel.
+	var toggle_bottom := (bottom.get_rect().position.y if layout == Layout.TABLET else safe.size.y) - PHONE_GAP
+	select_toggle.offset_left = PHONE_GAP
+	select_toggle.offset_right = PHONE_GAP + SelectToggle.SIZE
+	select_toggle.offset_top = toggle_bottom - SelectToggle.SIZE
+	select_toggle.offset_bottom = toggle_bottom
 
 
 func setup(view: WorldView, camera: RtsCamera, selection: Selection, input: RtsInput) -> void:

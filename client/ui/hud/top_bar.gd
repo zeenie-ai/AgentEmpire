@@ -25,8 +25,10 @@ const HALL_CLOSE := 3
 
 const REFRESH_S := 0.25
 
-## On touch the bar is one touch target tall, and so are its buttons.
+## On touch the bar is one touch target tall, and so are its buttons; the full bar's items sit a
+## little closer, so with the Menu button it still fits the narrowest tablet (1200 dp).
 const TOUCH_HEIGHT := 48
+const TOUCH_SEPARATION := 18
 ## The compact bar's resource and population chips (five digits fit), its Idle button (the icon
 ## and the count) and the gap between items.
 const COMPACT_CHIP := 80
@@ -160,7 +162,7 @@ func configure(compact: bool, touch: bool, town_hall: bool) -> void:
 	_mana.visible = town_hall
 	_map_button.visible = compact
 	_menu_button.visible = touch
-	_row.add_theme_constant_override("separation", COMPACT_SEPARATION if compact else 24)
+	_row.add_theme_constant_override("separation", COMPACT_SEPARATION if compact else (TOUCH_SEPARATION if touch else 24))
 	for res: String in _chips:
 		(_chips[res] as Control).custom_minimum_size.x = COMPACT_CHIP if compact else 96
 	_pop_chip.custom_minimum_size.x = COMPACT_POP if compact else 88
