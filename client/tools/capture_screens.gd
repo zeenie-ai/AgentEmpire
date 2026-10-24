@@ -5,10 +5,14 @@ extends SceneTree
 ##   out/hud.png      the game screen with the HUD, the Keep selected and training
 ##   out/closeup.png  a low close-up of townsfolk working around the buildings, HUD hidden
 ##   out/night.png    the same town at night with the HUD
+## and, asked for by name only, more of the HUD:
+##   out/hud_group.png  every townsperson selected
+##   out/hud_unit.png   one townsperson selected
+##   out/hud_map.png    phones: the minimap opened from the top bar's Map button
 ## out/ is at the repository root (next to client/). Needs a window, so do not pass --headless:
 ##   .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/capture_screens.gd
 ## Options after "--": --out=<dir> --seed=<n> --quality=low|medium|high --size=1600x900
-##   --only=map,hud,closeup,night
+##   --only=map,hud,closeup,night,hud_group,hud_unit,hud_map
 ## and the phone and tablet build (Platform): --mobile --dpi=<n>, the window standing in for the
 ## screen, e.g. --size=2400x1080 --mobile --dpi=420 for a phone 914x411 dp. A size larger than the
 ## desktop screen gives the same layout at half the size and half the dpi.
@@ -39,6 +43,11 @@ func _arg(name: String, fallback: String) -> String:
 func _wanted(shot: String) -> bool:
 	var only := _arg("only", "")
 	return only == "" or shot in only.split(",")
+
+
+## Shots taken only when --only names them.
+func _named(shot: String) -> bool:
+	return shot in _arg("only", "").split(",")
 
 
 func _run() -> void:
@@ -78,6 +87,26 @@ func _run() -> void:
 		main.camera.set_view(Vector3(k.center().x + 2.0, 0.0, k.center().y + 2.5), 29.0, deg_to_rad(-20.0))
 		_game().paused = false
 		await _shot(45, out.path_join("hud.png"))
+
+	# More of the HUD, only when asked for by name: a group, one townsperson, the phone's minimap.
+	var folk: Array[int] = []
+	for u: SimUnit in w.units.values():
+		if u.kind == "townsfolk":
+			folk.append(u.id)
+	if _named("hud_group"):
+		main.hud.visible = true
+		main.selection.set_ids(folk)
+		await _shot(20, out.path_join("hud_group.png"))
+	if _named("hud_unit"):
+		main.hud.visible = true
+		main.selection.set_ids([folk[0]])
+		await _shot(20, out.path_join("hud_unit.png"))
+	if _named("hud_map"):
+		main.hud.visible = true
+		main.selection.clear()
+		if main.hud.open_map():
+			await _shot(20, out.path_join("hud_map.png"))
+			main.hud.close_overlay()
 
 	# 3. A close-up of townsfolk at work near the buildings (a fresh site keeps builders busy).
 	if _wanted("closeup"):
