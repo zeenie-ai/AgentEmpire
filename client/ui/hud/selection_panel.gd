@@ -268,6 +268,8 @@ func _build_trainer(w: SimWorld, b: SimBuilding, col: VBoxContainer) -> void:
 		var icon := IconView.new("", 26)
 		s.add_child(icon)
 		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		icon.grow_vertical = Control.GROW_DIRECTION_BOTH
 		s.pressed.connect(func() -> void: Game.issue(GameCommands.cancel_train(id, i)))
 		queue_row.add_child(s)
 		slots.append(s)
@@ -455,6 +457,8 @@ func _build_group(w: SimWorld, ids: Array[int]) -> void:
 			portrait.show_icon((w.buildings[id] as SimBuilding).type)
 		b.add_child(portrait)
 		portrait.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		portrait.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		portrait.grow_vertical = Control.GROW_DIRECTION_BOTH
 		b.pressed.connect(func() -> void:
 			if Input.is_key_pressed(KEY_SHIFT):
 				selection.toggle(id)
