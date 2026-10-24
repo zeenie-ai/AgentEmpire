@@ -154,6 +154,7 @@ func _build_unit(w: SimWorld, id: int) -> void:
 	carry_bar.custom_minimum_size = Vector2(160, 10)
 	carry_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var carry_text := _label(carry_row, "", "MonoLabel")
+	carry_text.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_label(col, "SPEED %.1f TILES/S   CARRIES %d" % [w.econ.walk_speed(u.kind), w.econ.carry_capacity(w.age)], "MutedLabel")
 	_updater = func() -> void:
 		var uu: SimUnit = w.units.get(id)
