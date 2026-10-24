@@ -4,14 +4,14 @@ The Google Play main store listing for release 1, the offline town on phones and
 describes only what the Android app does, plus one line about the PC version. Paste each block
 as it is. Counts are characters as Play counts them, spaces and line breaks included.
 
-## Title (11 of 30)
+## Title (25 of 30)
 
 ```text
-AgentEmpire
+AgentEmpire: Town Builder
 ```
 
-The same name as in the Create app dialog. With a descriptor, if the owner wants one later:
-`AgentEmpire: Town Builder` (25 of 30).
+The owner's choice, and the App name in the Create app dialog too (Play uses one name for both).
+The phone's launcher still shows AgentEmpire. Without the descriptor: `AgentEmpire` (11 of 30).
 
 ## Short description (78 of 80)
 
@@ -54,18 +54,20 @@ On PC, AgentEmpire goes further: the villagers you summon at the Keep are real A
 
 ## Before submitting
 
-Every line describes the release 1 build. Check these against the release candidate, since each
-comes from one stream's work:
+Every line describes the release 1 build. Each claim was checked against the merged build (r1 at
+6f4acfd); check again on the release candidate if any of these change:
 
-| Claim | From |
+| Claim | Where the build does it |
 |---|---|
-| Bushes and trees grow back; cottages, farms and storehouses; training, rally points; the walled Keep | `protocol/economy.json` and today's game |
-| The Idle button and the Select toggle | stream D (the phone HUD) |
-| Tap to select and order, drag, pinch, twist, placing a building and tapping Build | stream C (touch input) |
-| Back closes windows, clears the selection, then opens the menu | stream F (the Back chain) |
-| Save, load, new town on a fresh map, graphics, sound and How to play in the menu | stream F (the game menu) |
-| Saves itself on leaving and resumes on return | stream B (autosave and resume) |
-| Offline, no account, no ads, no purchases, no data | stream A's manifest (no Internet permission, no SDKs) |
+| Bushes and trees grow back; cottages (+5 population), farms (endless food), storehouses (drop-off and storage); townsfolk trained at the Keep | `protocol/economy.json` (`regrow_s`, the buildings, `units.townsfolk`) |
+| Rally points; the walled Keep | the Keep's Rally card; the Keep Ring stands from the first age |
+| Tap on Idle for the next idle townsperson | `top_bar.gd`: the Idle button calls `select_next_idle()` |
+| Tap to select, tap a target to order, drag, pinch, twist, the Select toggle, placing then Build | `touch_controls.gd`, `rts_input.gd`, `select_toggle.gd`; the How to play panel says the same |
+| Back closes windows, clears the selection, then opens the menu | `back_chain.gd` |
+| Save, Load, New town (a random seed), Low, Medium and High graphics, Sound and How to play in the menu | `game_menu.gd` |
+| Saves itself on leaving and resumes on return | `game.gd`: autosave on `NOTIFICATION_APPLICATION_PAUSED`, `resume_town()` at boot on mobile |
+| Landscape | Godot's default orientation (the project sets none) |
+| Offline, no account, no ads, no purchases, no data | `export_presets.cfg`: `permissions/internet=false`, no plugins or SDKs |
 
 The texts avoid what Play's metadata rules forbid in a listing: no other games' names, no
 rankings, prices or calls to action, and no emoji.
