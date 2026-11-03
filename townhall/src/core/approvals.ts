@@ -14,6 +14,7 @@ import { APPROVAL_PREVIEW_MAX_BYTES, PRE_APPROVAL_TTL_MS } from "../protocol/ver
 import type { ApprovalAnswer, ApprovalRequest } from "../providers/types.js";
 import { capBytes } from "../security/redact.js";
 import { reachesOutside } from "../security/target-path.js";
+import { commandShapeOf } from "./command-shape.js";
 import type { Ctx } from "./context.js";
 import { incidentKey } from "./incidents.js";
 
@@ -81,12 +82,13 @@ export function inputHash(tool: string, input: unknown): string {
   return createHash("sha256").update(`${tool}\n${canonicalJson(input)}`).digest("hex");
 }
 
-/** What an agent-scope or task-scope rule matches: the tool plus a coarse description of the input. */
+/**
+ * What an agent-scope or task-scope rule matches: the tool plus a description of the input. For a
+ * command, its program and subcommand ("npm run build") or all its words (see command-shape.ts).
+ */
 export function signatureOf(tool: string, category: ApprovalCategory, input: unknown): string {
   const obj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  if (category === "command" && typeof obj.command === "string") {
-    return obj.command.trim().split(/\s+/).slice(0, 2).join(" ").toLowerCase();
-  }
+  if (category === "command") return commandShapeOf(tool, input).signature;
   if (category === "network") {
     const url = typeof obj.url === "string" ? obj.url : "";
     try {
@@ -245,6 +247,12 @@ export class ApprovalService {
     const category = this.effectiveCategory(req, run);
     const hash = inputHash(req.tool, req.input);
     const signature = signatureOf(req.tool, category, req.input);
+    // High risk asks in every mode, and no rule passes it. A command counts as high risk unless it
+    // is one simple program call, and so do commands that can destroy work or reach far.
+    const shape = category === "command" ? commandShapeOf(req.tool, req.input) : null;
+    const risk: Risk =
+      req.risk === "high" || DEFAULT_RISK[category] === "high" || shape?.risk === "high" ? "high" : (req.risk ?? DEFAULT_RISK[category]);
+    const rated = { ...req, risk };
 
     const auto = this.ctx.db.tx((): ApprovalAnswer | null => {
       const now = this.ctx.clock.iso();
@@ -255,10 +263,12 @@ export class ApprovalService {
         [run.agentId, req.tool, hash, now],
       );
       if (pre) {
+        // The player's own answer to this exact call, given after a restart.
         this.ctx.db.run("UPDATE approval_rules SET uses_left = 0, used_at = ? WHERE id = ?", [now, pre.id]);
-        this.insertResolved(run, req, category, hash, signature, pre.decision, "pre_approval", pre.message);
+        this.insertResolved(run, rated, category, hash, signature, pre.decision, "pre_approval", pre.message);
         return { decision: pre.decision, ...(pre.message ? { message: pre.message } : {}) };
       }
+      if (risk === "high") return null;
       if (autoAllowed(run.approvalMode, category)) return { decision: "allow" };
       const rule = this.ctx.db.get<RuleRow>(
         `SELECT id, kind, decision, message FROM approval_rules
@@ -268,7 +278,7 @@ export class ApprovalService {
         [req.tool, category, signature, run.taskId, run.agentId],
       );
       if (rule) {
-        this.insertResolved(run, req, category, hash, signature, rule.decision, "rule", rule.message);
+        this.insertResolved(run, rated, category, hash, signature, rule.decision, "rule", rule.message);
         return { decision: rule.decision, ...(rule.message ? { message: rule.message } : {}) };
       }
       return null;
@@ -276,7 +286,6 @@ export class ApprovalService {
     if (auto) return auto;
 
     const id = this.ctx.ids.next("apv");
-    const risk = req.risk ?? DEFAULT_RISK[category];
     const scopes: ApprovalScope[] = risk === "high" ? ["once"] : ["once", "task", "agent"];
     this.ctx.db.tx(() => {
       const task = this.ctx.tasks.row(run.taskId);
