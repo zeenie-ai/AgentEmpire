@@ -1,7 +1,10 @@
 # Development guide
 
 How to set up the tools, run the tests, build the game and change it safely. For how the parts
-fit together, read [architecture.md](architecture.md) first.
+fit together, read [architecture.md](architecture.md) first. [testing.md](testing.md) explains
+every check, [../scripts/README.md](../scripts/README.md) every script, and
+[../client/README.md](../client/README.md) and [../townhall/README.md](../townhall/README.md) the
+two programs.
 
 ## Tools
 
@@ -15,8 +18,9 @@ fit together, read [architecture.md](architecture.md) first.
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1\` | rebuilding art only |
 
 `.tools/` is git-ignored. `node scripts/setup.mjs` fills it: it downloads Godot 4.7.2 for your
-system from Godot's GitHub release (checked against its SHA-512 list), the export templates your
-builds need, and installs the Town Hall's packages (`npm ci --ignore-scripts` in `townhall/`: no
+system from Godot's GitHub release (checked against its SHA-512 list), the desktop export
+templates for this computer (every desktop platform with `--all-templates`; never the Web
+templates), and installs the Town Hall's packages (`npm ci --ignore-scripts` in `townhall/`: no
 install script is needed, and skipping them keeps npm from compiling better-sqlite3, whose
 programs for every platform ship in its package, so no C++ toolchain is needed). On Windows and
 Linux Godot runs self-contained (an empty `._sc_` file next to the editor), so its settings and
@@ -37,25 +41,31 @@ Run from the repository root unless noted. `<godot>` is
 | Import the client (new checkout, new assets) | `<godot> --headless --path client --import` |
 | Client tests | `<godot> --headless --path client -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit` |
 | End-to-end check | `node scripts/e2e-client.mjs` (`--keep` leaves its temporary folder) |
-| Real harness smoke tests | `cd townhall; $env:AURELHAVEN_SMOKE_CLAUDE = "1"; npm run test:smoke` (also `_CODEX`, `_PI`; each capped at $0.10 of real usage) |
+| Real harness smoke tests | `cd townhall; $env:AURELHAVEN_SMOKE_CLAUDE = "1"; npm run test:smoke` (also `_CODEX`, `_PI` and `_PARTY`; each capped at $0.10 of real usage) |
 | Copy shared files into the client | `node scripts/sync-economy.mjs` (`--check` only compares) |
 | Regenerate the client's protocol constants | `cd townhall; npm run gen:gd`, then sync |
-| Build | `node scripts/build-game.mjs` (`--windows-only` or `--web-only`) |
-| Check the built exe | `pwsh scripts/check-exe.ps1` (launches it, captures `out/exe-check.png`, fails on any ERROR line in the game log) |
+| Build | `node scripts/build-game.mjs` (`--windows-only` or `--web-only`; the web build needs Godot's Web export templates, which `setup.mjs` does not download) |
+| Check the built exe | `pwsh scripts/check-exe.ps1` (launches it, captures `out/exe-check.png`, fails on any game-log line containing "error" in any case) |
 | Rebuild all art | `blender --background --factory-startup --python-exit-code 1 --python art_src/blender/build_all.py` |
 | Rebuild all sound | `node scripts/fetch-audio.mjs` (needs ffmpeg; downloads the CC0 sources into `.tools/vendor/audio`) |
 
 The end-to-end check starts a Town Hall with the scripted agent in a temporary folder, makes a
 fresh git repository as the work folder, and plays the whole loop headless: summon, train, place
 the home, build the add-ons, send a task by courier, answer an approval, review, accept (merge),
-collect the reward, then compares the treasury with the Town Hall's ledger and checks that
-saving and reloading give the same town.
+collect the reward, then compares the treasury with the Town Hall's ledger, checks that saving
+and reloading give the same town, and closes the Town Hall, which must exit cleanly and remove
+its runtime file.
 
 The console executable waits for every process it started, including a Town Hall the game
 launches. When that matters, run the GUI executable or pass `-- --offline`.
 
-`check-exe.ps1` runs the game the way a player does, so if no Town Hall is running the game
-starts one from `townhall/` and leaves it running. Stop it afterwards (see Troubleshooting).
+`check-exe.ps1` runs the game the way a player does, so it is not isolated. It first deletes the
+game's current log. The game then joins a running Town Hall if it finds one, or starts one for
+the mode in your settings on this checkout's `townhall/data` and leaves it running. To keep it
+off your towns, set `AURELHAVEN_DATA_ROOT` to a temporary folder and
+`AURELHAVEN_DISCOVERY_FILE=off` in the same shell: the game then starts a throwaway Town Hall in
+that folder. Stop the Town Hall afterwards (its pid is in the folder's `runtime.json`, or see
+Troubleshooting).
 
 ### Client tools
 
@@ -65,7 +75,7 @@ screenshot tools need a real window, so leave out `--headless`.
 | Tool | What it does |
 |---|---|
 | `e2e_client.gd` | The client half of `scripts/e2e-client.mjs` |
-| `boot_check.gd` | Boots like a player and reports whether it reached the Town Hall's town or an offline one, and how long it took |
+| `boot_check.gd` | Boots like a player and reports whether it reached the Town Hall's town or an offline one, and how long it took. Like the game, it may start a Town Hall on this checkout's `townhall/data` and leave it running |
 | `townhall_mode_check.gd` | Switches between the practice and real Town Halls and closes one, against Town Halls started from this checkout with temporary data (headless) |
 | `agent_showcase.gd` | Screenshots of agents in a real town against a Town Hall (`AURELHAVEN_RUNTIME=<data>\runtime.json`, `-- --work=<git repo>`) |
 | `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png` |
@@ -87,12 +97,16 @@ git worktree add -b my-change .wt/my-change master
 
 `.wt/` is listed in `.git/info/exclude`. A new worktree has no Town Hall packages and no Godot
 import cache: run `npm ci` in its `townhall/` and an import of its `client/`. A worktree has no
-`.tools/` of its own: `scripts/e2e-client.mjs` finds the main checkout's copy from `.wt/<name>`,
-and for the other scripts set `GODOT` to the main checkout's console executable.
+`.tools/` of its own: `setup.mjs`, `build-game.mjs`, `package-release.mjs` and `e2e-client.mjs`
+find the main checkout's copy from `.wt/<name>` (`scripts/lib/godot.mjs`), and `GODOT` points
+any of them at another console executable. For the commands that call Godot directly, use the
+main checkout's `.tools\godot\` path.
 
 Before merging, all of these must pass: the Town Hall type check and tests, the client tests,
 `node scripts/sync-economy.mjs --check` and the end-to-end check. Merge with `--no-ff`. Before
-handing anyone an exe, build it, run `check-exe.ps1` (0 error lines), and commit.
+handing anyone an exe, build it (`node scripts/build-game.mjs --windows-only`), run
+`check-exe.ps1` (0 error lines), and commit. [testing.md](testing.md) lists the checklist in
+order, with what each check proves.
 
 If you linked a worktree's `node_modules` to another checkout's with a directory junction,
 remove the junction (`cmd /c rmdir <path>`) before deleting the worktree, or the delete follows
@@ -113,7 +127,9 @@ it into the other checkout.
 ### Changing game constants
 
 Edit only `protocol/economy.json`, then run `node scripts/sync-economy.mjs`. A client test fails
-if the copy is stale, and a running Town Hall reads the file only at start.
+if `client/data/economy.json` is stale (`--check` also catches a stale `client/net/protocol.gd`),
+and a running Town Hall reads the file only at start. [../protocol/README.md](../protocol/README.md)
+maps the file's sections.
 
 ## Releases
 
@@ -145,11 +161,14 @@ with `runtime/node`, and keeps the towns in the player's data folder
 `build.cmd` (Windows), `build.command` (macOS) and `build.sh` (Linux) run the first two for
 people who don't use a terminal.
 
-To publish a release, set `config/version` in `client/project.godot` and the Windows file and
-product versions in `client/export_presets.cfg`, commit, and push a tag `v<version>`. The
-workflow in `.github/workflows/release.yml` builds every package on Windows, starts each one on
-Windows, Linux and macOS with `smoke-package.mjs`, and publishes them, with `SHA256SUMS.txt`, as
-a pre-release. Run it by hand from the Actions tab to build and check without publishing.
+To publish a release, set `config/version` in `client/project.godot`, and in
+`client/export_presets.cfg` the Windows file and product versions and the macOS short version
+and version; commit, and push a tag `v<version>`. Nothing checks that these agree with the tag.
+The workflow in `.github/workflows/release.yml` builds every package on Windows, starts the
+Windows, Linux and macOS (Apple Silicon) packages on their own systems with `smoke-package.mjs`
+(the Intel Mac package is built but not started), and publishes them, with `SHA256SUMS.txt`, as
+a pre-release. Run it by hand from the Actions tab to build and check without publishing. The
+workflow runs no tests; run the checks in [testing.md](testing.md) before tagging.
 
 ## GDScript conventions and pitfalls
 
@@ -183,6 +202,7 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 |---|---|
 | The game | `%APPDATA%\Godot\app_userdata\AgentEmpire\logs\godot.log` |
 | A Town Hall the game started | `townhall/data/practice/townhall.log` (practice) or `townhall/data/townhall.log` (real) |
+| A Town Hall a release package started | `%APPDATA%\AgentEmpire\townhall\practice\townhall.log` (practice) or `%APPDATA%\AgentEmpire\townhall\townhall.log` (real) |
 | A Town Hall started with `npm start` | its terminal |
 
 ## Troubleshooting
@@ -198,9 +218,10 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 - **A practice town from before the practice and real towns were split opens as the real
   town.** The game used to keep its practice town in `townhall/data/`, which is now the real
   town's folder; practice mode now starts a new town in `townhall/data/practice/`.
-- **Stopping a Town Hall the game started.** The game can close it (`Game.close_town_hall()`),
-  but the menu that offers this is still being built. Until then, end the `node.exe` process
-  whose command line ends in `townhall\src\main.ts`, for example:
+- **Stopping a Town Hall the game started.** Click the Town Hall chip in the top bar and choose
+  **Close the Town Hall**: the game saves the town, closes the Town Hall
+  (`Game.close_town_hall()`) and carries on offline. If no game is connected to it, end the
+  `node.exe` process whose command line ends in `townhall\src\main.ts`, for example:
   ```powershell
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object CommandLine -match 'townhall\\src\\main\.ts' |
