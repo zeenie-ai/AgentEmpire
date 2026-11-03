@@ -3,6 +3,10 @@ extends PanelContainer
 ## Age of Empires-style resource bar (layout after the handoff's V6 Hex Realm): Food, Wood,
 ## Stone and Gold with income per minute in the tooltips, population x/y (flashing at the cap),
 ## the idle-townsfolk counter, the Town Hall chip, the age badge and the Mana orb.
+##
+## configure() fits it to the HUD's layout: on touch it is a whole touch target tall with a Menu
+## button at the right end; the compact phone bar keeps only the resources, population and Idle,
+## then Map and Menu; without a Town Hall the chip and the orb are hidden.
 
 ## The Mana orb was clicked.
 signal budget_requested()
@@ -10,12 +14,27 @@ signal budget_requested()
 signal town_hall_mode_requested(mode: String)
 ## The player chose to close the Town Hall in the chip's menu.
 signal town_hall_close_requested()
+## The Map button was pressed (phones).
+signal map_requested()
+## The Menu button was pressed (phones and tablets).
+signal menu_requested()
 
 const HALL_PRACTICE := 1
 const HALL_REAL := 2
 const HALL_CLOSE := 3
 
 const REFRESH_S := 0.25
+
+## On touch the bar is one touch target tall, and so are its buttons; the full bar's items sit a
+## little closer, so with the Menu button it still fits the narrowest tablet (1200 dp).
+const TOUCH_HEIGHT := 48
+const TOUCH_SEPARATION := 18
+## The compact bar's resource and population chips (five digits fit), its Idle button (the icon
+## and the count) and the gap between items.
+const COMPACT_CHIP := 80
+const COMPACT_POP := 76
+const COMPACT_IDLE := 72
+const COMPACT_SEPARATION := 2
 
 var input: RtsInput
 
@@ -24,12 +43,20 @@ var _chips: Dictionary = {}
 var _pop_label: Label
 var _pop_chip: Control
 var _idle_button: Button
+var _idle_row: HBoxContainer
 var _idle_label: Label
 var _age: AgeBadge
 var _mana: ManaOrb
 var _hall: Button
 var _hall_label: Label
 var _hall_menu: PopupMenu
+var _row: HBoxContainer
+var _mark: Label
+var _dividers: Array[Control] = []
+var _map_button: Button
+var _menu_button: Button
+var _compact: bool = false
+var _touch: bool = false
 var _timer: float = 0.0
 var _time: float = 0.0
 var _pop_capped: bool = false
@@ -38,48 +65,47 @@ var _pop_capped: bool = false
 func _ready() -> void:
 	theme_type_variation = "HudBar"
 	custom_minimum_size = Vector2(0, UiTokens.TOP_BAR_HEIGHT)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 24)
-	add_child(row)
-	var mark := Label.new()
-	mark.text = "AgentEmpire"
-	mark.theme_type_variation = "TitleLabel"
-	mark.add_theme_font_size_override("font_size", 18)
-	mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(mark)
-	row.add_child(_divider())
+	_row = HBoxContainer.new()
+	_row.add_theme_constant_override("separation", 24)
+	add_child(_row)
+	_mark = Label.new()
+	_mark.text = "AgentEmpire"
+	_mark.theme_type_variation = "TitleLabel"
+	_mark.add_theme_font_size_override("font_size", 18)
+	_mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_row.add_child(_mark)
+	_row.add_child(_divider())
 	for res in Economy.data.resource_names():
 		var chip := _chip(res, res)
-		row.add_child(chip)
+		_row.add_child(chip)
 		_chips[res] = chip
-	row.add_child(_divider())
+	_row.add_child(_divider())
 	_pop_chip = _chip("pop", "pop")
 	_pop_label = _values["pop"]
-	row.add_child(_pop_chip)
+	_row.add_child(_pop_chip)
 	_idle_button = Button.new()
 	_idle_button.theme_type_variation = "FlatButton"
 	_idle_button.focus_mode = Control.FOCUS_NONE
-	_idle_button.tooltip_text = "Idle townsfolk. Click or press . to cycle through them."
-	var idle_row := HBoxContainer.new()
-	idle_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	idle_row.add_theme_constant_override("separation", 6)
-	idle_row.add_child(IconView.new("idle", 22))
+	_idle_row = HBoxContainer.new()
+	_idle_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_idle_row.add_theme_constant_override("separation", 6)
+	_idle_row.add_child(IconView.new("idle", 22))
 	_idle_label = Label.new()
 	_idle_label.theme_type_variation = "MonoLabel"
 	_idle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	idle_row.add_child(_idle_label)
-	_idle_button.add_child(idle_row)
-	idle_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 6)
+	_idle_row.add_child(_idle_label)
+	_idle_button.add_child(_idle_row)
+	_idle_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 6)
 	_idle_button.custom_minimum_size = Vector2(92, 34)
 	_idle_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_idle_button.pressed.connect(func() -> void:
 		if input != null:
 			input.select_next_idle())
-	row.add_child(_idle_button)
+	_row.add_child(_idle_button)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(spacer)
+	_row.add_child(spacer)
 	_hall = Button.new()
 	_hall.theme_type_variation = "FlatButton"
 	_hall.focus_mode = Control.FOCUS_NONE
@@ -93,12 +119,19 @@ func _ready() -> void:
 	_hall.add_child(_hall_label)
 	_hall_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_hall.pressed.connect(_on_hall_pressed)
-	row.add_child(_hall)
+	_row.add_child(_hall)
 	_age = AgeBadge.new()
-	row.add_child(_age)
+	_row.add_child(_age)
 	_mana = ManaOrb.new()
 	_mana.pressed.connect(func() -> void: budget_requested.emit())
-	row.add_child(_mana)
+	_row.add_child(_mana)
+	_map_button = _glyph_button("map")
+	_map_button.toggle_mode = true
+	_map_button.pressed.connect(func() -> void: map_requested.emit())
+	_row.add_child(_map_button)
+	_menu_button = _glyph_button("menu")
+	_menu_button.pressed.connect(func() -> void: menu_requested.emit())
+	_row.add_child(_menu_button)
 	Economy.treasury_changed.connect(func(_t: Dictionary, _r: String, _d: Dictionary) -> void: _refresh())
 	Realm.mana_changed.connect(func(_m: Dictionary) -> void: _refresh_mana())
 	Net.connection_changed.connect(func(_on: bool) -> void: _refresh_mana())
@@ -109,6 +142,60 @@ func _ready() -> void:
 	_refresh()
 	_refresh_mana()
 	_refresh_hall()
+	configure(false, false, true)
+
+
+## Fits the bar to the HUD's layout. `compact`: the phone's bar, with the resources, population
+## and Idle, then Map and Menu at the right (no wordmark, dividers or age badge). `touch`: one
+## touch target tall, with a Menu button at the right end. `town_hall`: the Town Hall chip and
+## the Mana orb show.
+func configure(compact: bool, touch: bool, town_hall: bool) -> void:
+	if compact != _compact:
+		_anchor_idle_row(compact)
+	_compact = compact
+	_touch = touch
+	_mark.visible = not compact
+	for d in _dividers:
+		d.visible = not compact
+	_age.visible = not compact
+	_hall.visible = town_hall
+	_mana.visible = town_hall
+	_map_button.visible = compact
+	_menu_button.visible = touch
+	_row.add_theme_constant_override("separation", COMPACT_SEPARATION if compact else (TOUCH_SEPARATION if touch else 24))
+	for res: String in _chips:
+		(_chips[res] as Control).custom_minimum_size.x = COMPACT_CHIP if compact else 96
+	_pop_chip.custom_minimum_size.x = COMPACT_POP if compact else 88
+	if touch:
+		var box := ThemeBuilder.bar_box()
+		box.content_margin_top = 0
+		box.content_margin_bottom = 0
+		if compact:
+			box.content_margin_left = 8
+			box.content_margin_right = 8
+		add_theme_stylebox_override("panel", box)
+	else:
+		remove_theme_stylebox_override("panel")
+	custom_minimum_size.y = TOUCH_HEIGHT if touch else UiTokens.TOP_BAR_HEIGHT
+	_idle_button.custom_minimum_size = Vector2(COMPACT_IDLE if compact else 92, TOUCH_HEIGHT if touch else 34)
+	_idle_button.size_flags_vertical = Control.SIZE_FILL if touch else Control.SIZE_SHRINK_CENTER
+	_idle_button.tooltip_text = "Idle townsfolk. Tap to go through them." if touch else "Idle townsfolk. Click or press . to cycle through them."
+	_refresh()
+
+
+## The compact Idle button centres its icon and count; the others start them at the left.
+func _anchor_idle_row(compact: bool) -> void:
+	if compact:
+		_idle_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	else:
+		_idle_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 6)
+	_idle_row.grow_horizontal = Control.GROW_DIRECTION_BOTH if compact else Control.GROW_DIRECTION_END
+	_idle_row.grow_vertical = Control.GROW_DIRECTION_BOTH if compact else Control.GROW_DIRECTION_END
+
+
+## Shows whether the Map button's minimap is open.
+func set_map_open(open: bool) -> void:
+	_map_button.set_pressed_no_signal(open)
 
 
 func _refresh_mana() -> void:
@@ -219,7 +306,15 @@ func _chip(key: String, icon: String) -> Control:
 	label.mouse_filter = Control.MOUSE_FILTER_PASS
 	box.add_child(label)
 	_values[key] = label
+	box.gui_input.connect(_on_chip_input.bind(box))
 	return box
+
+
+## On touch, where nothing hovers, a tap on a chip shows its tooltip.
+func _on_chip_input(event: InputEvent, chip: Control) -> void:
+	var mb := event as InputEventMouseButton
+	if _touch and mb != null and mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+		TouchTip.show_for(chip)
 
 
 func _divider() -> Control:
@@ -228,7 +323,22 @@ func _divider() -> Control:
 	d.custom_minimum_size = Vector2(1, 26)
 	d.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dividers.append(d)
 	return d
+
+
+## A square touch-target button showing an IconDraw glyph (Map, Menu).
+func _glyph_button(icon: String) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "FlatButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(TOUCH_HEIGHT, TOUCH_HEIGHT)
+	var glyph := IconView.new(icon, 26)
+	b.add_child(glyph)
+	glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	glyph.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	glyph.grow_vertical = Control.GROW_DIRECTION_BOTH
+	return b
 
 
 func _process(delta: float) -> void:
@@ -276,6 +386,6 @@ func _refresh() -> void:
 		used, cap, w.econ.building_pop("keep"), w.econ.building_pop("cottage"), limit,
 		"\nTraining is paused: build a Cottage." if _pop_capped else ""]
 	var idle := w.idle_townsfolk().size()
-	_idle_label.text = "Idle %d" % idle
+	_idle_label.text = ("%d" if _compact else "Idle %d") % idle
 	_idle_label.add_theme_color_override("font_color", UiTokens.GOLD_BRIGHT if idle > 0 else UiTokens.HUD_MUTED)
 	_age.set_age(w.age, w.econ.age_name(w.age))

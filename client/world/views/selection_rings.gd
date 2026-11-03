@@ -1,7 +1,8 @@
 class_name SelectionRings
 extends MultiMeshInstance3D
-## Selection and hover rings on the ground, all in one MultiMesh (the Compatibility renderer has
-## no decals). Callers hand over the full list every frame.
+## Selection and hover rings on the ground, all in one MultiMesh, for every renderer but Forward+:
+## the Compatibility renderer has no decals, and the Mobile renderer applies only 8 to each mesh
+## (GraphicsQuality.use_decals). Callers hand over the full list every frame.
 
 const MAX_RINGS := 512
 const LIFT := 0.035

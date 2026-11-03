@@ -8,7 +8,8 @@ extends RefCounted
 ##
 ## Agents (their figure, home or add-ons) get their own card: send a task, review, answer
 ## approvals, choose a plot, add add-ons, resume or cancel work, retire. It reads the Town
-## Hall's state from Realm; everything it offers goes through TownLink.
+## Hall's state from Realm; everything it offers goes through TownLink. Without a Town Hall
+## (phones and tablets) the Keep offers no Summon.
 
 const SLOTS := 15
 
@@ -69,8 +70,12 @@ static func _building(w: SimWorld, b: SimBuilding, out: Array[Dictionary]) -> vo
 			var ok := w.ledger.can_afford(cost) and b.queue.size() < w.econ.training_queue_max()
 			out[0] = _slot("train:" + unit, "Townsperson", unit,
 				"Train a townsperson (%d s)\nGathers Food and Wood, builds houses, carries scrolls." % int(w.econ.unit_train_s(unit)), cost, ok)
-		out[1] = _summon_slot(w)
-		out[3] = _slot("rally", "Rally", "rally", "Set rally point\nNew townsfolk walk there; a resource means start gathering it. Right-click also works.", {}, true)
+		if Platform.has_town_hall():
+			out[1] = _summon_slot(w)
+		var rally_tip := "Set rally point\nNew townsfolk walk there; a resource means start gathering it. Right-click also works."
+		if Platform.is_mobile():
+			rally_tip = "Set rally point\nThen tap where new townsfolk should go; a resource means start gathering it."
+		out[3] = _slot("rally", "Rally", "rally", rally_tip, {}, true)
 		var focus := b.gather_focus
 		out[5] = _slot("focus:auto", "Auto", "focus_auto", "Gather Focus: auto\nIdle townsfolk gather whichever of Food or Wood is lower.", {}, true, focus == "auto")
 		var k := 6
@@ -86,6 +91,23 @@ static func _building(w: SimWorld, b: SimBuilding, out: Array[Dictionary]) -> vo
 	if w.econ.building_built_by(b.type) == "townsfolk":
 		var pct := int(round(w.econ.refund_fraction("dismantle") * 100.0))
 		out[14] = _slot("dismantle", "Dismantle", "dismantle", "Dismantle\nRefunds %d%% of the cost." % pct, {}, true)
+
+
+## Touch: the mode bar over the bottom row while placing or choosing a rally point, as
+## {slot index: slot}. `mode` is "place" (a building of `place_type`), "plot" (an agent's home)
+## or "rally". Placing a building: Repeat (12, a toggle: keep placing after each one), Build
+## (13) and Cancel (14); a plot has no Repeat and a rally point only Cancel. Build stays
+## clickable while the spot does not work, so the player hears why.
+static func mode_slots(mode: String, place_type: String, can_build: bool, repeat: bool) -> Dictionary:
+	var out := {}
+	if mode == "place":
+		out[12] = _slot("mode_repeat", "Repeat", "resume", "Repeat\nAfter each one, keep placing another.", {}, true, repeat)
+	if mode == "place" or mode == "plot":
+		out[13] = _slot("mode_build", "Build", place_type if mode == "place" else "plot",
+			"Build here\nDrag the outline where you want it, then tap Build.", {}, can_build)
+	out[14] = _slot("mode_cancel", "Cancel", "cancel",
+		"Cancel\nKeep the rally point as it is." if mode == "rally" else "Cancel\nStop placing.", {}, true)
+	return out
 
 
 static func _slot(id: String, label: String, icon: String, tooltip: String, cost: Dictionary,
