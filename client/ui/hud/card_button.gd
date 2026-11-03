@@ -4,16 +4,23 @@ extends Button
 ## clickable (so the player hears why) but draw dimmed; the active choice has a mint border.
 ## Hovering lifts the button a little and brightens it; pressing squashes it; tooltips are the
 ## rich parchment kind (CraftedTooltip).
+## On a touch screen nothing hovers and there are no hotkeys: holding a slot for
+## Platform.LONG_PRESS_MS shows its tooltip (TouchTip) instead, and letting go then does not
+## activate it.
 
 const HOVER_SCALE := 1.07
 const PRESS_SCALE := 0.92
 
 var slot_index: int = 0
 var slot: Dictionary = {}
+## Phones and tablets: touch rather than a mouse (tests set it before the button enters the tree).
+var touch: bool = Platform.is_mobile()
 
 var _tween: Tween
 var _hovered: bool = false
 var _pulse: float = 0.0
+## Touch: when the press in progress started (msec), or -1.
+var _press_ms: int = -1
 
 
 func _init(index: int = 0) -> void:
@@ -27,8 +34,12 @@ func _init(index: int = 0) -> void:
 func _ready() -> void:
 	resized.connect(func() -> void: pivot_offset = size * 0.5)
 	pivot_offset = size * 0.5
-	mouse_entered.connect(_on_hover.bind(true))
-	mouse_exited.connect(_on_hover.bind(false))
+	if touch:
+		button_down.connect(func() -> void: _press_ms = Time.get_ticks_msec())
+		button_up.connect(func() -> void: _press_ms = -1)
+	else:
+		mouse_entered.connect(_on_hover.bind(true))
+		mouse_exited.connect(_on_hover.bind(false))
 	button_down.connect(_to_scale.bind(PRESS_SCALE, 0.06))
 	button_up.connect(func() -> void: _to_scale(HOVER_SCALE if _hovered else 1.0, 0.18))
 
@@ -82,9 +93,23 @@ func _tooltip(s: Dictionary) -> String:
 
 
 func _process(delta: float) -> void:
+	if _press_ms >= 0 and Time.get_ticks_msec() - _press_ms >= Platform.LONG_PRESS_MS:
+		_long_press()
 	if not slot.is_empty() and bool(slot.get("active", false)):
 		_pulse += delta
 		queue_redraw()
+
+
+## Touch: a press held inside the slot shows its tooltip. Disabling the button for a moment drops
+## the press, so letting go does not activate the slot.
+func _long_press() -> void:
+	_press_ms = -1
+	if get_draw_mode() != DRAW_PRESSED:
+		return
+	disabled = true
+	disabled = false
+	_to_scale(1.0, 0.18)
+	TouchTip.show_for(self)
 
 
 func _draw() -> void:
@@ -94,11 +119,12 @@ func _draw() -> void:
 	var icon_rect := Rect2(Vector2(12, 7), Vector2(size.x - 24, size.y - 25))
 	IconDraw.draw(self, String(slot.get("icon", "")), icon_rect, not enabled)
 	var key := InputActions.key_label(InputActions.card_action(slot_index))
-	# Hotkey cap in the top-left corner.
-	var f := UiFonts.mono(700, 0)
-	var kw := f.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-	draw_rect(Rect2(Vector2(4, 4), Vector2(kw + 6, 13)), Color(0.05, 0.03, 0.02, 0.75))
-	draw_string(f, Vector2(7, 14), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UiTokens.GOLD_BRIGHT)
+	if key != "":
+		# Hotkey cap in the top-left corner.
+		var f := UiFonts.mono(700, 0)
+		var kw := f.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+		draw_rect(Rect2(Vector2(4, 4), Vector2(kw + 6, 13)), Color(0.05, 0.03, 0.02, 0.75))
+		draw_string(f, Vector2(7, 14), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UiTokens.GOLD_BRIGHT)
 	var cost: Dictionary = slot.get("cost", {})
 	var label := String(slot.get("label", ""))
 	var shadow := Color(0, 0, 0, 0.7)

@@ -2,8 +2,11 @@ extends SceneTree
 ## End-to-end input check in a real window: injects mouse and keyboard events (as a player
 ## would) into the main scene and verifies the results in the simulation.
 ##   box-select the starting townsfolk -> right-click a berry bush (gather) -> Q, click (place a
-##   Cottage) -> H (select the Keep) -> Q (train) -> right-click ground (rally) -> "." (idle)
-## Run: .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/input_smoke.gd
+##   Cottage) -> H (select the Keep) -> Q (train) -> right-click ground (rally) -> Ctrl+2,
+##   Escape, 2 (control group)
+## Run: .tools/godot/Godot_v4.7.2-stable_win64_console.exe --path client -s res://tools/input_smoke.gd -- --offline
+## The camera and RtsInput use autoloads, so they are held in untyped variables (a -s script
+## compiles before the autoloads exist).
 
 var _main: Variant
 var _failures: int = 0
@@ -28,9 +31,9 @@ func _run() -> void:
 	root.add_child(_main)
 	await process_frame
 	var w: SimWorld = _game().new_town(4127, "smoke")
-	var cam: RtsCamera = _main.camera
+	var cam: Variant = _main.camera
 	var selection: Selection = _main.selection
-	var input: RtsInput = _main.input
+	var input: Variant = _main.input
 	cam.input_enabled = false
 	var k := w.keep()
 	cam.set_view(Vector3(k.center().x, 0.0, k.center().y + 3.0), 32.0, 0.0)
@@ -47,8 +50,12 @@ func _run() -> void:
 	await _drag(box.position, box.end)
 	_check(selection.ids.size() == w.units.size(), "box select picks all %d townsfolk (got %d)" % [w.units.size(), selection.ids.size()])
 
-	# 2. Right-click the nearest berry bush: everyone gathers it.
-	var bush := w.find_nearest_node(k.center(), ["berry_bush"], 20.0)
+	# 2. Right-click the nearest berry bush in view: everyone gathers it.
+	var bush := _bush_in_view(w, cam, k.center())
+	_check(bush != null, "a berry bush is in view")
+	if bush == null:
+		_finish()
+		return
 	await _click(_screen_of(cam, bush.center(), 0.3), MOUSE_BUTTON_RIGHT)
 	await _frames(4)
 	var gathering := 0
@@ -62,7 +69,7 @@ func _run() -> void:
 	var spot := DemoTown.find_spot(w, "cottage", Vector2i(k.center()) + Vector2i(6, 3), 6)
 	var wood := w.ledger.amount("wood")
 	await _key(KEY_Q)
-	_check(input.mode == RtsInput.Mode.PLACE, "Q enters placement mode")
+	_check(input.mode == input.Mode.PLACE, "Q enters placement mode")
 	var centre := Vector2(spot) + Vector2(w.econ.building_footprint("cottage")) * 0.5
 	var sp := _screen_of(cam, centre, 0.0)
 	await _move(sp)
@@ -71,7 +78,7 @@ func _run() -> void:
 	var site := w.building_at(spot)
 	_check(site != null and site.type == "cottage", "clicking places a Cottage site at %s" % spot)
 	_check(w.ledger.amount("wood") == wood - int(w.econ.building_cost("cottage")["wood"]), "the Cottage was paid for")
-	_check(input.mode == RtsInput.Mode.SELECT, "placement ends after one click")
+	_check(input.mode == input.Mode.SELECT, "placement ends after one click")
 	var builders := 0
 	for id in selection.ids:
 		if w.units[id].job == SimConst.JOB_BUILD:
@@ -100,7 +107,10 @@ func _run() -> void:
 	_check(selection.ids.is_empty(), "Escape clears the selection")
 	await _key(KEY_2)
 	_check(selection.ids.size() == 1 and selection.ids[0] == k.id, "2 recalls control group 2")
+	_finish()
 
+
+func _finish() -> void:
 	print("input_smoke: %s (%d failure%s)" % ["PASS" if _failures == 0 else "FAIL", _failures, "" if _failures == 1 else "s"])
 	quit(0 if _failures == 0 else 1)
 
@@ -111,8 +121,25 @@ func _check(ok: bool, what: String) -> void:
 		_failures += 1
 
 
-func _screen_of(cam: RtsCamera, p: Vector2, height: float) -> Vector2:
+func _screen_of(cam: Variant, p: Vector2, height: float) -> Vector2:
 	return cam.camera.unproject_position(Vector3(p.x, height, p.y))
+
+
+## The berry bush nearest `near` that a click in the world reaches (not hidden behind a
+## building or under the HUD), or null.
+func _bush_in_view(w: SimWorld, cam: Variant, near: Vector2) -> SimResourceNode:
+	var picking: Variant = load("res://input/picking.gd")
+	var best: SimResourceNode = null
+	for n: SimResourceNode in w.nodes.values():
+		if n.kind != "berry_bush" or not n.is_live():
+			continue
+		if best != null and n.center().distance_to(near) >= best.center().distance_to(near):
+			continue
+		var sp := _screen_of(cam, n.center(), 0.3)
+		var rect: Rect2 = _main.world_rect()
+		if rect.has_point(sp) and int(picking.pick(w, _main.world_view, cam.camera, sp)["id"]) == n.id:
+			best = n
+	return best
 
 
 func _frames(n: int) -> void:

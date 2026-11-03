@@ -14,6 +14,8 @@ townhall/dist/
 # Godot
 client/.godot/
 client/export/
+# The Android Gradle build template (--install-android-build-template)
+client/android/
 
 # Town Hall runtime data and secrets
 townhall/data/

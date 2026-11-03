@@ -9,7 +9,8 @@ const DEFAULTS := {
 	"camera/edge_scroll": true,
 	"camera/pan_speed": 1.0,
 	"display/show_fps": false,
-	# "" picks the platform default (High on desktop, Low on the web); see GraphicsQuality.
+	# "" picks the platform default (High on desktop, Low on the web and on phones and tablets);
+	# see GraphicsQuality.
 	"graphics/quality": "",
 	# Volumes from 0 to 1, one per audio bus (see the Audio autoload).
 	"audio/master": 0.8,
@@ -24,6 +25,8 @@ const DEFAULTS := {
 	# new agents (the Summoning dialog's default).
 	"onboarding/done": false,
 	"onboarding/work_folder": "",
+	# Phones and tablets: whether the touch controls help has been shown once.
+	"onboarding/touch_help": false,
 	# Start the Town Hall when the game opens and none is running (desktop).
 	"townhall/auto_start": true,
 	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed

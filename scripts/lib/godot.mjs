@@ -56,3 +56,6 @@ export const TEMPLATE_FILES = {
   linux: ['linux_release.x86_64'],
   macos: ['macos.zip'],
 };
+
+/** The template files the Android presets need: the prebuilt APKs and the Gradle build's source. */
+export const ANDROID_TEMPLATE_FILES = ['android_debug.apk', 'android_release.apk', 'android_source.zip'];
