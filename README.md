@@ -62,8 +62,10 @@ The first start takes a few seconds while the game starts its **Town Hall**, the
 the agents. You begin with **practice agents**: a stand-in plays the agents' part through tasks,
 approvals and reviews, so you can learn the game while nothing real runs and nothing is spent.
 Your towns are kept in your user folder (`%APPDATA%\AgentEmpire` on Windows,
-`~/Library/Application Support/AgentEmpire` on macOS, `~/.local/share/AgentEmpire` on Linux), so
-deleting or updating the game folder does not touch them.
+`~/Library/Application Support/AgentEmpire` on macOS, `~/.local/share/AgentEmpire` on Linux), and
+the game's settings, logs and offline saves in Godot's folder for it
+(`%APPDATA%\Godot\app_userdata\AgentEmpire` on Windows), so deleting or updating the game folder
+does not touch them.
 
 ## Real agents
 
@@ -89,6 +91,8 @@ What keeps real agents in check:
 - **Mana is your real budget.** 1 Mana = $0.01. Set it with F4; every task has its own cap, and
   agents pause when the budget runs out. Your controls never cost anything.
 
+[docs/security.md](docs/security.md) explains each safeguard and its limits.
+
 The Town Hall keeps running after you close the game, so agents can finish their tasks. To stop
 it, click the Town Hall chip in the top bar and choose **Close the Town Hall**.
 
@@ -105,6 +109,8 @@ it, click the Town Hall chip in the top bar and choose **Close the Town Hall**.
 - **Review and accept.** When a task is done, read the changes and accept, send back with notes,
   or abandon it. Accepted work pays the town in food, wood, stone and gold, and the agent gains
   experience and rank.
+
+The [player's guide](docs/playing.md) explains every part of the game in more detail.
 
 | Input | Action |
 |---|---|
@@ -157,7 +163,7 @@ automatically on Windows, Linux and macOS (Apple Silicon) before it is published
 | 2 | The town: map, camera, units, gathering, construction, the controls | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
 | 4 | Real agents on Claude Code, Codex and pi | Done |
-| 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music. Still to come: the menus, the onboarding, and the Age and Quartermaster windows (until then the town stays in its first age) |
+| 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music. Still to come: the menus, the onboarding, and the Age, Quartermaster and party windows (until then the town stays in its first age) |
 
 ## For developers
 
@@ -184,7 +190,8 @@ Running from source, after `node scripts/setup.mjs`:
 - Or run the Town Hall yourself in `townhall/` with `npm start` (`AURELHAVEN_PROVIDER=real` for
   real agents).
 - The web version: `node scripts/build-game.mjs --web-only`, then open the `Web client:` address
-  the Town Hall prints.
+  the Town Hall prints. It needs Godot's Web export templates, which `setup.mjs` does not
+  download.
 
 | Path | Contents |
 |---|---|
@@ -193,15 +200,20 @@ Running from source, after `node scripts/setup.mjs`:
 | `protocol/` | The contract between them: `PROTOCOL.md`, `economy.json` (every game constant), `pricing.json`, generated GDScript |
 | `scripts/` | Setup, build, release packaging, end-to-end and asset scripts |
 | `art_src/` | The Blender pipeline that builds models, characters and icons from the KayKit kits |
-| `docs/` | Architecture, development guide, experiment notes, README images |
+| `docs/` | The player's guide, architecture, development and testing guides, security, experiment notes, the privacy policy, README images |
 | `.github/workflows/` | The release workflow |
 | `design_handoff_aurelhaven/` | The original design handoff: lore, colours, fonts, the wall animation |
 
+- [docs/README.md](docs/README.md): every document, for players and for developers.
 - [docs/architecture.md](docs/architecture.md): how the Town Hall and the client work and talk.
-- [docs/development.md](docs/development.md): tools, tests, builds, releases, conventions and
+- [docs/development.md](docs/development.md): tools, commands, builds, releases, conventions and
   troubleshooting.
-- [townhall/README.md](townhall/README.md): running and configuring the Town Hall.
-- [protocol/PROTOCOL.md](protocol/PROTOCOL.md): the WebSocket protocol.
+- [docs/testing.md](docs/testing.md): every test and check, and what to run before merging.
+- [docs/security.md](docs/security.md): what keeps real agents in check, and the known limits.
+- [client/README.md](client/README.md), [townhall/README.md](townhall/README.md) and
+  [scripts/README.md](scripts/README.md): working on each part.
+- [protocol/README.md](protocol/README.md) and [protocol/PROTOCOL.md](protocol/PROTOCOL.md): the
+  shared files and the WebSocket protocol.
 - [docs/spikes.md](docs/spikes.md): findings from the agent-program, worktree and web experiments.
 
 Releases are built by [.github/workflows/release.yml](.github/workflows/release.yml): pushing a

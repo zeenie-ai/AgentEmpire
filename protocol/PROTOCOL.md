@@ -1,6 +1,6 @@
 # Town Hall protocol, version 1.3
 
-This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change.
+This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change. `townhall/test/unit/protocol.test.ts` checks the command, event, error-code, close-code and enum names below against the schemas; the payload shapes are checked only by review.
 
 **Changes in 1.3** (all backward compatible; a 1.2 client keeps working):
 - `get_progress` and the `progress_updated` event: the town's progression in one object (the age, the facts behind the milestones, the next age with its structured milestones and whether it can be started now, and the Quartermaster's current rates). `get_state` carries the same object as `progress`.
@@ -18,7 +18,8 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 ## Connection
 
 - The endpoint is `ws://127.0.0.1:<port>/ws`, and the server listens on 127.0.0.1 only. The port and token are written to `runtime.json` in the Town Hall data folder, as `{pid, port, token, url, data_dir}`.
-- The desktop client finds a running Town Hall through a copy of that file in the per-user config folder: `<config dir>/AgentEmpire/runtime.json`, where the config dir is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` elsewhere (Godot's `OS.get_config_dir()`). `AURELHAVEN_DISCOVERY_FILE` moves it (`off` disables it). The client also honours `AURELHAVEN_RUNTIME`, a path to any runtime file. The web client gets the token in the page's `#t=` fragment instead.
+- The Town Hall also writes a shared copy of that file to the per-user config folder: `<config dir>/AgentEmpire/runtime.json`, where the config dir is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` or `~/.config` elsewhere (Godot's `OS.get_config_dir()`). `AURELHAVEN_DISCOVERY_FILE` moves it (`off` disables it).
+- The desktop client reads runtime files in this order and connects to the first one that holds a port and a token (it reads them again before each attempt): `AURELHAVEN_RUNTIME` (a path to any runtime file), the runtime file of the mode it prefers (its practice or real Town Hall's data folder), the shared copy, then the other mode's runtime file. The web client gets the token in the page's `#t=` fragment instead.
 - The server rejects the upgrade unless:
   - the `Host` header is `127.0.0.1:<port>` or `localhost:<port>`;
   - the `Origin` header is absent (the desktop client), the Town Hall's own origin, or a configured development origin. A `null` Origin is rejected.
@@ -33,6 +34,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   | 4409 | Replaced by another client |
 
 - Frames are UTF-8 JSON, at most 1 MiB each.
+- The same port answers plain HTTP, with the same `Host` check: `GET /healthz` returns `{ok, daemon_version, protocol:{major, minor}}`, `/ws` without an upgrade returns 426, and every other path serves the web build, when there is one.
 - JSON numbers reach Godot as floats. Every ID is therefore a **string**, and every amount is an integer, which the client converts with `int()`.
 
 ## Envelopes
@@ -179,7 +181,7 @@ The table shows each command's payload and the payload of its successful reply.
 
 | Command | Payload | Result |
 |---|---|---|
-| `hello` | `{token, protocol:{major:1,minor:0}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
+| `hello` | `{token, protocol:{major:1,minor:3}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
 | `ping` | `{}` | `{}` |
 | `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers, progress}` (`tasks` = open tasks plus the 50 most recent; `progress`, the Progress object, was added in 1.3) |
 | `get_progress` | `{}` | The Progress object (1.3). |

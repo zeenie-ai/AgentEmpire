@@ -2,6 +2,8 @@
 
 [README.md](README.md) explains the game, [docs/architecture.md](docs/architecture.md) how the
 Town Hall and the client work, and [docs/development.md](docs/development.md) every command.
+[docs/README.md](docs/README.md) lists the rest: the testing and security guides, and the READMEs
+of `client/`, `townhall/`, `protocol/` and `scripts/`.
 
 ## Rules
 
@@ -10,7 +12,8 @@ Town Hall and the client work, and [docs/development.md](docs/development.md) ev
   work.
 - **Verify before merging:** in `townhall/`, `npm run typecheck` and `npm test`; the client GUT
   suite; `node scripts/sync-economy.mjs --check`; `node scripts/e2e-client.mjs`. Before handing
-  over an exe: build it, run `pwsh scripts/check-exe.ps1` (0 error lines), and commit.
+  over an exe: build it (`node scripts/build-game.mjs --windows-only`), run
+  `pwsh scripts/check-exe.ps1` (0 error lines), and commit.
 - **Look at what you render.** The user wants professional, polished visuals: check every visual
   change in a screenshot, at 1280x720 and at large resolutions.
 - **Game constants** live only in `protocol/economy.json`; run the sync script after changing it.

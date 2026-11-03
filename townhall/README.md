@@ -10,9 +10,10 @@ on 127.0.0.1; see [../protocol/PROTOCOL.md](../protocol/PROTOCOL.md) and
 ## Running it
 
 The game starts a Town Hall by itself when none is running (`scripts/launch.mjs`: detached, no
-console, output in `townhall.log` in its data folder). It keeps two towns apart: practice agents
-in `data/practice/`, real ones in `data/`. The game can also ask a Town Hall to stop (the
-`shutdown` command). To run one yourself:
+console, output in `townhall.log` in its data folder). The game keeps two towns apart by giving
+each mode its own data folder: practice agents run on `data/practice/`, real ones on `data/` (a
+release package uses the same layout in the player's data folder). The game can also ask a Town
+Hall to stop (the `shutdown` command). To run one yourself:
 
 ```powershell
 npm ci           # once
@@ -22,14 +23,16 @@ npm run dev      # the same, restarting on source changes
 
 Ctrl+C stops it cleanly: it stops the running harnesses (their tasks pick up again at the next
 start) and removes its runtime files. Only one Town Hall may use a data folder at a time.
+`GET /healthz` on its port answers `{ok, daemon_version, protocol}`.
 
-By default it runs **practice agents**, a scripted stand-in for every harness. Set
-`AURELHAVEN_PROVIDER=real` to run the installed harnesses:
+By default it runs **practice agents**, a scripted stand-in for every harness, on `data/`. The
+game treats `data/` as the real town's folder and `data/practice/` as the practice town's, so
+match the folder to the mode:
 
-```powershell
-$env:AURELHAVEN_PROVIDER = "real"
-npm start
-```
+| To run | Set before `npm start` |
+|---|---|
+| Practice agents, for the game's practice town | `$env:AURELHAVEN_DATA_DIR = "data/practice"` |
+| Real agents (the installed harnesses), for the game's real town | `$env:AURELHAVEN_PROVIDER = "real"` |
 
 ## Configuration
 
@@ -40,11 +43,11 @@ Environment variables, all optional:
 | `AURELHAVEN_PROVIDER` | `fake` | `fake` (practice agents) or `real` (the installed harnesses) |
 | `AURELHAVEN_DATA_DIR` | `townhall/data` | Database, runtime file, log, plain-folder copies |
 | `AURELHAVEN_PORT` | `0` (any free port) | The HTTP and WebSocket port on 127.0.0.1 |
-| `AURELHAVEN_DISCOVERY_FILE` | `%APPDATA%\AgentEmpire\runtime.json` | Where to write the copy of the runtime file the game looks for first; `off` writes none |
-| `AURELHAVEN_WORK_ROOTS` | your home folder and every non-system fixed drive | Folders under which agents may be given a work folder, separated by `;` |
+| `AURELHAVEN_DISCOVERY_FILE` | `<config dir>/AgentEmpire/runtime.json` (`%APPDATA%` on Windows) | Where to write the shared copy of the runtime file, which the game reads after its own mode's runtime file; `off` writes none |
+| `AURELHAVEN_WORK_ROOTS` | your home folder and, on Windows, every other drive letter from D: that exists (of any type) | Folders under which agents may be given a work folder, separated by the system's path separator (`;` on Windows, `:` on macOS and Linux) |
 | `AURELHAVEN_WEB_DIR` | `client/export/web` | The web build to serve |
 | `AURELHAVEN_ECONOMY_PATH` | `protocol/economy.json` | Game constants |
-| `AURELHAVEN_PRICING_PATH` | `protocol/pricing.json` | Token prices for Codex and pi usage |
+| `AURELHAVEN_PRICING_PATH` | `protocol/pricing.json` | Token prices: all Codex usage, the cost hints in model lists, and Claude Code results that report no cost (pi prices its own usage) |
 | `AURELHAVEN_DEV_ORIGINS` | none | Extra origins allowed to open the WebSocket, separated by `,` |
 | `AURELHAVEN_CROSS_ORIGIN_ISOLATION` | off | `1` sends COOP and COEP headers (only threaded web builds need them) |
 | `AURELHAVEN_RITE_TIMEOUT_S` | `600` | Time limit for a task's Rite (its optional check command) |
@@ -69,8 +72,8 @@ the token in its `#t=` fragment.
 | `harness/`, `pi-sessions/` | Per-run harness files and pi session files |
 
 Work in a git repository happens in a worktree of that repository, created under `wt/`, on a
-branch `aurelhaven/<agent>/<task>`. The player's own checkout is touched only when they accept
-and choose to merge.
+branch `agentempire/<agent>/<task>`. The player's own checkout is touched only when they accept
+and choose to merge. [../docs/security.md](../docs/security.md) describes every safeguard.
 
 ## Source layout
 
@@ -89,12 +92,14 @@ and choose to merge.
 
 ```powershell
 npm run typecheck
-npm test                    # unit and integration tests, no network and no real harness
+npm test                    # unit and integration tests: no network, no Claude Code or Codex;
+                            # the integration tests run the bundled pi with a scripted model
 ```
 
 - `test/unit/`: pure logic (state machine, bounty, Mana, ranks, guards, the harness helpers). A
   test also checks that no destructive git command (`reset --hard`, `clean`, `stash`, forced
-  worktree removal) appears anywhere in the source.
+  worktree removal) appears in `src/` or `scripts/`, and that `assertSafeGitArgs` refuses them
+  at run time.
 - `test/integration/`: a real Town Hall over WebSocket with the scripted agent (the full loop,
   approvals, restarts, budgets, auth, parties), and each real adapter against a fake Claude Code
   CLI, a fake Codex app server or the real pi with a scripted model.
@@ -106,4 +111,5 @@ npm test                    # unit and integration tests, no network and no real
   ```
 
 The harness findings, launch flags and known limits are in
-[../docs/spikes.md](../docs/spikes.md), section S5.
+[../docs/spikes.md](../docs/spikes.md), section S5. [../docs/testing.md](../docs/testing.md)
+covers the helpers, isolation and every other check.

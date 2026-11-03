@@ -33,10 +33,12 @@ Godot client (desktop or web)                         Town Hall (Node 22, 127.0.
 | Saved towns (the client's snapshot, stored as given) | |
 
 The client changes the economy only through commands (`spend_resources`, `refund_resources`,
-`report_gather`, `trade`, `advance_age`), so the ledger in the Town Hall stays the single source
-of truth. Every game constant lives in `protocol/economy.json`, which both sides load; the client
-reads a byte-for-byte copy (`client/data/economy.json`, kept in step by
-`node scripts/sync-economy.mjs`).
+`report_gather`), so the ledger in the Town Hall stays the single source of truth. The protocol
+also has `trade` (the Quartermaster), `advance_age` and `form_party`, and the Town Hall implements
+them, but the game has no window that sends them yet. Every game constant lives in
+`protocol/economy.json`, which both sides load; the client reads a byte-for-byte copy
+(`client/data/economy.json`, kept in step by `node scripts/sync-economy.mjs`). See
+[protocol/README.md](../protocol/README.md) for what the file holds.
 
 ## The protocol
 
@@ -50,8 +52,9 @@ the client uses (`protocol/generated/protocol.gd`, copied to `client/net/protoco
   second gets `SESSION_BUSY` unless it asks to take over, and the replaced client is told
   `session_revoked`.
 - Events carry a sequence number and a `causation_id`. On reconnect the client sends its last
-  sequence number and the Town Hall replays what it missed, or sends a full snapshot when the gap
-  is too large. A gap the client notices itself triggers `get_state`.
+  sequence number in `hello`. The Town Hall replays what it missed (up to 5,000 events), or
+  answers `catchup: "snapshot"`, and the client then reloads everything with `get_state`. A gap
+  the client notices itself also triggers `get_state`.
 - `request_id` is an idempotency key: repeating a command with the same id returns the first
   result instead of acting twice. The client's economy operations use their operation id as the
   request id.
@@ -72,22 +75,37 @@ the client uses (`protocol/generated/protocol.gd`, copied to `client/net/protoco
 
 ### Tasks
 
-A task moves through these states (`src/core/tasks/state-machine.ts`):
+A task's usual path (`src/core/tasks/state-machine.ts`):
 
 ```
 in_transit -> queued -> preparing -> running <-> awaiting_approval -> awaiting_review
-                                                                        |
-                              accepting -> accepted (reward paid)  <----+
-                                        -> queued (sent back with feedback)
-                                        -> rejected (abandoned)
-any active state -> paused (budget, restart, stalled) | failed | cancelled
+           -> accepting -> accepted (reward paid)
 ```
 
+Every allowed move:
+
+| From | To |
+|---|---|
+| `in_transit` | `queued` (delivered), `cancelled` |
+| `queued` | `preparing`, `cancelled` |
+| `preparing` | `running`, `paused`, `failed`, `cancelled` |
+| `running`, `awaiting_approval` | each other, `awaiting_review`, `paused`, `failed`, `cancelled` |
+| `awaiting_review` | `accepting`, `queued` (sent back with feedback), `rejected` (abandoned) |
+| `accepting` | `accepted`, `queued` (sent back), `rejected` (abandoned); a blocked merge stays here until the player accepts again |
+| `paused` | `queued` (resumed), `awaiting_review` (stop and review), `cancelled` |
+| `failed` | `queued` (retried), `cancelled` |
+
+`accepted`, `rejected` and `cancelled` are final. A task pauses for one of five reasons:
+`budget` (it spent its seal), `restart` (the Town Hall stopped while it ran), `stalled` (no
+activity for `incidents.stall_pause_minutes`), `mana_depleted` (the Mana pool ran out; such tasks
+resume by themselves when Mana comes back) and `provider_limit` (the harness reported a usage
+limit; the player resumes these).
+
 - **in_transit**: the task scroll is on its way. The task starts when a townsperson or the Font
-  Wisp delivers it (`task_delivered`), or after a fixed time so a forgotten scroll never blocks
-  work. "Express dispatch" skips the walk.
+  Wisp delivers it (`task_delivered`), or after `couriers.force_deliver_after_s` so a forgotten
+  scroll never blocks work. "Express dispatch" skips the walk.
 - **preparing**: the Town Hall reserves Mana for the task's seal and sets up the workspace: a git
-  worktree (under `<data>/wt/`) on a branch `aurelhaven/<agent>/<task>` for a repository, or a
+  worktree (under `<data>/wt/`) on a branch `agentempire/<agent>/<task>` for a repository, or a
   versioned copy (under `<data>/mirrors/`) for a plain folder.
 - **running / awaiting_approval**: the run supervisor starts the agent's harness. Every
   permission request becomes an approval; the run waits until the player answers it.
@@ -96,7 +114,9 @@ any active state -> paused (budget, restart, stalled) | failed | cancelled
   on the target branch), keeps the branch, or exports the files, then pays the reward in
   resources and experience.
 
-After a restart, tasks resume their harness sessions and unanswered approvals reappear.
+After a restart, every run that was live is paused (`restart`) and resumes its harness session
+from the front of its agent's queue. If it was waiting on an approval, the approval reappears
+(marked orphaned) and the task resumes once the player has answered it.
 
 ### Agents on real harnesses
 
@@ -113,23 +133,29 @@ harness as a child process and translates its headless interface:
 
 `AURELHAVEN_PROVIDER` selects `fake` (practice agents for all three harness names) or `real`.
 The add-ons decide which tools each harness gets; the approval mode decides which calls ask the
-player. Cost comes from the harness (Claude Code's cost total) or from token counts priced with
-`protocol/pricing.json` (Codex, pi), and the usage limits the harnesses report (Claude Code's
-rate-limit events, Codex's rate-limit updates) appear in `Mana.provider_windows`.
+player. Claude Code reports its own running cost total (`protocol/pricing.json` prices a result
+only when it carries none), pi prices each message itself, and Codex reports only tokens, which
+are priced with `pricing.json`. The usage limits the harnesses report (Claude Code's rate-limit
+events, Codex's rate-limit updates) appear in `Mana.provider_windows`, and a run that hits one
+pauses with reason `provider_limit`.
 
 A Claude agent leading a party also gets the Town Hall's own `town` tools, served by a small MCP
 server, to delegate sub-tasks to its members (Claude, Codex or pi), follow them and collect their
-results. Every member's approval requests still come to the player. The details, flags and known
-limits are in [docs/spikes.md](spikes.md), section S5.
+results. Every member's approval requests still come to the player. The game has no window to
+form a party yet. The details, flags and known limits are in [docs/spikes.md](spikes.md), section
+S5, and the safeguards in [docs/security.md](security.md).
 
 ### Mana and the ledger
 
 - Mana is stored in whole micro-dollars (1 Mana = $0.01). The pool refills each period at the
   Dawn Bell; unused Mana does not carry over.
-- A task reserves its seal when it starts; spent plus reserved never exceeds the pool. A task
-  that reaches its seal pauses and offers to extend it or stop for review. At 25% left the
-  lanterns dim, at 10% the warning bell rings and automatic dispatch pauses, at 0 the Font goes
-  dark. The player's controls never cost anything.
+- A task reserves its seal when it starts, as far as free Mana allows. Usage beyond the pool is
+  overdraft, taken off the next period's pool. A task that spends its seal pauses (`budget`) and
+  rings the hand bell; the Town Hall can extend the seal (`resume_task` with `extend_seal_mana`)
+  or stop it for review (`stop_and_review`), but the game has no buttons for either yet. At 25%
+  left the lanterns dim, at 10% the warning bell rings and automatic dispatch pauses, and at 2%
+  (`mana.lights_out_fraction`) the Font goes dark and every run pauses until Mana comes back.
+  The player's controls never cost anything.
 - The resource ledger records every change to Food, Wood, Stone and Gold as an append-only entry,
   so the treasury can always be rebuilt. Rewards (the bounty formula in `economy.json`) are paid
   only for accepted work.
@@ -151,14 +177,18 @@ limits are in [docs/spikes.md](spikes.md), section S5.
 
 ### Boot
 
-1. `Game.boot` looks for a Town Hall (`TownHallDiscovery`: the `AURELHAVEN_RUNTIME` file, then
-   `%APPDATA%\AgentEmpire\runtime.json`, then `townhall/data/runtime.json` next to the project or
-   the exported build).
-2. If none answers within 3 seconds and `townhall/auto_start` is on, `TownHallLauncher` runs
-   `townhall/scripts/launch.mjs`, which starts the Town Hall detached, in the mode named by the
-   `townhall/provider` setting and on that mode's data folder: `townhall/data/practice/` for
-   practice agents (the default), `townhall/data/` for real ones. The game waits up to 45 seconds
-   for it, or until its log says it could not start.
+1. `Game.boot` looks for a Town Hall (`TownHallDiscovery`). It reads, in order: the file named
+   by `AURELHAVEN_RUNTIME`; the runtime file of the mode in the `townhall/provider` setting
+   (`townhall/data/practice/runtime.json` for practice agents, the default, or
+   `townhall/data/runtime.json` for real ones); the shared copy,
+   `%APPDATA%\AgentEmpire\runtime.json`; then the other mode's runtime file. A release package
+   keeps these data folders in the player's data folder instead (see
+   [Files on disk](#files-on-disk)).
+2. When it finds none (no runtime file, or one whose Town Hall no longer answers) and
+   `townhall/auto_start` is on, `TownHallLauncher` runs `townhall/scripts/launch.mjs` straight
+   away. It starts the Town Hall detached, in the mode named by `townhall/provider` and on that
+   mode's data folder. The game waits up to 45 seconds for it, or until its log says it could
+   not start.
 3. Online, TownLink loads the town saved in the Town Hall (or makes a new one) and switches the
    ledger to a `RemoteLedger`. Offline, the game plays a local town with a `LocalLedger`.
 
@@ -177,9 +207,13 @@ closes it and carries on offline. Whatever fails, the player keeps a town.
   working at the add-on that matches its current tool.
 - Pathfinding uses a 128 x 128 grid with footprints marked solid. Agent homes sit on 7 x 7 plots
   (`HomeLayout`): a 3 x 3 home with a ring of space for add-ons.
-- Saves: an offline town is saved under `user://`; an online town is saved to the Town Hall as a
-  gzip and base64 snapshot of the simulation, ledger and client state, so floats round-trip
-  exactly.
+- Saves: an offline town is saved with F5 to `user://saves/quick.json` and loaded with F9. An
+  online town saves itself to the Town Hall: every 60 seconds, two seconds after an agent is
+  summoned or its home or an add-on is placed or finished, on F5, and before the game quits or
+  closes its Town Hall. The save is a gzip and base64 snapshot of the simulation, ledger and
+  client state, so floats round-trip exactly. On `CONFLICT` (another client saved a newer
+  revision) the client adopts that revision but keeps its own town, so its next save replaces
+  the other one.
 
 ### TownLink
 
@@ -211,8 +245,18 @@ batches.
 - `client/ui/agents/`: the agent windows (Summoning Font, task composer, approval tray, review,
   budget, folder browser, agent panel).
 - `client/input/`: selection, the right-click rules, the command card model and key bindings.
+- All UI is built in code; there are no UI scenes. `client/ui/theme/` builds the theme, and the
+  HUD is laid out for 1600 x 900 and scaled to the window (`canvas_items` stretch).
+
+How to work in each part: [client/README.md](../client/README.md) and
+[townhall/README.md](../townhall/README.md).
 
 ## Files on disk
+
+These are the paths in a development checkout. A release package keeps the `townhall/data/`
+folders in the player's data folder instead: `%APPDATA%\AgentEmpire\townhall\` on Windows,
+`~/Library/Application Support/AgentEmpire/townhall/` on macOS and
+`~/.local/share/AgentEmpire/townhall/` on Linux (`AURELHAVEN_DATA_ROOT` overrides both).
 
 | Path | Contents |
 |---|---|
@@ -222,5 +266,6 @@ batches.
 | `townhall/data/townhall.log` | The log of a Town Hall the game started |
 | `townhall/data/wt/` | Task worktrees of the player's repositories |
 | `townhall/data/mirrors/` | Versioned copies of plain (non-git) work folders |
-| `%APPDATA%\AgentEmpire\runtime.json` | A copy of the runtime file, where the game looks first |
-| `%APPDATA%\Godot\app_userdata\AgentEmpire\` | The game's `settings.cfg`, offline saves and `logs/godot.log` |
+| `townhall/data/harness/`, `townhall/data/pi-sessions/` | Per-run harness files and pi session files |
+| `%APPDATA%\AgentEmpire\runtime.json` | The shared copy of the running Town Hall's runtime file (`AURELHAVEN_DISCOVERY_FILE` moves it) |
+| `%APPDATA%\Godot\app_userdata\AgentEmpire\` | The game's `settings.cfg`, offline saves (`saves/quick.json`) and `logs/godot.log` |
