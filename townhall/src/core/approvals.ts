@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
 import { fromJson, toJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
 import type {
@@ -13,8 +12,8 @@ import type {
 } from "../protocol/objects.js";
 import { APPROVAL_PREVIEW_MAX_BYTES, PRE_APPROVAL_TTL_MS } from "../protocol/version.js";
 import type { ApprovalAnswer, ApprovalRequest } from "../providers/types.js";
-import { currentPlatform, isInside } from "../security/path-guard.js";
 import { capBytes } from "../security/redact.js";
+import { reachesOutside } from "../security/target-path.js";
 import type { Ctx } from "./context.js";
 import { incidentKey } from "./incidents.js";
 
@@ -186,16 +185,14 @@ export class ApprovalService {
     );
   }
 
-  /** Treats a file action whose target lies outside the worktree as an outside-workspace action. */
+  /**
+   * Treats a call that names a place outside the worktree (any path field, search folder or glob
+   * pattern, read the way the harness reads it, links followed) as an outside-workspace action.
+   */
   private effectiveCategory(req: ApprovalRequest, run: ApprovalRunContext): ApprovalCategory {
     if (req.category === "outside_workspace") return req.category;
-    const obj = (req.input && typeof req.input === "object" ? req.input : {}) as Record<string, unknown>;
-    const target = obj.file_path ?? obj.path;
-    if (typeof target === "string" && target.length > 0) {
-      const resolved = path.resolve(run.cwd, target);
-      if (!isInside(resolved, run.workspaceRoot, currentPlatform())) return "outside_workspace";
-    }
-    return req.category;
+    const scope = { cwd: run.cwd, root: run.workspaceRoot, write: req.category === "write" };
+    return reachesOutside(req.tool, req.input, scope) ? "outside_workspace" : req.category;
   }
 
   private insertResolved(run: ApprovalRunContext, req: ApprovalRequest, category: ApprovalCategory, hash: string, signature: string, decision: ApprovalDecision, by: ApprovalResolvedBy, message: string | null): string {
