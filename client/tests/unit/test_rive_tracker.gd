@@ -62,10 +62,12 @@ func _ids(tr: TaskTracker) -> Array[String]:
 	return out
 
 
+## A left click let go in the middle of `c` (laid out first).
 func _click(c: Control) -> void:
 	var up := InputEventMouseButton.new()
 	up.button_index = MOUSE_BUTTON_LEFT
 	up.pressed = false
+	up.position = c.size * 0.5
 	c._gui_input(up)
 
 
@@ -197,6 +199,7 @@ func test_tracker_follows_a_state_change() -> void:
 
 func test_tracker_clicks_ask_for_what_the_task_needs() -> void:
 	var tr := _tracker()
+	await wait_process_frames(2)
 	watch_signals(tr)
 	_click(tr.row_for("tsk_docs"))
 	assert_signal_emitted_with_parameters(tr, "review_requested", ["tsk_docs"])
@@ -225,6 +228,23 @@ func test_a_finished_task_lingers_then_goes() -> void:
 	watch_signals(tr)
 	_click(docs)
 	assert_signal_not_emitted(tr, "focus_requested", "a fading row takes clicks and does nothing")
+
+
+func test_a_press_dragged_off_a_row_or_the_header_does_nothing() -> void:
+	var tr := _tracker()
+	await wait_process_frames(2)
+	watch_signals(tr)
+	var row := tr.row_for("tsk_docs")
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = row.size + Vector2(40, 40)
+	row._gui_input(up)
+	assert_signal_not_emitted(tr, "review_requested", "let go outside the row")
+	tr._on_header_input(up)
+	assert_false(tr.folded, "let go outside the header")
+	_click(row)
+	assert_signal_emitted_with_parameters(tr, "review_requested", ["tsk_docs"])
 
 
 func test_a_finished_task_shows_first_when_the_list_is_full() -> void:

@@ -48,8 +48,10 @@ const SCALE = 1.5;
 // state and finishes the transition's blend. Each state waits a whole number of its own loops, so
 // a sheet's first frame is the start of the loop (the state machine enters it on frame 1).
 const WARMUP = 60;
-// Transparent pixels around every frame in a sheet, so mipmaps never bleed between frames.
-const PAD = 2;
+// Transparent pixels around every frame in a sheet. The art's glow reaches within 2 px of a
+// frame's edge, and a sigil far off on a name plate samples the third or fourth mipmap, so the
+// gap between frames must stay a texel or more there.
+const PAD = 8;
 // The manifest's source_hash after a partial bake (--only): it matches no source, so --check asks
 // for a full bake.
 const PARTIAL = 'partial';

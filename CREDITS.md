@@ -40,8 +40,8 @@ its doors swung open, and every icon.
 The task seals and agent sigils, the animated emblems in the task tracker, on the agent panel and
 on the homes' name plates, are vector drawings and animations written in RML in
 `art_src/rive/state_tracker/`, with no outside images or fonts. `scripts/bake-rive.mjs` renders
-them into the sprite sheets in `client/art/rive/` with the free Rive CLI, a build tool: nothing of
-Rive ships with the game.
+them into the sprite sheets in `client/art/rive/` with the free Rive CLI. The game ships those
+images only: no Rive runtime, library or `.riv` file. Animated with Rive (https://rive.app).
 
 ## Sound and music (CC0)
 

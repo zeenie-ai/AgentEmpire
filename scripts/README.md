@@ -154,7 +154,8 @@ solved from the pair. The bake works on a copy of the sources taken when it star
 copy, so an edit made during a bake is neither captured nor marked as baked.
 
 A state's frames go into one PNG, `client/art/rive/<set>/<state>.png`: a grid of ceil(sqrt(frames))
-columns with 2 px of transparent padding around each frame. A new sheet gets a `.png.import`
+columns with 8 px of transparent padding around each frame, so the small mipmaps of a far-off
+sigil never mix in the next frame. A new sheet gets a `.png.import`
 (lossless, mipmaps, alpha border fixed). `client/art/rive/rive_sprites.json` describes the sheets
 and records the CLI's version and a hash of the sources:
 

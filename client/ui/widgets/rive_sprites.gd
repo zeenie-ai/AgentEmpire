@@ -24,7 +24,8 @@ static func manifest() -> Dictionary:
 			if typeof(parsed) == TYPE_DICTIONARY:
 				_manifest = parsed
 		if _manifest.is_empty():
-			push_warning("RiveSprites: %s is missing or unreadable; run node scripts/bake-rive.mjs" % MANIFEST)
+			# An error, not a warning: check-exe.ps1 then fails a build that lost its sheets.
+			push_error("RiveSprites: %s is missing or unreadable; run node scripts/bake-rive.mjs" % MANIFEST)
 	return _manifest
 
 
@@ -106,6 +107,6 @@ static func _texture(path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
 		tex = load(path) as Texture2D
 	if tex == null:
-		push_warning("RiveSprites: no texture at %s" % path)
+		push_error("RiveSprites: no texture at %s" % path)
 	_textures[path] = tex
 	return tex
