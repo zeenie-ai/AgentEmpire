@@ -2,6 +2,13 @@ export interface TimerHandle {
   readonly id: number;
 }
 
+/**
+ * The longest delay Node's setTimeout honours (2^31 - 1 ms, about 24.8 days). A longer one fires
+ * after 1 ms with a TimeoutOverflowWarning, so the clocks wait in steps no longer than this. The
+ * end of a monthly Mana period is often further away than that.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;
+
 export interface Clock {
   /** Milliseconds since the Unix epoch. */
   now(): number;
@@ -50,13 +57,23 @@ export class SystemClock implements Clock {
 
   setTimeout(fn: () => void, ms: number): TimerHandle {
     const id = this.nextId++;
+    this.arm(id, fn, Math.max(0, ms));
+    return { id };
+  }
+
+  /** Waits `remaining` ms under timer `id`, at most MAX_TIMER_MS at a time, then calls `fn`. */
+  private arm(id: number, fn: () => void, remaining: number): void {
+    const step = Math.min(remaining, MAX_TIMER_MS);
     const t = setTimeout(() => {
+      if (remaining > step) {
+        this.arm(id, fn, remaining - step);
+        return;
+      }
       this.timers.delete(id);
       fn();
-    }, Math.max(0, ms));
+    }, step);
     t.unref();
     this.timers.set(id, t);
-    return { id };
   }
 
   clearTimeout(handle: TimerHandle | null | undefined): void {
@@ -102,10 +119,23 @@ export class TestClock implements Clock {
   setTimeout(fn: () => void, ms: number): TimerHandle {
     const id = this.nextId++;
     const due = this.now() + Math.max(0, ms);
-    const real = setTimeout(() => this.fire(id), Math.max(0, ms));
-    real.unref();
-    this.pending.set(id, { id, due, fn, real });
+    this.pending.set(id, { id, due, fn, real: this.realTimer(id, Math.max(0, ms)) });
     return { id };
+  }
+
+  /** The real timer behind timer `id`: fires it after `ms`, waiting at most MAX_TIMER_MS at a time. */
+  private realTimer(id: number, ms: number): NodeJS.Timeout {
+    const step = Math.min(ms, MAX_TIMER_MS);
+    const real = setTimeout(() => {
+      const t = this.pending.get(id);
+      if (t && ms > step) {
+        t.real = this.realTimer(id, ms - step);
+        return;
+      }
+      this.fire(id);
+    }, step);
+    real.unref();
+    return real;
   }
 
   clearTimeout(handle: TimerHandle | null | undefined): void {

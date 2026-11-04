@@ -18,6 +18,7 @@ import type { DiffFile, DiffFileStatus, DiffStat, MergeBlockedReason, RiteResult
 import { currentPlatform, isInside } from "../security/path-guard.js";
 import { tailBytes } from "../security/redact.js";
 import type { AgentRow } from "./agents.js";
+import { MAX_TIMER_MS } from "./clock.js";
 import type { Ctx } from "./context.js";
 import { shortRandom } from "./ids.js";
 
@@ -493,10 +494,12 @@ export class WorkspaceService {
       }
       child.stdout?.on("data", append);
       child.stderr?.on("data", append);
+      // A limit past MAX_TIMER_MS (about 24.8 days, from AURELHAVEN_RITE_TIMEOUT_S) would fire
+      // after 1 ms and fail every Rite; that far off it means no limit anyway.
       const timer = setTimeout(() => {
         timedOut = true;
         killTree(child.pid);
-      }, timeoutMs);
+      }, Math.min(timeoutMs, MAX_TIMER_MS));
       const finish = (code: number | null) => {
         clearTimeout(timer);
         let text = this.ctx.redactor.redact(output);
