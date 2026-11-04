@@ -27,6 +27,8 @@ const DEFAULTS := {
 	"onboarding/work_folder": "",
 	# Phones and tablets: whether the touch controls help has been shown once.
 	"onboarding/touch_help": false,
+	# Whether the HUD's task tracker shows only its header (TaskTracker).
+	"hud/tracker_folded": false,
 	# Start the Town Hall when the game opens and none is running (desktop).
 	"townhall/auto_start": true,
 	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed

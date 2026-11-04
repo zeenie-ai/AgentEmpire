@@ -1,0 +1,45 @@
+<Rive version="1" kind="fragment">
+    <DataEnumCustom name="TaskState" id="1:1">
+        <DataEnumValue key="in_transit" value="On its way" id="1:2"/>
+        <DataEnumValue key="queued" value="Queued" id="1:3"/>
+        <DataEnumValue key="preparing" value="Preparing" id="1:4"/>
+        <DataEnumValue key="running" value="Working" id="1:5"/>
+        <DataEnumValue key="awaiting_approval" value="Waiting for approval" id="1:6"/>
+        <DataEnumValue key="awaiting_review" value="Ready for review" id="1:7"/>
+        <DataEnumValue key="accepting" value="Accepting" id="1:8"/>
+        <DataEnumValue key="accepted" value="Accepted" id="1:9"/>
+        <DataEnumValue key="rejected" value="Set aside" id="1:10"/>
+        <DataEnumValue key="paused" value="Paused" id="1:11"/>
+        <DataEnumValue key="failed" value="Failed" id="1:12"/>
+        <DataEnumValue key="cancelled" value="Cancelled" id="1:13"/>
+    </DataEnumCustom>
+
+    <DataEnumCustom name="AgentMood" id="1:20">
+        <DataEnumValue key="idle" value="Idle" id="1:21"/>
+        <DataEnumValue key="training" value="Training" id="1:22"/>
+        <DataEnumValue key="settling" value="Settling in" id="1:23"/>
+        <DataEnumValue key="working" value="Working" id="1:24"/>
+        <DataEnumValue key="waiting" value="Waiting for approval" id="1:25"/>
+        <DataEnumValue key="review" value="Result ready" id="1:26"/>
+        <DataEnumValue key="blocked" value="Blocked" id="1:27"/>
+        <DataEnumValue key="retired" value="Retired" id="1:28"/>
+    </DataEnumCustom>
+
+    <ViewModel defaultInstanceId="1:41" name="TaskSeal" id="1:40">
+        <ViewModelPropertyEnumCustom enumId="1:1" name="state" id="1:42"/>
+        <ViewModelPropertyColor name="matte" id="1:43"/>
+        <ViewModelInstance exports="true" name="Default" id="1:41">
+            <ViewModelInstanceEnum propertyValue="1:3" viewModelPropertyId="1:42"/>
+            <ViewModelInstanceColor propertyValue="00000000" viewModelPropertyId="1:43"/>
+        </ViewModelInstance>
+    </ViewModel>
+
+    <ViewModel defaultInstanceId="1:51" name="AgentSigil" id="1:50">
+        <ViewModelPropertyEnumCustom enumId="1:20" name="mood" id="1:52"/>
+        <ViewModelPropertyColor name="matte" id="1:53"/>
+        <ViewModelInstance exports="true" name="Default" id="1:51">
+            <ViewModelInstanceEnum propertyValue="1:21" viewModelPropertyId="1:52"/>
+            <ViewModelInstanceColor propertyValue="00000000" viewModelPropertyId="1:53"/>
+        </ViewModelInstance>
+    </ViewModel>
+</Rive>

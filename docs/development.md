@@ -16,6 +16,7 @@ two programs.
 | GUT 9.7.1 | `client/addons/gut/` (committed) | client tests |
 | KayKit source kits | `.tools/vendor/` via `node scripts/fetch-assets.mjs` | rebuilding art only |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1\` | rebuilding art only |
+| Rive CLI 1.8.0 | on PATH or in `~/.rive/bin/`, where [its installer](https://rive.app/docs/cli/getting-started) puts it (`RIVE_CLI` or `--rive=<path>` names another) | rebaking the task seals and agent sigils only (the sheets are committed); free, and works signed out |
 
 `.tools/` is git-ignored. `node scripts/setup.mjs` fills it: it downloads Godot 4.7.2 for your
 system from Godot's GitHub release (checked against its SHA-512 list), the desktop export
@@ -46,7 +47,8 @@ Run from the repository root unless noted. `<godot>` is
 | Regenerate the client's protocol constants | `cd townhall; npm run gen:gd`, then sync |
 | Build | `node scripts/build-game.mjs` (`--windows-only` or `--web-only`; the web build needs Godot's Web export templates, which `setup.mjs` does not download) |
 | Check the built exe | `pwsh scripts/check-exe.ps1` (launches it, captures `out/exe-check.png`, fails on any game-log line containing "error" in any case) |
-| Rebuild all art | `blender --background --factory-startup --python-exit-code 1 --python art_src/blender/build_all.py` |
+| Rebuild the models, characters and icons | `blender --background --factory-startup --python-exit-code 1 --python art_src/blender/build_all.py` |
+| Rebake the task seals and agent sigils | `node scripts/bake-rive.mjs` (needs the Rive CLI; about five minutes with 4 workers), then import the client; `--check` only compares the sheets with the RML |
 | Rebuild all sound | `node scripts/fetch-audio.mjs` (needs ffmpeg; downloads the CC0 sources into `.tools/vendor/audio`) |
 
 The end-to-end check starts a Town Hall with the scripted agent in a temporary folder, makes a
@@ -78,7 +80,7 @@ screenshot tools need a real window, so leave out `--headless`.
 | `boot_check.gd` | Boots like a player and reports whether it reached the Town Hall's town or an offline one, and how long it took. Like the game, it may start a Town Hall on this checkout's `townhall/data` and leave it running |
 | `townhall_mode_check.gd` | Switches between the practice and real Town Halls and closes one, against Town Halls started from this checkout with temporary data (headless) |
 | `agent_showcase.gd` | Screenshots of agents in a real town against a Town Hall (`AURELHAVEN_RUNTIME=<data>\runtime.json`, `-- --work=<git repo>`) |
-| `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png` |
+| `ui_preview.gd` | Renders every agent window from a fake state into `out/ui_<name>.png`, plus the HUD's task tracker over the town (`task_tracker`) and every task seal and agent sigil (`rive_states`); `-- --only=<shot,...>` picks shots, `--size=WxH` the window |
 | `capture_screens.gd`, `snap_main.gd` | Screenshots of a demo town and of the main scene |
 | `perf_stress.gd` | 90 busy townsfolk with the full scene and HUD; prints FPS, long frames, draw time, and per frame the draw calls, primitives (main view and shadows) and GPU time. For the phone build: `--rendering-method mobile -s res://tools/perf_stress.gd -- --quality=low` |
 | `input_smoke.gd` | Injects mouse and keyboard input into the main scene and checks the results |
@@ -195,10 +197,10 @@ any of them at another console executable. For the commands that call Godot dire
 main checkout's `.tools\godot\` path.
 
 Before merging, all of these must pass: the Town Hall type check and tests, the client tests,
-`node scripts/sync-economy.mjs --check` and the end-to-end check. Merge with `--no-ff`. Before
-handing anyone an exe, build it (`node scripts/build-game.mjs --windows-only`), run
-`check-exe.ps1` (0 error lines), and commit. [testing.md](testing.md) lists the checklist in
-order, with what each check proves.
+`node scripts/sync-economy.mjs --check`, `node scripts/bake-rive.mjs --check` and the end-to-end
+check. Merge with `--no-ff`. Before handing anyone an exe, build it
+(`node scripts/build-game.mjs --windows-only`), run `check-exe.ps1` (0 error lines), and commit.
+[testing.md](testing.md) lists the checklist in order, with what each check proves.
 
 If you linked a worktree's `node_modules` to another checkout's with a directory junction,
 remove the junction (`cmd /c rmdir <path>`) before deleting the worktree, or the delete follows
@@ -288,6 +290,34 @@ model, character and icon into `client/art/` (committed) and writes contact shee
 report to `out/art/`. Sources come from `node scripts/fetch-assets.mjs`, pinned to fixed commits.
 Credit new sources in [CREDITS.md](../CREDITS.md).
 
+**The Rive state tracker.** The task seals (one per task state) and the agent sigils (one per agent
+mood) are drawn in RML, the text format of the free Rive CLI, in `art_src/rive/state_tracker/`:
+
+- `data.rml` holds the enums `TaskState` (the twelve task states) and `AgentMood` (idle,
+  training, settling, working, waiting, review, blocked, retired), and the view models `TaskSeal`
+  (`state`, `matte`) and `AgentSigil` (`mood`, `matte`).
+- `task_seal.rml` and `agent_sigil.rml` hold the 96 x 96 `TaskSeal` and 64 x 64 `AgentSigil`
+  artboards.
+
+Each artboard's state machine, `Tracker`, moves from any state, in 200 ms, to the animation state
+for the enum key the view model holds. That state loops the animation named after the key. The
+`.rml` files are the source; edit them by hand. `rive docs` and `rive schema <Type>` explain the
+format. Check each change with `rive art_src/rive/state_tracker --verify`, and watch it in the
+preview window that `rive art_src/rive/state_tracker` opens.
+
+`node scripts/bake-rive.mjs` ([scripts/README.md](../scripts/README.md#assets)) then plays every
+state headless. It captures one loop at 30 frames a second, over black and over white to recover
+the alpha, into one lossless sheet per state, `client/art/rive/<set>/<state>.png`, imported with
+mipmaps and listed in `client/art/rive/rive_sprites.json`. A full bake takes about five minutes
+with 4 workers and needs no Rive account. Import the client afterwards, and commit the RML, the
+sheets with their `.import` files and the manifest together: `node scripts/bake-rive.mjs --check`
+fails while the manifest is older than the RML or names a missing sheet.
+
+The bake stops unless each view model has exactly one enum property and a colour property
+`matte`, every enum key has an animation of the same name, each loop is a whole number of 30 fps
+frames long, and the fallback states `queued` and `idle` exist. The game has no Rive runtime:
+`RiveSprites` and `RiveSprite` (`client/ui/widgets/`) play the sheets.
+
 ## Logs
 
 | Log | Where |
@@ -326,3 +356,7 @@ Credit new sources in [CREDITS.md](../CREDITS.md).
 - **Short freezes of about half a second on one machine.** Seen on a development machine with
   every renderer, even on an empty Godot scene, so it comes from the environment (overlay or
   capture software), not from the game. The simulation keeps real time through them.
+- **The task seals or agent sigils are blank.** The game log says
+  `RiveSprites: res://art/rive/rive_sprites.json is missing or unreadable; run node scripts/bake-rive.mjs`
+  or `RiveSprites: no texture at ...`. Run `node scripts/bake-rive.mjs --check`, bake if it fails,
+  then import the client.
