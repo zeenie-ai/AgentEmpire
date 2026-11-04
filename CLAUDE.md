@@ -11,14 +11,21 @@ of `client/`, `townhall/`, `protocol/` and `scripts/`.
   from the main checkout. Do larger work in a git worktree under `.wt/` and merge only verified
   work.
 - **Verify before merging:** in `townhall/`, `npm run typecheck` and `npm test`; the client GUT
-  suite; `node scripts/sync-economy.mjs --check`; `node scripts/e2e-client.mjs`. Before handing
-  over an exe: build it (`node scripts/build-game.mjs --windows-only`), run
-  `pwsh scripts/check-exe.ps1` (0 error lines), and commit.
+  suite; `node scripts/sync-economy.mjs --check`; `node scripts/bake-rive.mjs --check`;
+  `node scripts/e2e-client.mjs`. Before handing over an exe: build it
+  (`node scripts/build-game.mjs --windows-only`), run `pwsh scripts/check-exe.ps1` (0 error
+  lines), and commit.
 - **Look at what you render.** The user wants professional, polished visuals: check every visual
   change in a screenshot, at 1280x720 and at large resolutions.
 - **Game constants** live only in `protocol/economy.json`; run the sync script after changing it.
   **Protocol changes** go into the zod schemas and `protocol/PROTOCOL.md` together, then
   `npm run gen:gd` and the sync script.
+- **Task seals and agent sigils** are drawn only in `art_src/rive/state_tracker/*.rml` (RML for
+  the free Rive CLI). After changing them, run `rive art_src/rive/state_tracker --verify`, then
+  `node scripts/bake-rive.mjs` (about five minutes; it renders on the GPU with at most 4 workers
+  by default), import the client, and look at the `rive_states` and `task_tracker` shots of
+  `client/tools/ui_preview.gd`. Never edit `client/art/rive/` by hand, and never run
+  `rive push`: it uploads to a Rive account.
 - **Agents run on existing harnesses only**: the Claude Code CLI, `codex app-server` and pi's RPC
   mode. Do not add an agent SDK or a model loop of our own.
 - **No destructive git** in the Town Hall or its tests (`reset --hard`, `clean`, `stash`, forced

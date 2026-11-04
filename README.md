@@ -103,7 +103,9 @@ it, click the Town Hall chip in the top bar and choose **Close the Town Hall**.
 - **Summon agents** at the Keep, the way you train villagers. Each one walks out, builds its home
   on a plot you choose, then builds its add-on buildings, the tools it is allowed to use.
 - **Give tasks.** Select an agent and press Q to write a task. A townsperson carries the scroll
-  from the Keep to the agent's home; the work starts when it arrives.
+  from the Keep to the agent's home; the work starts when it arrives. The task tracker at the top
+  left lists the tasks under way, the ones that need you first, each with an animated seal for
+  its state. Click a row to open its review or petition, or to find its agent.
 - **Answer the bells.** When an agent asks to do something, approve it once, for the task, or
   always for that agent, or deny it. Space jumps to the oldest bell.
 - **Review and accept.** When a task is done, read the changes and accept, send back with notes,
@@ -163,7 +165,7 @@ automatically on Windows, Linux and macOS (Apple Silicon) before it is published
 | 2 | The town: map, camera, units, gathering, construction, the controls | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
 | 4 | Real agents on Claude Code, Codex and pi | Done |
-| 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music. Still to come: the menus, the onboarding, and the Age, Quartermaster and party windows (until then the town stays in its first age) |
+| 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music, and the task tracker with its animated task seals and agent sigils. Still to come: the menus, the onboarding, and the Age, Quartermaster and party windows (until then the town stays in its first age) |
 
 ## For developers
 
@@ -199,7 +201,7 @@ Running from source, after `node scripts/setup.mjs`:
 | `townhall/` | The Town Hall (TypeScript, Node 22); see [townhall/README.md](townhall/README.md) |
 | `protocol/` | The contract between them: `PROTOCOL.md`, `economy.json` (every game constant), `pricing.json`, generated GDScript |
 | `scripts/` | Setup, build, release packaging, end-to-end and asset scripts |
-| `art_src/` | The Blender pipeline that builds models, characters and icons from the KayKit kits |
+| `art_src/` | The art sources: the Blender pipeline that builds models, characters and icons from the KayKit kits, and the Rive project (`rive/state_tracker/`, written in RML) behind the task seals and agent sigils, baked by `scripts/bake-rive.mjs` |
 | `docs/` | The player's guide, architecture, development and testing guides, security, experiment notes, the privacy policy, README images |
 | `.github/workflows/` | The release workflow |
 | `design_handoff_aurelhaven/` | The original design handoff: lore, colours, fonts, the wall animation |
@@ -222,6 +224,7 @@ system, and publishes them on the Releases page.
 
 ## Credits
 
-Art by Kay Lousberg (KayKit, CC0); sound from Kenney, OpenGameArt.org and Freesound (CC0) plus
-bells made for the game; fonts under the SIL Open Font License; built with Godot. The full list is
-in [CREDITS.md](CREDITS.md).
+Art by Kay Lousberg (KayKit, CC0) plus pieces made for the game, among them the task seals and
+agent sigils drawn in Rive; sound from Kenney, OpenGameArt.org and Freesound (CC0) plus bells made
+for the game; fonts under the SIL Open Font License; built with Godot. The full list is in
+[CREDITS.md](CREDITS.md).

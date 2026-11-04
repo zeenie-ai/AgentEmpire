@@ -1,9 +1,9 @@
 class_name NamePlate
 extends PanelContainer
 ## An agent home's name plate, drawn in screen space over the town (a layer under the HUD): the
-## agent's name in Cinzel above a caption in small mono capitals (role and rank, or what needs
-## the player), on a dark wood backdrop with a thin bronze edge, so it reads on grass, roofs and
-## at night alike.
+## agent's sigil from the Rive state tracker (its mood, animated; set_mood) beside its name in
+## Cinzel above a caption in small mono capitals (role and rank, or what needs the player), on a
+## dark wood backdrop with a thin bronze edge, so it reads on grass, roofs and at night alike.
 ##
 ## HomeStatusView places it each frame above the home's roof. Its size follows the zoom: scale 1
 ## when the home is about HOME_PX wide on screen, clamped to MIN_SCALE..MAX_SCALE, so it stays
@@ -20,7 +20,11 @@ const CAPTION_MIN_SCALE := 0.9
 const LIFT_PX := 6.0
 const BACKDROP := Color(0.075, 0.052, 0.035, 0.8)
 const EDGE := Color(0.42, 0.32, 0.19, 0.95)
+## The sigil's side at scale 1.
+const SIGIL_PX := 28.0
 
+var _sigil: RiveSprite
+var _row: HBoxContainer
 var _name: Label
 var _caption: Label
 var _style: StyleBoxFlat
@@ -39,11 +43,17 @@ func _init() -> void:
 	_style.shadow_size = 3
 	_style.shadow_offset = Vector2(0, 1)
 	add_theme_stylebox_override("panel", _style)
+	_row = HBoxContainer.new()
+	_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	add_child(_row)
+	_sigil = RiveSprite.new("agent_sigil", "idle", SIGIL_PX)
+	_row.add_child(_sigil)
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation", 0)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(box)
+	_row.add_child(box)
 	_name = _label(UiFonts.cinzel(700, 1))
 	box.add_child(_name)
 	_caption = _label(UiFonts.mono(600, 2))
@@ -76,6 +86,16 @@ func set_text(agent_name: String, caption: String, name_color: Color, caption_co
 	reset_size()
 
 
+## The sigil's mood: idle, settling, working, waiting, review, blocked or retired (AgentSigil).
+func set_mood(mood: String) -> void:
+	_sigil.set_state(mood)
+
+
+## The mood the sigil shows.
+func mood() -> String:
+	return _sigil.state
+
+
 ## Puts the plate's bottom centre just above screen point `at`, sized for a home that spans
 ## `home_px` pixels on screen.
 func place(at: Vector2, home_px: float) -> void:
@@ -92,7 +112,9 @@ func _apply_scale(s: float) -> void:
 	_name.add_theme_font_size_override("font_size", maxi(int(round(NAME_SIZE * k)), 9))
 	_caption.add_theme_font_size_override("font_size", maxi(int(round(CAPTION_SIZE * k)), 7))
 	_caption.visible = k >= CAPTION_MIN_SCALE
-	_style.content_margin_left = round(9.0 * k)
+	_sigil.custom_minimum_size = Vector2.ONE * round(SIGIL_PX * k * (1.0 if _caption.visible else 0.8))
+	_row.add_theme_constant_override("separation", int(round(4.0 * k)))
+	_style.content_margin_left = round(6.0 * k)
 	_style.content_margin_right = round(9.0 * k)
 	_style.content_margin_top = round(2.0 * k)
 	_style.content_margin_bottom = round(3.0 * k)

@@ -13,15 +13,17 @@ Run commands from the repository root unless noted. `<godot>` is the Godot conso
 | Town Hall unit tests | Pure logic: the task state machine, bounty, Mana, ranks, the guards, the harness helpers; that `PROTOCOL.md` matches the schemas; that the source has no destructive git | `cd townhall; npm test` (with the integration tests) |
 | Town Hall integration tests | A whole Town Hall over its WebSocket with scripted agents, and each harness adapter against a stand-in for its harness | `cd townhall; npm test` |
 | Smoke tests | The adapters work with the installed harnesses and real models | `cd townhall; $env:AURELHAVEN_SMOKE_CLAUDE = "1"; npm run test:smoke` |
-| Client GUT tests | The simulation, the ledgers, the agent windows, Town Hall discovery and audio, headless | `<godot> --headless --path client -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit` |
+| Client GUT tests | The simulation, the ledgers, the agent windows, the Rive state tracker, Town Hall discovery and audio, headless | `<godot> --headless --path client -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit` |
 | End-to-end check | The whole loop between a real Town Hall and the real client, from summoning to a merged, rewarded task | `node scripts/e2e-client.mjs` |
 | `input_smoke.gd` | Mouse and keyboard input reaches the simulation as a player's would | `<godot> --path client -s res://tools/input_smoke.gd` |
 | `boot_check.gd` | The game boots as a player's does and opens a town | `<godot> --headless --path client -s res://tools/boot_check.gd` |
 | `townhall_mode_check.gd` | Switching between the practice and real Town Halls, and closing one | `<godot> --headless --path client -s res://tools/townhall_mode_check.gd` |
 | Sync check | The client's copies of `economy.json` and `protocol.gd` match their sources | `node scripts/sync-economy.mjs --check` |
+| Rive sheet check | The task seals and agent sigils in `client/art/rive/` were baked from the current `art_src/rive/state_tracker` (the manifest's source hash), and every sheet `rive_sprites.json` names exists | `node scripts/bake-rive.mjs --check` (no Rive CLI needed) |
 | Exe check | The exported Windows game starts, shows a window and logs no error | `pwsh scripts/check-exe.ps1` |
 | Package smoke test | An unzipped release package runs as a player's would | `node scripts/smoke-package.mjs <package folder>` |
 | Art verify | Every model, character and icon matches `art_src/manifest.json` | the last step of `art_src/blender/build_all.py` (see [development.md](development.md#art)) |
+| Rive verify | The RML of the task seals and agent sigils compiles | `rive art_src/rive/state_tracker --verify` (needs the Rive CLI; also the first check of a bake) |
 | CI | The release packages build, and three of them start on their own systems | `.github/workflows/release.yml`, on a `v*` tag or by hand |
 
 ## Town Hall tests
@@ -123,7 +125,11 @@ do. The run exits with code 1 when a test fails; under GUT's defaults an engine 
 - **Covered:** the simulation (grid, pathing, placement, construction, gathering, training,
   commands, map generation, walls, wanderers, save and reload), the economy data and its copy,
   both ledgers, agents as TownLink drives them, the agent windows from a fake Town Hall state
-  (and that they fit 1280 x 720), discovery, the age and progress, the camera and the audio cues.
+  (and that they fit 1280 x 720), discovery, the age and progress, the camera and the audio cues,
+  and the Rive state tracker (a baked sheet for every task state and agent mood that matches the
+  manifest, the fallback states, RiveSprite's loop and crossfade, the task tracker's order,
+  clicks, lingering finished tasks, five-row limit, folding and place under the top bar, and the
+  agent sigils on the agent panel and the name plates).
 - **Not covered:** a real Town Hall (no GUT test starts one), real input, how anything looks and
   the exported game, which the checks below and screenshots cover; no check runs the web client.
 
@@ -234,6 +240,7 @@ A Town Hall started for a test stays apart from the player's ([CLAUDE.md](../CLA
 | Town Hall tests | In the test process, in a temporary folder | Nothing |
 | Smoke tests | None, or a `TestTown` for the party | Reports and run folders in the temp folder; session files in your harness settings |
 | GUT tests, `input_smoke.gd` | None | Nothing |
+| Rive sheet check | None | Nothing |
 | End-to-end check, `townhall_mode_check.gd` | Their own, in a temporary folder | Nothing, unless kept |
 | `boot_check.gd`, exe check | Yours, or one they start on `townhall/data` | That Town Hall, running; the exe check also deletes your game log |
 | Package smoke test | Its own, in a temporary folder | Nothing |
@@ -248,12 +255,16 @@ Before merging, in this order:
 2. `cd townhall; npm test`
 3. The client GUT suite
 4. `node scripts/sync-economy.mjs --check`
-5. `node scripts/e2e-client.mjs`
+5. `node scripts/bake-rive.mjs --check`
+6. `node scripts/e2e-client.mjs`
 
 Add what the change calls for: the smoke test of a harness whose adapter you changed;
 `townhall_mode_check.gd` after changing how the game starts, switches or closes a Town Hall;
-`input_smoke.gd` after changing input or the main scene; for a visual change, screenshots at
-1280 x 720 and at a large size (`ui_preview.gd -- --size=1280x720`). Merge with `--no-ff`.
+`input_smoke.gd` after changing input or the main scene; after changing `art_src/rive/`,
+`rive art_src/rive/state_tracker --verify`, a full bake (`node scripts/bake-rive.mjs`), an
+import, and the `rive_states` and `task_tracker` shots of `ui_preview.gd`; for a visual change,
+screenshots at 1280 x 720 and at a large size (`ui_preview.gd -- --size=1280x720`). Merge with
+`--no-ff`.
 
 Before handing anyone an exe: build it (`node scripts/build-game.mjs --windows-only`), run
 `pwsh scripts/check-exe.ps1` (0 error lines, and look at the screenshot), and commit. Before

@@ -11,7 +11,9 @@ extends SceneTree
 ##   --tag=<suffix>     appended to each file name: ui_summon_<suffix>.png
 ## Shots: summon, summon_lower, summon_modes, summon_grace, summon_error, folder, composer,
 ## composer_warn, approvals, approval_deny, review, review_chronicle, review_send_back,
-## review_reward, review_blocked, agent_panel, agent_states, budget, budget_confirm, chronicle.
+## review_reward, review_blocked, agent_panel, agent_states, budget, budget_confirm, chronicle,
+## task_tracker (the HUD's tracker over the town, tasks in five states) and rive_states (every
+## task seal and agent sigil of the Rive state tracker, at their sizes in the game and larger).
 ##
 ## A script run with -s compiles before the autoloads exist, so everything that uses them (the
 ## windows, Realm, Economy, Game) is loaded at run time and kept untyped here.
@@ -19,7 +21,7 @@ extends SceneTree
 const DEFAULT_SIZE := Vector2i(1600, 900)
 const SHOTS := ["summon", "summon_lower", "summon_modes", "summon_grace", "summon_error", "folder", "composer",
 	"composer_warn", "approvals", "approval_deny", "review", "review_chronicle", "review_send_back", "review_reward",
-	"review_blocked", "agent_panel", "agent_states", "budget", "budget_confirm", "chronicle"]
+	"review_blocked", "agent_panel", "agent_states", "budget", "budget_confirm", "chronicle", "task_tracker", "rive_states"]
 const UI := "res://ui/agents/%s.gd"
 
 var _args: PackedStringArray
@@ -192,6 +194,10 @@ func _take(shot: String) -> void:
 			await _shot_budget_confirm()
 		"chronicle":
 			await _shot_chronicle()
+		"task_tracker":
+			await _shot_task_tracker()
+		"rive_states":
+			await _shot_rive_states()
 
 
 # --- the scene -------------------------------------------------------------------------------------
@@ -681,3 +687,86 @@ func _shot_chronicle() -> void:
 	_realm().call("apply_event", {"type": "task_activity", "payload": {"task_id": "tsk_docs",
 		"entry": {"time": _demo.iso(0.0), "kind": "system", "text": "Mana check: 286 of 450 spent."}}})
 	await _snap("chronicle")
+
+
+## The HUD's task tracker over the town: a petition, a result, work, a failure, the queue and a
+## scroll on its way (one more than the tracker lists), each row with its Rive seal.
+func _shot_task_tracker() -> void:
+	var s: Dictionary = _demo.state()
+	var elowen: Dictionary = _demo.corvin().duplicate(true)
+	elowen.merge({"id": "agt_elowen", "name": "Elowen", "role": "scholar", "activity": "working", "current_task_id": "tsk_paths"}, true)
+	var agents: Array = s["agents"]
+	agents.append(elowen)
+	for a: Dictionary in agents:
+		if String(a["id"]) == "agt_mira":
+			a["activity"] = "awaiting_approval"
+	var login: Dictionary = _demo.task_login()
+	login["state"] = "awaiting_approval"
+	var paths: Dictionary = _demo.task_tests().duplicate(true)
+	paths.merge({"id": "tsk_paths", "agent_id": "agt_elowen", "title": "Speed up the path service on large maps",
+		"state": "running", "created_at": _demo.iso(1200.0)}, true)
+	var schema: Dictionary = _demo.task_tests().duplicate(true)
+	schema.merge({"id": "tsk_schema", "agent_id": "agt_corvin", "title": "Migrate saves to schema version 4",
+		"state": "failed", "created_at": _demo.iso(5000.0)}, true)
+	var bells: Dictionary = _demo.task_tests().duplicate(true)
+	bells.merge({"id": "tsk_bells", "agent_id": "agt_elowen", "title": "Quieter bells at night",
+		"state": "in_transit", "created_at": _demo.iso(20.0)}, true)
+	s["tasks"] = [login, _demo.task_tests(), _demo.task_docs(), paths, schema, bells]
+	_apply(s)
+	# The HUD's tracker, or with --bg=plain (no HUD) one of its own where the HUD puts it.
+	var tracker: Control = null
+	if _main != null:
+		tracker = _main.get("hud").get("tracker")
+	else:
+		tracker = load("res://ui/hud/task_tracker.gd").new()
+		tracker.position = Vector2(16, 58)
+		_stage.add_child(tracker)
+		_open_nodes.append(tracker)
+	# The preview's town is not a Town Hall's; show the tracker anyway.
+	tracker.set("online", func() -> bool: return true)
+	tracker.set("folded", false)
+	tracker.call("sync")
+	await _snap("task_tracker", 45)
+
+
+## Every task seal and agent sigil of the Rive bake: at twice their size in the game, then as the
+## tracker (46 px) and the agent panel (28 px) show them.
+func _shot_rive_states() -> void:
+	var sprites: GDScript = load("res://ui/widgets/rive_sprites.gd")
+	var sprite: GDScript = load("res://ui/widgets/rive_sprite.gd")
+	var bg := PanelContainer.new()
+	bg.theme_type_variation = "HudPanel"
+	_stage.add_child(bg)
+	_open_nodes.append(bg)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 14)
+	bg.add_child(col)
+	for set_name: String in ["task_seal", "agent_sigil"]:
+		var seal := set_name == "task_seal"
+		var title := Label.new()
+		title.theme_type_variation = "TitleLabel"
+		title.text = "TASK SEALS" if seal else "AGENT SIGILS"
+		col.add_child(title)
+		var grid := GridContainer.new()
+		grid.columns = 12 if seal else 8
+		grid.add_theme_constant_override("h_separation", 8)
+		grid.add_theme_constant_override("v_separation", 8)
+		col.add_child(grid)
+		var states: PackedStringArray = sprites.call("states", set_name)
+		for state in states:
+			var cell := VBoxContainer.new()
+			cell.custom_minimum_size = Vector2(120, 0)
+			cell.add_theme_constant_override("separation", 6)
+			for px: float in ([92.0, 46.0] if seal else [56.0, 28.0]):
+				var sp: Control = sprite.new(set_name, state, px)
+				sp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+				cell.add_child(sp)
+			var l := Label.new()
+			l.theme_type_variation = "MutedLabel"
+			l.text = state.replace("_", " ").to_upper()
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cell.add_child(l)
+			grid.add_child(cell)
+	await _snap("rive_states", 20)

@@ -8,7 +8,7 @@ controls.
 | Document | What it covers |
 |---|---|
 | [README](../README.md) | Download and first start, real agents, the controls, the project's status |
-| [Player's guide](playing.md) | The town, agents and their add-ons, tasks, approvals, review, Mana, practice and real towns, saving |
+| [Player's guide](playing.md) | The town, agents and their add-ons, tasks and the task tracker, approvals, review, Mana, practice and real towns, saving |
 | [Security and safety](security.md) | What keeps real agents in check, what protects your files and budget, and the known limits |
 | [Privacy policy](privacy.md) | What happens to your data: the game collects nothing, and real agents send your tasks and files to the AI provider you signed in with |
 | [Credits](../CREDITS.md) | Art, sound, fonts and their licences |
@@ -18,7 +18,7 @@ controls.
 | Document | What it covers |
 |---|---|
 | [Architecture](architecture.md) | How the Town Hall and the client work and talk: ownership, the protocol, the task states, harnesses, Mana, boot, files on disk |
-| [Development guide](development.md) | Tools, everyday commands, worktrees, changing the protocol and constants, releases, GDScript pitfalls, logs, troubleshooting |
+| [Development guide](development.md) | Tools, everyday commands, worktrees, changing the protocol and constants, releases, GDScript pitfalls, the art pipelines (Blender models, Rive seals and sigils), logs, troubleshooting |
 | [Testing](testing.md) | Every test and check, what it proves, how to run it and how to add to it, and the order to run them in before a merge |
 | [Client](../client/README.md) | The Godot project: folders, autoloads, the simulation, networking, UI built in code, settings, how to make common changes |
 | [Town Hall](../townhall/README.md) | Running and configuring the Town Hall: environment variables, the data folder, the source layout, tests |
@@ -36,5 +36,7 @@ Coding agents also read [CLAUDE.md](../CLAUDE.md), the project's rules in brief.
 - **Changing the client or the Town Hall:** [development.md](development.md) for the commands,
   [testing.md](testing.md) for the checks to run before merging.
 - **Changing a game constant or the protocol:** [protocol/README.md](../protocol/README.md).
+- **Changing the art:** [development.md](development.md#art): the Blender models and icons, and the
+  Rive task seals and agent sigils.
 - **Building or releasing:** [development.md](development.md#releases) and
   [scripts/README.md](../scripts/README.md).

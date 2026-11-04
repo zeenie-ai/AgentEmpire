@@ -2,8 +2,8 @@ class_name HomeStatusView
 extends Node3D
 ## What an agent's home shows the player, readable from across the town:
 ## - a name plate over the roof (NamePlate, in screen space on WorldView's plate layer): the
-##   agent's name tinted by what the agent is doing, above its role and rank or what needs the
-##   player, sized to stay readable at every zoom;
+##   agent's Rive sigil (plate_mood) and its name tinted by what the agent is doing, above its
+##   role and rank or what needs the player, sized to stay readable at every zoom;
 ## - a signal post beside the entrance: its hand bell swings and glows and a banner is raised
 ##   while an approval waits (blue once a Mana seal ran out), since approvals are what the
 ##   player must answer;
@@ -309,6 +309,8 @@ func refresh() -> void:
 		var caption := status if status != "" else "%s  ·  RANK %s" % [Economy.data.role_name(role).to_upper(), J.gs(a, "rank", "F")]
 		var caption_color := UiTokens.HUD_SUBTLE if status == "" or color == COLOR_IDLE else color
 		_plate.set_text(J.gs(a, "name", "Agent"), caption, color, caption_color)
+		_plate.set_mood(plate_mood(not approvals.is_empty(), review, failed or activity == "blocked",
+			activity == "working", lifecycle))
 	_flags = {"approval": not approvals.is_empty(), "seal": seal_out, "review": review, "failed": failed,
 		"blocked": activity == "blocked", "working": activity == "working"}
 	var ringing := bool(_flags["approval"])
@@ -329,6 +331,24 @@ func refresh() -> void:
 	elif not failed and _smoke != null:
 		_smoke.queue_free()
 		_smoke = null
+
+
+## The name plate sigil's mood, in the order the plate's status line takes them.
+static func plate_mood(approval: bool, review: bool, trouble: bool, working: bool, lifecycle: String) -> String:
+	if approval:
+		return "waiting"
+	if review:
+		return "review"
+	if trouble:
+		return "blocked"
+	if working:
+		return "working"
+	match lifecycle:
+		"settling":
+			return "settling"
+		"retired":
+			return "retired"
+	return "idle"
 
 
 ## Where the agent's add-on in use stands (world position), or null.
