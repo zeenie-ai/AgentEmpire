@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, inputHash, signatureOf, autoAllowed } from "../../src/core/approvals.js";
 import { Economy } from "../../src/core/economy.js";
 import { compileFormula } from "../../src/core/expr.js";
-import { TestClock } from "../../src/core/clock.js";
+import { MAX_TIMER_MS, SystemClock, TestClock } from "../../src/core/clock.js";
 import { parseNameStatusZ, parseNumstatZ } from "../../src/core/workspace.js";
 import { defaultEconomyPath } from "../../src/paths.js";
 import { capBytes, Redactor, tailBytes } from "../../src/security/redact.js";
@@ -123,6 +123,59 @@ describe("test clock", () => {
     clock.advance(250);
     expect(fired).toEqual(["a", "b"]);
     expect(clock.now()).toBe(1_250);
+  });
+});
+
+// Node fires a timer longer than 2^31 - 1 ms (about 24.8 days) after 1 ms, and the fake timers do
+// the same. The end of a monthly Mana period can be 26 days away: armed in one go, its timer
+// fired at once, found the period still open and re-armed, about a hundred times a second.
+describe("long timers", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  // The spy wraps the fake setTimeout: restore it before the real timers come back, or the
+  // dead fake stays installed for the rest of the file.
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("the system clock waits a month in steps Node can keep", () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    const clock = new SystemClock();
+    let fired = 0;
+    clock.setTimeout(() => fired++, 30 * DAY);
+    vi.advanceTimersByTime(25 * DAY);
+    expect(fired).toBe(0);
+    vi.advanceTimersByTime(5 * DAY - 1);
+    expect(fired).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(fired).toBe(1);
+    expect(spy.mock.calls.length).toBeGreaterThan(1);
+    for (const call of spy.mock.calls) expect(Number(call[1])).toBeLessThanOrEqual(MAX_TIMER_MS);
+  });
+
+  it("the system clock still cancels a long timer between steps", () => {
+    vi.useFakeTimers();
+    const clock = new SystemClock();
+    let fired = 0;
+    const h = clock.setTimeout(() => fired++, 40 * DAY);
+    vi.advanceTimersByTime(26 * DAY);
+    clock.clearTimeout(h);
+    vi.advanceTimersByTime(20 * DAY);
+    expect(fired).toBe(0);
+  });
+
+  it("the test clock's real timer does not fire a month early", () => {
+    vi.useFakeTimers();
+    const clock = new TestClock();
+    let fired = 0;
+    clock.setTimeout(() => fired++, 30 * DAY);
+    vi.advanceTimersByTime(25 * DAY);
+    expect(fired).toBe(0);
+    vi.advanceTimersByTime(5 * DAY);
+    expect(fired).toBe(1);
+    expect(clock.pendingCount()).toBe(0);
   });
 });
 
