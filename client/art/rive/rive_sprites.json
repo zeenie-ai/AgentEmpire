@@ -1,7 +1,7 @@
 {
   "generated_by": "scripts/bake-rive.mjs",
   "source": "art_src/rive/state_tracker",
-  "source_hash": "1cb233459b05f2b26a0a082afd70fee4f7a305b418ec92ef2b2f64bb83b4c043",
+  "source_hash": "e763d09e723cb9da705b6ececd4bea8af95a8c09c5dada4835b40627eac771e1",
   "rive_cli": "rive 1.8.0",
   "sets": {
     "task_seal": {
@@ -13,7 +13,7 @@
         144
       ],
       "scale": 1.5,
-      "pad": 2,
+      "pad": 8,
       "fps": 30,
       "blend_ms": 200,
       "states": {
@@ -88,7 +88,7 @@
         96
       ],
       "scale": 1.5,
-      "pad": 2,
+      "pad": 8,
       "fps": 30,
       "blend_ms": 200,
       "states": {

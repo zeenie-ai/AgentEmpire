@@ -261,9 +261,12 @@ func set_folded(value: bool) -> void:
 
 func _on_header_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
-	if mb != null and mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	# Like a button: a press dragged off the header and let go elsewhere does nothing.
+	if not mb.pressed and Rect2(Vector2.ZERO, _header.size).has_point(mb.position):
 		set_folded(not folded)
-		accept_event()
+	accept_event()
 
 
 func _on_row_pressed(task_id: String) -> void:
@@ -390,8 +393,9 @@ class TrackerRow:
 		var mb := event as InputEventMouseButton
 		if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
 			return
-		# A leaving row still takes its clicks, so none lands in the town behind it.
-		if not mb.pressed and not leaving:
+		# A leaving row still takes its clicks, so none lands in the town behind it. Like a
+		# button, a press dragged off the row and let go elsewhere does nothing.
+		if not mb.pressed and not leaving and Rect2(Vector2.ZERO, size).has_point(mb.position):
 			pressed.emit(task_id)
 		accept_event()
 
