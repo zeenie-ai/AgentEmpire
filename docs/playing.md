@@ -205,14 +205,21 @@ Answer with **Allow once**; **Allow for this task**, for requests like it until 
 **Always for** the agent, for requests like it on all its tasks from now on; or **Deny**, with a
 word to the agent if you like.
 
-- **Like it** means the same tool and, for a command, the same first two words (`npm test`); for
-  a web request, the same host. A rule covers every command that starts with those two words,
-  whatever follows them, so keep command rules narrow.
-- **High risk.** Files outside the work folder ask in every mode. They, and commands that can
-  destroy work or reach far (`rm -rf`, `git push`, `git reset --hard`, `sudo`, a download piped
-  into a shell), get only **Allow once** and **Deny**; an earlier rule still covers a command with
-  the same first two words. The Town Hall sees where a file tool reaches, not where a shell command
-  reaches, so read commands before you allow them.
+- **Like it** means the same tool and, for a command, what the buttons' tooltips name. For a
+  program the Town Hall knows (git, npm, cargo, gh and others) that is the same program and
+  subcommand (`npm test`, `git commit`) with any further arguments that stay in the work folder;
+  for any other command, exactly the same words. A rule also covers the command when its output
+  is shortened or thrown away (`npm test 2>&1 | tail -20`) or when it first moves into a folder
+  of the work folder (`cd app && npm test`); a chain such as `npm run build && npm test` needs
+  its own answer. For a web request it means the same host.
+- **High risk** gets only **Allow once** and **Deny**, in every approval mode, and no rule covers
+  it: anything outside the work folder or in the repository's `.git` folder; commands that can
+  destroy work or reach far (`rm -rf`, any push, `git reset --hard`, `git checkout` of files,
+  publishing a package, ending programs by name); and commands the Town Hall cannot read for
+  certain or that run other code or change settings: `;` and `||`, `$(...)`, writing output to a
+  file, `bash -c`, `sudo`, a download piped into a shell, `git config`, `npm config set`. The
+  Town Hall reads a command's words, not what its programs do, so read commands before you allow
+  them.
 - **Network requests and MCP tools** ask in every mode unless a rule covers them.
 
 | Approval mode | Asks first about | For |
@@ -220,7 +227,7 @@ word to the agent if you like.
 | Ask Every Time | Everything | Every agent |
 | Trusted Edits (default) | Everything except reading and changing files inside the work folder | Every agent |
 | Plan First | Everything except reading; the agent first shows you its plan | Claude Code agents |
-| Free Hand | Only network requests, MCP tools and files outside the work folder | Rank B in the Curtain Age, so not yet |
+| Free Hand | Only network requests, MCP tools, high-risk commands and anything outside the work folder | Rank B in the Curtain Age, so not yet |
 
 ## Review
 

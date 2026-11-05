@@ -59,7 +59,8 @@ An agent can use only what its finished add-ons grant (`tools` in `protocol/econ
 - **Claude Code and pi** get an explicit list of built-in tools (`--tools`, or pi's `--no-tools`).
 - **Codex** has no tool list. Its sandbox is `read-only` without a Quillworks, and the Town Hall
   declines, without asking you, commands from an agent without a Forge and file edits or write
-  access from one without a Quillworks. Web search is `disabled` without a Rookery.
+  access (asked for alone or with a command) from one without a Quillworks. Web search is
+  `disabled` without a Rookery.
 - **Without an Archive** the instruction files are switched off (`CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`,
   `project_doc_max_bytes=0`, and pi's `--no-context-files` and `--no-skills`).
 - **Fixed per run.** The tools are read when a run starts, so dismantling an add-on takes effect
@@ -68,29 +69,62 @@ An agent can use only what its finished add-ons grant (`tools` in `protocol/econ
 ## Approvals
 
 Each tool call that reaches the Town Hall gets a category: `read`, `write`, `command`,
-`network`, `mcp`, or `outside_workspace` (a file outside the task's worktree, or a Codex request
-for access outside it). The approval mode, read at every call, decides which pass unasked:
+`network`, `mcp`, or `outside_workspace`: the call names a place outside the task's worktree (a
+file, a search folder, a glob pattern's folder, any path field of an MCP tool, the folder a Codex
+command runs in or a leading `cd` moves to, or access a Codex request asks for), or the
+repository's `.git`. The approval mode, read at every call, decides which pass unasked:
 
 | Mode | Passes without asking | Available |
 |---|---|---|
 | Ask Every Time | nothing | from the start |
 | Trusted Edits (the default) | reads and writes | from the start |
 | Plan First (Claude Code only) | reads; Claude Code starts in plan mode, and its plan, then each edit and command, asks | from the start |
-| Free Hand | reads, writes and commands | Age IV and rank B; the game cannot advance the age yet |
+| Free Hand | reads, writes and simple commands | Age IV and rank B; the game cannot advance the age yet |
 
-- **Always asks.** `outside_workspace` asks in every mode and can be allowed only once. No mode
-  passes network or MCP calls; only a rule can.
+- **Where a path leads.** A path is read the way the harness reads it (`~`, a leading `@`,
+  `file://` URLs, `/c/...` drive paths, variables) and followed through symbolic links and
+  junctions; whatever cannot be read for certain counts as outside. So does a write to a file
+  with more than one hard link, a relative path in Claude Code's Read, Write and Edit tools,
+  which take only absolute ones, and any name of the `.git` that every worktree of the
+  repository shares (`.git`, `.GIT`, `.git.`, `GIT~1`, or a link to it), since its
+  configuration can name commands that git runs. A place plainly outside the worktree is
+  judged without reading the disk. Claude Code runs with
+  `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`, so after each command its shell is back in the
+  folder the Town Hall resolves relative paths from.
+- **Simple commands.** A rule or Free Hand passes a command only when it is simple: one program
+  with plain arguments; in bash also several joined with `&&`. Each may merge or discard its
+  output (`2>&1`, `> /dev/null`, `2>nul`, PowerShell's `> $null`) or send it through read-only
+  filters given no files (`head`, `tail`, `grep`, `sort`, `uniq`, `wc`, `cut`, `tr`, `cat`;
+  PowerShell's `Select-Object -First` and the like), a chain may start with `cd <folder>`, judged
+  as a path, and Claude Code's commit message in a quoted here-document is plain text. Anything
+  else is not simple: `;`, `||` and `&`, pipes into other programs, substitutions, other
+  redirections and here-documents, environment assignments, shell statements and builtins that
+  change the shell for later commands (`export`, `alias`, `set`, ...), programs that run other
+  commands or code (shells, `env`, `sudo`, `xargs`, interpreters with inline code, GNU sed's
+  `e`, `git -c`, `git rebase --exec` and the like, also as abbreviated or bundled options), and
+  commands that change settings outside the work folder (`git config` writes, which reach the
+  shared repository, `npm config set`, `pip config`, `gh config set` and the like).
 - **Risk.** Reads and writes are low risk; commands, network and MCP calls medium; anything
-  outside the work folder high. So is a command matching a few text patterns (`rm -rf`,
-  `Remove-Item -Recurse`, `git push`, `git reset --hard`, `git clean`, `git checkout --`,
-  `git stash`, a download piped into a shell, `format` of a drive, `sudo`), and a Codex request
-  the Town Hall cannot pin down (a malformed host, an unknown MCP tool, network and files at once).
-- **What high risk limits.** Only "Allow once" is offered, so no rule comes from it. It does not
-  make a call ask: Free Hand passes a high-risk command, and a rule that matches one applies.
+  outside the work folder high. So is a command that is not simple, and a simple one that can
+  destroy work or reach far: `rm -rf`, `Remove-Item -Recurse`, a push by any subcommand
+  (`git push`, `git subtree push`, `git send-pack`, `git svn dcommit`, ...), `git reset --hard`,
+  `git clean`, `git stash`, a forced `git checkout`, `switch` or `branch`, `git checkout` or
+  `git restore` of files, deleting refs or reflogs, publishing a package, ending processes by
+  name (`pkill`, `taskkill`, `Stop-Process -Name`), `format`, `shutdown`, and naming a path in
+  `.git`. A Codex request the Town Hall cannot pin down (a malformed host, an unknown MCP tool,
+  network and files at once) is high too, and so is a network request or an MCP call that
+  carries a high-risk command.
+- **What high risk does.** It asks in every mode, Free Hand included, and no rule passes it,
+  not even one stored earlier. Only "Allow once" is offered, so no rule comes from it.
 - **Rules.** "Allow for this task" and "Always for the agent" store a rule for every attempt at
-  that task, or for all of the agent's tasks. It matches the tool, the category and a signature:
-  a command's first two words, a network request's host, otherwise the tool name. A rule for
-  `npm test` thus also passes `npm test && <anything>`. Rules cannot be listed or withdrawn yet.
+  that task, or for all of the agent's tasks. It matches the tool, the category and a signature,
+  which the card's buttons name. For a known program (git, npm, pnpm, yarn, cargo, go, gh, ...)
+  it is the program and subcommand (`npm test`, `git commit`, `npx vitest run`), covering
+  further arguments while none of them names a place outside the work folder; for any other
+  command, all its words, covering only itself; for a chain, its commands in order. Filters,
+  discarded output and a leading `cd` are not part of it, so a rule for `npm test` also passes
+  `npm test 2>&1 | tail -20` and `cd app && npm test`. For a network request the signature is
+  the host, otherwise the tool name. Rules cannot be listed or withdrawn yet.
 - **Answers.** The first reply wins; a run that pauses or is cancelled withdraws its open
   approvals as denials. Each shows a summary, the redacted input (4 KB at most) and its reason.
 
@@ -237,14 +271,17 @@ The first four are also described in [spikes.md](spikes.md), section S5.
   build server) keeps running: ending a tree reaches only the processes of a running harness.
 - **No sandbox on Claude Code and pi.** Their approved commands run with your rights and can read
   `runtime.json`, any key in the environment the harnesses inherit (the Town Hall's, minus a
-  parent agent session's markers, so your Waygates' variables too), and anything else you can.
-- **The path check is textual.** It resolves a tool's `file_path` or `path` against the working
-  folder as written, without following symbolic links. pi's file tools expand `~/`, drop a
-  leading `@` and accept `file://` URLs, so such a path counts as inside the work folder, and
-  under Trusted Edits a pi agent reads or writes it without asking.
-- **Worktrees share `.git`.** Git commands an agent runs reach the repository's branches, tags,
-  configuration and hooks; only the approval of each command stands in the way.
+  parent agent session's markers and `CDPATH`, so your Waygates' variables too), and anything
+  else you can.
+- **Commands are read, not run.** The Town Hall judges a command by its words, not by what its
+  programs do: an allowed `npm test` runs whatever the project's scripts say, and a command's
+  file arguments are judged by their spelling, without following links. A `CDPATH` that your
+  shell profile sets for a login shell (Codex's `bash -lc`) could send a chain's `cd` elsewhere.
+- **Worktrees share `.git`.** Git commands an agent runs reach the repository's branches, tags
+  and hooks. The file tools cannot reach `.git` without asking and `git config` writes always
+  ask, but other git commands are held only by the approval of each.
 - **The Rite runs the agent's version.** It runs without asking after the agent finishes, so if
   the agent changed what it runs (a `package.json` script, a test), that code runs too.
 - **Free Hand outside Codex.** Its "network off" relies on Codex's sandbox; on Claude Code and
-  pi it would let commands run unasked, with your rights and the network. No town has it yet.
+  pi it would let simple commands run unasked, with your rights and the network. No town has it
+  yet.
