@@ -37,8 +37,8 @@ name: `npm test -- -t "bounty"`.
 
 | Path | Contents |
 |---|---|
-| `test/unit/` | Pure logic, partly as fast-check properties. `protocol.test.ts` fails when `protocol/PROTOCOL.md` and the zod schemas disagree on a command, event, error code, close code or enum value. `banned-git.test.ts` scans `townhall/src/` and `townhall/scripts/` (not the tests) for destructive git commands and checks that the runtime guard refuses them |
-| `test/integration/` | A Town Hall over the protocol (the full loop, approvals, couriers, budgets, incidents, parties, restarts and replay, the protected checkout, shutdown, the web server and more), and each real adapter against its stand-in |
+| `test/unit/` | Pure logic, partly as fast-check properties. `protocol.test.ts` fails when `protocol/PROTOCOL.md` and the zod schemas disagree on a command, event, error code, close code or enum value. `banned-git.test.ts` scans `townhall/src/` and `townhall/scripts/` (not the tests) for destructive git commands and checks that the runtime guard refuses them. `worktree-git.test.ts` covers the check of a worktree's `.git` and the settings on every git command the Town Hall runs |
+| `test/integration/` | A Town Hall over the protocol (the full loop, approvals, couriers, budgets, incidents, parties, restarts and replay, the protected checkout, the Town Hall's own git against repositories an agent planted, shutdown, the web server and more), and each real adapter against its stand-in |
 | `test/smoke/` | The opt-in real-harness runs and `smoke-helpers.ts` |
 | `test/helpers/harness.ts` | `TestTown`, a Town Hall inside the test process; `town.client()` connects a `TestClient` and sends `hello`. `TestClient` sends commands (`ok()` throws on an error reply) and waits for events (`waitEvent`, `nextEvent`, `waitTask`). `summonAgent` takes an agent through creation, training, its home and its add-ons until it is active. `tempRoot` and `removeRoot`, which retries while Windows still holds a file |
 | `test/helpers/git.ts` | `makeRepo` (a repository on `main` with one commit), `commitAll`, `git`, and `treeHashes`, which proves that a checkout did not change |

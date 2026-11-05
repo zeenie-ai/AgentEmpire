@@ -472,9 +472,7 @@ export class TaskService {
     if (include.includes("diff")) {
       const ws = this.workspaceOf(r);
       if (ws) {
-        const cwd = !ws.removed && existsSync(ws.worktree) ? ws.worktree : ws.repo;
-        const to = ws.snapshot_sha ?? (cwd === ws.worktree ? null : ws.base_sha);
-        const { files } = await this.ctx.workspace.diffFiles(cwd, ws.base_sha, to);
+        const { files } = await this.ctx.workspace.changes(ws);
         diff = { files, patch: await this.ctx.workspace.patch(ws, DIFF_PATCH_MAX_BYTES) };
       } else {
         diff = { files: [] };
@@ -487,9 +485,7 @@ export class TaskService {
   async changedFiles(taskId: string, limit: number): Promise<string[]> {
     const ws = this.workspaceOf(this.row(taskId));
     if (!ws) return [];
-    const cwd = !ws.removed && existsSync(ws.worktree) ? ws.worktree : ws.repo;
-    const to = ws.snapshot_sha ?? (cwd === ws.worktree ? null : ws.base_sha);
-    const { files } = await this.ctx.workspace.diffFiles(cwd, ws.base_sha, to);
+    const { files } = await this.ctx.workspace.changes(ws);
     return files.slice(0, limit).map((f) => f.path);
   }
 
