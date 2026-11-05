@@ -274,6 +274,7 @@ folders in the player's data folder instead: `%APPDATA%\AgentEmpire\townhall\` o
 | `townhall/data/townhall.log` | The log of a Town Hall the game started |
 | `townhall/data/wt/` | Task worktrees of the player's repositories |
 | `townhall/data/mirrors/` | Versioned copies of plain (non-git) work folders |
+| `townhall/data/no-hooks/` | An empty folder, the hooks folder of the Town Hall's git commands ([security.md](security.md#the-town-halls-git)) |
 | `townhall/data/harness/`, `townhall/data/pi-sessions/` | Per-run harness files and pi session files |
 | `%APPDATA%\AgentEmpire\runtime.json` | The shared copy of the running Town Hall's runtime file (`AURELHAVEN_DISCOVERY_FILE` moves it) |
 | `%APPDATA%\Godot\app_userdata\AgentEmpire\` | The game's `settings.cfg`, offline saves (`saves/quick.json`) and `logs/godot.log` |

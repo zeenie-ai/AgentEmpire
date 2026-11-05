@@ -2,9 +2,11 @@ import { execFile, spawn } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmdirSync,
   statSync,
   unlinkSync,
@@ -15,7 +17,7 @@ import path from "node:path";
 import { fromJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
 import type { DiffFile, DiffFileStatus, DiffStat, MergeBlockedReason, RiteResult } from "../protocol/objects.js";
-import { currentPlatform, isInside } from "../security/path-guard.js";
+import { currentPlatform, isInside, isUncOrDevicePath, samePath, type Platform } from "../security/path-guard.js";
 import { tailBytes } from "../security/redact.js";
 import type { AgentRow } from "./agents.js";
 import { MAX_TIMER_MS } from "./clock.js";
@@ -23,9 +25,18 @@ import type { Ctx } from "./context.js";
 import { shortRandom } from "./ids.js";
 
 export const TOWN_HALL_IDENTITY = ["-c", "user.name=AgentEmpire Town Hall", "-c", "user.email=townhall@agentempire.invalid"];
+/** The folder in the data folder that the Town Hall's git commands use as their hooks folder. */
+export const NO_HOOKS_DIR = "no-hooks";
+/**
+ * Options for every diff the Town Hall runs: no external diff or textconv program, and a
+ * submodule shown as the commit it names, without looking inside it.
+ */
+const DIFF_OPTIONS = ["--no-ext-diff", "--no-textconv", "--submodule=short"];
 const RITE_OUTPUT_TAIL_BYTES = 2 * 1024;
 const RITE_BUFFER_BYTES = 64 * 1024;
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
+/** A worktree's `.git` and its git folder's `gitdir` hold one path; anything longer is not git's. */
+const POINTER_MAX_BYTES = 4096;
 
 export interface TaskWorkspace {
   mode: "git_worktree" | "plain_folder";
@@ -47,6 +58,8 @@ export interface SnapshotResult {
   snapshot_sha: string;
   diff_stat: DiffStat;
   files: DiffFile[];
+  /** Folders left out because each holds a git repository of its own (see `nestedRepos`). */
+  nested: string[];
 }
 
 export interface GitResult {
@@ -55,16 +68,32 @@ export interface GitResult {
   stderr: string;
 }
 
+export interface GitRunOptions {
+  allowFail?: boolean;
+  env?: Record<string, string>;
+  /** Written to git's standard input. */
+  input?: string;
+}
+
+/** git in one folder, with the options that every command there needs already given. */
+type GitIn = (args: string[], opts?: GitRunOptions) => Promise<GitResult>;
+
+/** Where the git subcommand is in `args`, after the global options (`-c` and `-C` take a value). */
+function subcommandIndex(args: readonly string[]): number {
+  let i = 0;
+  while (i < args.length && args[i]!.startsWith("-")) {
+    i += args[i] === "-c" || args[i] === "-C" ? 2 : 1;
+  }
+  return i;
+}
+
 /**
  * Refuses git invocations that can destroy work. The Town Hall never runs these; this is a
  * second line of defence behind the source scan in the unit tests (which skips this block).
  */
 // banned-git-guard:start
 export function assertSafeGitArgs(args: readonly string[]): void {
-  let i = 0;
-  while (i < args.length && args[i]!.startsWith("-")) {
-    i += args[i] === "-c" || args[i] === "-C" ? 2 : 1;
-  }
+  const i = subcommandIndex(args);
   const sub = args[i];
   const rest = args.slice(i + 1);
   const banned =
@@ -83,34 +112,86 @@ export class Git {
   constructor(
     private readonly transientRetries: number,
     private readonly sleep: (ms: number) => Promise<void>,
+    /** An empty folder of the Town Hall's own, given to git as its hooks folder. */
+    private readonly hooksDir: string,
   ) {}
 
   private env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", ...extra };
     // Never let an inherited repository selection redirect our commands.
     delete env.GIT_DIR;
+    delete env.GIT_COMMON_DIR;
     delete env.GIT_WORK_TREE;
     delete env.GIT_INDEX_FILE;
     return env;
   }
 
-  private once(cwd: string, args: string[], extraEnv?: Record<string, string>, binary = false): Promise<{ code: number; stdout: string | Buffer; stderr: string }> {
+  /**
+   * Settings for every command. Settings on the command line win over every config file (the
+   * repository's, or one an agent planted), and git passes them on to the git processes it starts
+   * itself through GIT_CONFIG_PARAMETERS, such as the status that `worktree remove` runs.
+   */
+  private settings(): string[] {
+    const settings = [
+      "core.longpaths=true",
+      "core.quotepath=false",
+      // Otherwise git runs the fsmonitor command, through the shell, whenever it reads the index.
+      "core.fsmonitor=false",
+      // An empty folder, so no hook runs: neither the repository's nor one an agent wrote.
+      `core.hooksPath=${this.emptyHooksDir()}`,
+      // An ext:: remote is a command line. The Town Hall never fetches, but git can on its own,
+      // for a partial clone's missing objects.
+      "protocol.ext.allow=never",
+      "submodule.recurse=false",
+    ];
+    return settings.flatMap((s) => ["-c", s]);
+  }
+
+  /** The hooks folder, created when missing and refused when it is not an empty folder. */
+  private emptyHooksDir(): string {
+    try {
+      mkdirSync(this.hooksDir, { recursive: true });
+    } catch {
+      // A file in its place; refused below.
+    }
+    let empty = false;
+    try {
+      empty = lstatSync(this.hooksDir).isDirectory() && readdirSync(this.hooksDir).length === 0;
+    } catch {
+      empty = false;
+    }
+    if (!empty) {
+      throw fail.workspace(`${this.hooksDir} must be an empty folder: git takes it as the Town Hall's hooks folder; remove what is in it`);
+    }
+    return this.hooksDir;
+  }
+
+  private once(
+    cwd: string,
+    args: string[],
+    opts: { env?: Record<string, string> | undefined; binary?: boolean; input?: string | undefined } = {},
+  ): Promise<{ code: number; stdout: string | Buffer; stderr: string }> {
     return new Promise((resolve) => {
-      execFile(
+      const child = execFile(
         "git",
-        ["-c", "core.longpaths=true", "-c", "core.quotepath=false", ...args],
+        args,
         {
           cwd,
           windowsHide: true,
           maxBuffer: GIT_MAX_BUFFER,
-          env: this.env(extraEnv),
-          encoding: binary ? "buffer" : "utf8",
+          env: this.env(opts.env),
+          encoding: opts.binary ? "buffer" : "utf8",
         },
         (err, stdout, stderr) => {
           const code = err ? (typeof (err as { code?: unknown }).code === "number" ? ((err as { code: number }).code) : 1) : 0;
           resolve({ code, stdout, stderr: stderr.toString() });
         },
       );
+      if (opts.input !== undefined && child.stdin) {
+        // git may exit before it reads everything; its exit code tells what happened.
+        child.stdin.on("error", () => undefined);
+        child.stdin.end(opts.input);
+      }
     });
   }
 
@@ -125,12 +206,13 @@ export class Git {
     if (!ok) throw fail.workspace(`the folder ${cwd} no longer exists`);
   }
 
-  async run(cwd: string, args: string[], opts: { allowFail?: boolean; env?: Record<string, string> } = {}): Promise<GitResult> {
+  async run(cwd: string, args: string[], opts: GitRunOptions = {}): Promise<GitResult> {
     assertSafeGitArgs(args);
     this.checkCwd(cwd);
+    const full = [...this.settings(), ...args];
     let attempt = 0;
     for (;;) {
-      const r = await this.once(cwd, args, opts.env);
+      const r = await this.once(cwd, full, { env: opts.env, input: opts.input });
       const out: GitResult = { code: r.code, stdout: String(r.stdout).replace(/\r\n/g, "\n"), stderr: r.stderr.replace(/\r\n/g, "\n") };
       if (out.code === 0) return out;
       if (attempt < this.transientRetries && TRANSIENT_GIT.test(out.stderr)) {
@@ -139,16 +221,95 @@ export class Git {
         continue;
       }
       if (opts.allowFail) return out;
-      throw fail.workspace(`git ${args[0]} failed: ${out.stderr.trim().split("\n").slice(-3).join(" ")}`);
+      throw fail.workspace(`git ${args[subcommandIndex(args)] ?? ""} failed: ${out.stderr.trim().split("\n").slice(-3).join(" ")}`);
     }
   }
 
   async buffer(cwd: string, args: string[]): Promise<Buffer | null> {
     assertSafeGitArgs(args);
     this.checkCwd(cwd);
-    const r = await this.once(cwd, args, undefined, true);
+    const r = await this.once(cwd, [...this.settings(), ...args], { binary: true });
     return r.code === 0 ? (r.stdout as Buffer) : null;
   }
+}
+
+function readSmall(file: string): string | null {
+  try {
+    if (statSync(file).size > POINTER_MAX_BYTES) return null;
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
+/** A path written by git into a pointer file; like git, drops only the line breaks after it. */
+function pointerPath(text: string): string | null {
+  const p = text.replace(/[\r\n]+$/, "");
+  return p === "" || /[\0\r\n]/.test(p) ? null : p;
+}
+
+/**
+ * Checks that a task worktree's `.git` is still what `git worktree add` wrote, and returns the
+ * git folder it names. An agent can rewrite that file like any other in its worktree, and aim it
+ * at a repository it planted, whose config and hooks git would then run (its fsmonitor command,
+ * hooks, filters). So `.git` must be a plain file reading `gitdir: <path>`, the path must lead to
+ * a folder in the repository's `worktrees` folder (`commonDir` is the repository's git folder),
+ * and that folder's `gitdir` file must lead back to this `.git`, the link git keeps both ways.
+ */
+export function worktreeGitDir(worktree: string, commonDir: string, platform: Platform = currentPlatform()): string {
+  const changed = (why: string) =>
+    fail.workspace(`the work folder's .git was changed (${why}), so the Town Hall runs no git in ${worktree}`);
+  const pointer = path.join(worktree, ".git");
+  let isFile = false;
+  try {
+    isFile = lstatSync(pointer).isFile();
+  } catch {
+    throw changed("it is missing");
+  }
+  // A folder, or a link or junction to anything, is not what git wrote.
+  if (!isFile) throw changed("it is no longer a plain file");
+  const text = readSmall(pointer);
+  const named = text?.startsWith("gitdir: ") ? pointerPath(text.slice("gitdir: ".length)) : null;
+  if (named === null) throw changed("it no longer names a git folder");
+  const target = path.resolve(worktree, named);
+  // Resolving a network path would connect to the host it names, and sign in there as the player.
+  if (isUncOrDevicePath(target)) throw changed("it names a network or device path");
+  const gitDir = realOrNull(target);
+  const worktrees = realOrNull(path.join(commonDir, "worktrees"));
+  if (gitDir === null || worktrees === null || !samePath(path.dirname(gitDir), worktrees, platform)) {
+    throw changed("it names a folder that is not one of the repository's worktrees");
+  }
+  const back = readSmall(path.join(gitDir, "gitdir"));
+  const backPath = back === null ? null : pointerPath(back);
+  const backReal = backPath === null ? null : realOrNull(path.resolve(gitDir, backPath));
+  const self = realOrNull(pointer);
+  if (backReal === null || self === null || !samePath(backReal, self, platform)) {
+    throw changed("it names the git folder of another worktree");
+  }
+  return gitDir;
+}
+
+/**
+ * Whether a folder entry is `.git`, or may stand for it on Windows: the name in any case, with
+ * trailing dots or spaces (which Windows drops), or `GIT~1`, the short name Windows gives `.git`.
+ */
+export function isDotGit(name: string): boolean {
+  const n = name.toLowerCase().replace(/[. ]+$/, "");
+  return n === ".git" || n === "git~1";
+}
+
+/** Diff arguments for `from` against `to`, or against the worktree's files when `to` is null. */
+function diffRange(from: string, to: string | null): string[] {
+  // Against the files, git would look inside each submodule (by running git there): leave them out.
+  return to ? [...DIFF_OPTIONS, from, to] : [...DIFF_OPTIONS, "--ignore-submodules=all", from];
 }
 
 function mapStatus(letter: string): DiffFileStatus {
@@ -249,7 +410,11 @@ export class WorkspaceService {
   readonly git: Git;
 
   constructor(private readonly ctx: Ctx) {
-    this.git = new Git(ctx.econ.data.incidents.transient_retries, (ms) => new Promise((r) => setTimeout(r, ms)));
+    this.git = new Git(
+      ctx.econ.data.incidents.transient_retries,
+      (ms) => new Promise((r) => setTimeout(r, ms)),
+      path.join(ctx.config.dataDir, NO_HOOKS_DIR),
+    );
   }
 
   private get platform() {
@@ -300,7 +465,7 @@ export class WorkspaceService {
       }
       this.copyTree(source, mirror);
       await this.git.run(mirror, ["add", "-A"]);
-      const status = await this.git.run(mirror, ["status", "--porcelain", "-z"]);
+      const status = await this.git.run(mirror, ["status", "--porcelain", "-z", "--ignore-submodules=all"]);
       const hasHead = (await this.git.run(mirror, ["rev-parse", "--verify", "--quiet", "HEAD"], { allowFail: true })).code === 0;
       if (status.stdout.length > 0 || !hasHead) {
         await this.git.run(mirror, [
@@ -316,7 +481,10 @@ export class WorkspaceService {
     });
   }
 
-  /** Mirrors `source` into `dest` (skipping .git and symlinks), within the configured limits. */
+  /**
+   * Mirrors `source` into `dest` (skipping .git and symlinks), within the configured limits.
+   * Every spelling of `.git` is skipped, so nothing is ever copied into the copy's own git folder.
+   */
   private copyTree(source: string, dest: string): void {
     const maxFiles = this.ctx.config.plainFolderMaxFiles;
     const maxBytes = this.ctx.config.plainFolderMaxBytes;
@@ -326,7 +494,7 @@ export class WorkspaceService {
     const walk = (rel: string) => {
       const dir = path.join(source, rel);
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === ".git") continue;
+        if (isDotGit(entry.name)) continue;
         const relPath = path.join(rel, entry.name);
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) {
@@ -362,7 +530,7 @@ export class WorkspaceService {
     const prune = (rel: string) => {
       const dir = path.join(dest, rel);
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (rel === "" && entry.name === ".git") continue;
+        if (rel === "" && isDotGit(entry.name)) continue;
         const relPath = path.join(rel, entry.name);
         if (entry.isDirectory()) {
           prune(relPath);
@@ -421,22 +589,81 @@ export class WorkspaceService {
     });
   }
 
-  /** Commits everything in the worktree as the Town Hall and returns the change stats. */
-  async snapshot(ws: TaskWorkspace, message: string): Promise<SnapshotResult> {
-    await this.git.run(ws.worktree, ["add", "-A"]);
-    const status = await this.git.run(ws.worktree, ["status", "--porcelain", "-z"]);
-    if (status.stdout.length > 0) {
-      await this.git.run(ws.worktree, [...TOWN_HALL_IDENTITY, "commit", "--no-verify", "-q", "-m", message]);
-    }
-    const head = (await this.git.run(ws.worktree, ["rev-parse", "HEAD"])).stdout.trim();
-    const { files, stat } = await this.diffFiles(ws.worktree, ws.base_sha, head);
-    return { snapshot_sha: head, diff_stat: stat, files };
+  /**
+   * git for a task's worktree. It checks the worktree's `.git` first (`worktreeGitDir`), then
+   * names the worktree's git folder and files on every command, so git never reads `.git` itself,
+   * even if it changes in the meantime.
+   */
+  private async inWorktree(ws: TaskWorkspace): Promise<GitIn> {
+    const common = (await this.git.run(ws.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim();
+    const gitDir = worktreeGitDir(ws.worktree, path.resolve(ws.repo, common), this.platform);
+    const pinned = [`--git-dir=${gitDir}`, `--work-tree=${ws.worktree}`];
+    return (args, opts) => this.git.run(ws.worktree, [...pinned, ...args], opts);
   }
 
-  async diffFiles(cwd: string, from: string, to: string | null): Promise<{ files: DiffFile[]; stat: DiffStat }> {
-    const range = to ? [from, to] : [from];
-    const numstat = parseNumstatZ((await this.git.run(cwd, ["diff", "--numstat", "-z", "-M", ...range])).stdout);
-    const names = parseNameStatusZ((await this.git.run(cwd, ["diff", "--name-status", "-z", "-M", ...range])).stdout);
+  /**
+   * Folders in the worktree that hold a git repository of their own: untracked ones, which
+   * `ls-files` lists whole, with a trailing slash, and submodules that were filled in. `git add`
+   * would record the first kind as a bare commit id, without its files, and runs `git status`
+   * inside the second kind, under the config of the repository there, which the agent can write.
+   */
+  private async nestedRepos(git: GitIn, worktree: string): Promise<string[]> {
+    const untracked = (await git(["ls-files", "--others", "--exclude-standard", "-z"])).stdout
+      .split("\0")
+      .filter((p) => p.endsWith("/"))
+      .map((p) => p.slice(0, -1));
+    const submodules = (await git(["ls-files", "--stage", "-z"])).stdout
+      .split("\0")
+      .filter((entry) => entry.startsWith("160000 "))
+      .map((entry) => entry.slice(entry.indexOf("\t") + 1))
+      .filter((p) => existsSync(path.join(worktree, p, ".git")));
+    return [...new Set([...untracked, ...submodules])].sort();
+  }
+
+  /** Commits everything in the worktree as the Town Hall, except nested repositories, which it returns. */
+  private async commitAll(git: GitIn, worktree: string, message: string): Promise<string[]> {
+    const nested = await this.nestedRepos(git, worktree);
+    if (nested.length === 0) {
+      await git(["add", "-A"]);
+    } else {
+      // On standard input, so that any number of them fits.
+      const pathspecs = [".", ...nested.map((p) => `:(exclude,literal)${p}`)];
+      await git(["add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"], { input: pathspecs.join("\0") });
+    }
+    const staged = await git(["diff", "--cached", "--quiet", ...DIFF_OPTIONS], { allowFail: true });
+    if (staged.code !== 0 && staged.code !== 1) throw fail.workspace(`git diff failed: ${staged.stderr.trim()}`);
+    if (staged.code === 1) await git([...TOWN_HALL_IDENTITY, "commit", "--no-verify", "-q", "-m", message]);
+    return nested;
+  }
+
+  /** Commits everything in the worktree as the Town Hall and returns the change stats. */
+  async snapshot(ws: TaskWorkspace, message: string): Promise<SnapshotResult> {
+    const git = await this.inWorktree(ws);
+    const nested = await this.commitAll(git, ws.worktree, message);
+    const head = (await git(["rev-parse", "HEAD"])).stdout.trim();
+    const { files, stat } = await this.diffIn(git, ws.worktree, ws.base_sha, head);
+    return { snapshot_sha: head, diff_stat: stat, files, nested };
+  }
+
+  /**
+   * Where a task's changes are read for review: its worktree while it exists (the files while the
+   * work is under way, else the snapshot), otherwise the repository (the snapshot, or nothing).
+   */
+  private async reviewSource(ws: TaskWorkspace): Promise<{ git: GitIn; cwd: string; to: string | null }> {
+    if (!ws.removed && existsSync(ws.worktree)) return { git: await this.inWorktree(ws), cwd: ws.worktree, to: ws.snapshot_sha };
+    return { git: (args, opts) => this.git.run(ws.repo, args, opts), cwd: ws.repo, to: ws.snapshot_sha ?? ws.base_sha };
+  }
+
+  /** A task's changed files against its base, for review. */
+  async changes(ws: TaskWorkspace): Promise<{ files: DiffFile[]; stat: DiffStat }> {
+    const at = await this.reviewSource(ws);
+    return this.diffIn(at.git, at.cwd, ws.base_sha, at.to);
+  }
+
+  private async diffIn(git: GitIn, cwd: string, from: string, to: string | null): Promise<{ files: DiffFile[]; stat: DiffStat }> {
+    const range = diffRange(from, to);
+    const numstat = parseNumstatZ((await git(["diff", "--numstat", "-z", "-M", ...range])).stdout);
+    const names = parseNameStatusZ((await git(["diff", "--name-status", "-z", "-M", ...range])).stdout);
     const files: DiffFile[] = names.map((n) => ({
       path: n.path,
       status: n.status,
@@ -445,7 +672,7 @@ export class WorkspaceService {
     }));
     if (!to) {
       // Work in progress: untracked files are not in `git diff`.
-      const untracked = (await this.git.run(cwd, ["ls-files", "--others", "--exclude-standard", "-z"])).stdout
+      const untracked = (await git(["ls-files", "--others", "--exclude-standard", "-z"])).stdout
         .split("\0")
         .filter((p) => p.length > 0);
       for (const p of untracked) {
@@ -463,9 +690,8 @@ export class WorkspaceService {
   }
 
   async patch(ws: TaskWorkspace, maxBytes: number): Promise<string> {
-    const range = ws.snapshot_sha ? [ws.base_sha, ws.snapshot_sha] : [ws.base_sha];
-    const cwd = existsSync(ws.worktree) ? ws.worktree : ws.repo;
-    const out = (await this.git.run(cwd, ["diff", "-M", ...range], { allowFail: true })).stdout;
+    const at = await this.reviewSource(ws);
+    const out = (await at.git(["diff", "-M", ...diffRange(ws.base_sha, at.to)], { allowFail: true })).stdout;
     if (Buffer.byteLength(out, "utf8") <= maxBytes) return out;
     return Buffer.from(out, "utf8").subarray(0, maxBytes).toString("utf8") + "\n[patch truncated]\n";
   }
@@ -519,7 +745,7 @@ export class WorkspaceService {
     if (ws.mode !== "git_worktree") return { blocked: "not_a_repo" };
     if (!existsSync(ws.repo)) return { blocked: "workspace_missing" };
     return this.ctx.locks.run(`repo:${ws.repo}`, async () => {
-      const status = await this.git.run(ws.repo, ["status", "--porcelain=v1", "-z", "--untracked-files=no"], {
+      const status = await this.git.run(ws.repo, ["status", "--porcelain=v1", "-z", "--untracked-files=no", "--ignore-submodules=all"], {
         env: { GIT_OPTIONAL_LOCKS: "0" },
       });
       if (status.stdout.length > 0) return { blocked: "checkout_dirty" as const };
@@ -561,7 +787,7 @@ export class WorkspaceService {
     const source = ws.source;
     if (!existsSync(source)) return { blocked: "workspace_missing", written: 0 };
     const changes = parseNameStatusZ(
-      (await this.git.run(ws.repo, ["diff", "--name-status", "-z", "--no-renames", ws.base_sha, ws.snapshot_sha])).stdout,
+      (await this.git.run(ws.repo, ["diff", "--name-status", "-z", "--no-renames", ...diffRange(ws.base_sha, ws.snapshot_sha)])).stdout,
     );
     const plan: Array<{ target: string; content: Buffer | null }> = [];
     for (const c of changes) {
@@ -607,11 +833,7 @@ export class WorkspaceService {
   async discard(ws: TaskWorkspace, taskId: string, title: string): Promise<void> {
     await this.ctx.locks.run(`repo:${ws.repo}`, async () => {
       if (existsSync(ws.worktree) && !ws.removed) {
-        await this.git.run(ws.worktree, ["add", "-A"]);
-        const status = await this.git.run(ws.worktree, ["status", "--porcelain", "-z"]);
-        if (status.stdout.length > 0) {
-          await this.git.run(ws.worktree, [...TOWN_HALL_IDENTITY, "commit", "--no-verify", "-q", "-m", `AgentEmpire archive: ${title}`]);
-        }
+        await this.commitAll(await this.inWorktree(ws), ws.worktree, `AgentEmpire archive: ${title}`);
       }
       const tip = await this.git.run(ws.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${ws.branch}`], { allowFail: true });
       if (tip.code === 0) {

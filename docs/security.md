@@ -10,6 +10,7 @@ do, and the known limits. How to play is in [playing.md](playing.md).
 | Agents acting without your consent or outside their work folder | Tools only from add-ons; the harnesses' permission requests go to the Town Hall, which passes them under the agent's approval mode and rules or asks you |
 | Other programs and web pages driving the Town Hall | 127.0.0.1 only, Host and Origin checks, a token made at each start, one session at a time |
 | Your work being lost, or changed without your acceptance | A worktree and branch per task, a merge only on acceptance and only into a clean checkout, archived discards, no destructive git |
+| Files an agent writes that make the Town Hall's own git run commands | No hooks, fsmonitor command, external diff or textconv in the Town Hall's git, a checked `.git` in each worktree, nested repositories left out |
 | Runaway spending | A Mana pool per period, a seal per task, reservations and pauses, a hard cap for Claude Code |
 
 Out of scope:
@@ -138,18 +139,22 @@ a subfolder of the repository.
 
 - **A worktree per task.** In a git repository each task works in a worktree under `<data>/wt/`
   on a branch `agentempire/<agent>/<task>`, locked with `git worktree lock`. When the agent
-  finishes, the Town Hall commits everything there as "AgentEmpire Town Hall" with `--no-verify`
-  (which skips its pre-commit and commit-msg hooks); the review shows that commit's changes.
-- **Merging.** A merge on acceptance needs a checkout with no changes to tracked files, on the
-  branch it was on when the task started, and no conflict in `git merge-tree`. The Town Hall then
-  runs `git merge --no-ff` (as you, or as itself when git has no `user.email`), removes the
-  worktree without force and deletes the branch with `git branch -d`; a merge that still fails
-  is aborted. A blocked merge leaves the task in review with a `merge_blocked` incident: fix the
-  cause and accept again, or keep the branch, which removes only the worktree.
+  finishes, the Town Hall commits everything there except nested repositories as "AgentEmpire
+  Town Hall", running no hook (see [The Town Hall's git](#the-town-halls-git)); the review shows
+  that commit's changes.
+- **Merging.** A merge on acceptance needs a checkout with no changes to tracked files (changes
+  inside submodules do not count), on the branch it was on when the task started, and no
+  conflict in `git merge-tree`. The Town Hall then runs `git merge --no-ff` (as you, or as itself
+  when git has no `user.email`), removes the worktree without force and deletes the branch with
+  `git branch -d`; a merge that still fails is aborted. A blocked merge leaves the task in review
+  with a `merge_blocked` incident: fix the cause and accept again, or keep the branch, which
+  removes only the worktree.
 - **Plain folders** (not in git) go through a versioned copy under `<data>/mirrors/`, without
-  `.git` folders and symbolic links, up to 20,000 files and 200 MB (`AURELHAVEN_PLAIN_MAX_FILES`,
-  `AURELHAVEN_PLAIN_MAX_MB`). Exporting on accept is all-or-nothing: if a file the task changed
-  has also changed in your folder since the task started, nothing is written.
+  symbolic links and without `.git` in any spelling Windows may take for it (any case, trailing
+  dots or spaces, `GIT~1`), so nothing is copied into the copy's own git folder. The copy holds
+  up to 20,000 files and 200 MB (`AURELHAVEN_PLAIN_MAX_FILES`, `AURELHAVEN_PLAIN_MAX_MB`).
+  Exporting on accept is all-or-nothing: if a file the task changed has also changed in your
+  folder since the task started, nothing is written.
 - **Discarding.** Abandoned, cancelled and failed work stays until you discard it, which commits
   what is left, saves the branch tip as `refs/agentempire/archive/<task>`, and only then removes
   the worktree and the branch. `git branch <name> refs/agentempire/archive/<task>` restores it.
@@ -161,6 +166,36 @@ a subfolder of the repository.
   itself, for a forced `worktree remove`, `reset --hard`, a quoted `--hard` or `--force`, and
   `clean` or `stash` as git commands, and checks the run-time refusals. It does not scan the
   tests, and git commands an agent runs are left to approvals.
+
+## The Town Hall's git
+
+A worktree is the agent's to write in, its `.git` file included, and git takes commands to run
+from files: a config's fsmonitor command, filters and diff programs, and hooks. A repository the
+agent planted could thus make the Town Hall's own git, which runs with your rights and asks no
+one, run what the agent chose. So:
+
+- **Settings on every command.** Each git command the Town Hall runs (in a worktree, in your
+  checkout or in a plain folder's copy) begins with `-c core.fsmonitor=false`,
+  `-c core.hooksPath=<data>/no-hooks`, `-c protocol.ext.allow=never` and
+  `-c submodule.recurse=false`. Settings on the command line win over every config file, and git
+  passes them on to the git processes it starts itself. So no fsmonitor command or hook runs,
+  yours included: a new worktree gets no `post-checkout` hook, and a merge on acceptance no
+  `post-merge` hook. `no-hooks` is an empty folder outside every worktree; while anything is in
+  it, the Town Hall runs no git. Every diff passes
+  `--no-ext-diff --no-textconv --submodule=short`, and each status, and each diff against a
+  worktree's files, `--ignore-submodules=all`, so that git never runs inside a submodule.
+- **A worktree's `.git`.** Before it runs git in a worktree, the Town Hall checks that `.git` is
+  still a plain file (not a folder or a link) naming the folder that `git worktree add` made for
+  the worktree in the repository's `.git/worktrees/`, and that this folder names the worktree
+  back. It then gives git that folder and the worktree on every command (`--git-dir`,
+  `--work-tree`), so git never reads `.git` itself, even if it changes in the meantime. If the
+  check fails, the task fails with "the work folder's .git was changed", and the review and the
+  discard refuse for the same reason; delete the worktree folder to discard the task.
+- **Nested repositories.** A folder in a worktree that holds a repository of its own, untracked
+  or a submodule the agent filled in, stays out of the Town Hall's commits along with its files,
+  and the Chronicle names it after the snapshot: `git add` would record the first as a bare
+  commit id and run `git status` inside the second, under the configuration the agent wrote
+  there. Such a worktree is not clean, so accepting the task leaves it in place.
 
 ## Spending
 
@@ -243,7 +278,12 @@ The first four are also described in [spikes.md](spikes.md), section S5.
   leading `@` and accept `file://` URLs, so such a path counts as inside the work folder, and
   under Trusted Edits a pi agent reads or writes it without asking.
 - **Worktrees share `.git`.** Git commands an agent runs reach the repository's branches, tags,
-  configuration and hooks; only the approval of each command stands in the way.
+  configuration and hooks; only the approval of each command stands in the way. The Town Hall's
+  own git then runs none of those hooks, no fsmonitor command and no external diff or textconv,
+  but it still applies the filters and merge drivers configured there, which Git LFS needs.
+- **Nested repositories stay out.** Work in a folder with a repository of its own (a project the
+  agent made with `git init`, a submodule it updated) is not in the snapshot, the review or the
+  merge.
 - **The Rite runs the agent's version.** It runs without asking after the agent finishes, so if
   the agent changed what it runs (a `package.json` script, a test), that code runs too.
 - **Free Hand outside Codex.** Its "network off" relies on Codex's sandbox; on Claude Code and

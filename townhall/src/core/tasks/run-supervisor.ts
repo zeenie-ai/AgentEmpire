@@ -658,6 +658,10 @@ export class RunSupervisor {
       this.emitPhase(taskId, "finishing");
       const snap = await this.ctx.workspace.snapshot(workspace, `AgentEmpire snapshot: ${task.title} (attempt ${task.attempt})`);
       workspace.snapshot_sha = snap.snapshot_sha;
+      if (snap.nested.length > 0) {
+        const folders = snap.nested.map((p) => `${p}/`).join(", ");
+        this.ctx.tasks.appendActivity(taskId, "system", `Left out of the snapshot, as each holds a git repository of its own: ${folders}`, true);
+      }
       let rite: TaskResult["rite"] = null;
       if (task.rite) {
         this.emitPhase(taskId, "rite");

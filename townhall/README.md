@@ -69,6 +69,7 @@ the token in its `#t=` fragment.
 | `townhall.log` | Output of a Town Hall started by the game |
 | `wt/` | Task worktrees (git worktrees of the player's repositories) |
 | `mirrors/` | Versioned copies of plain (non-git) work folders |
+| `no-hooks/` | An empty folder, the hooks folder of every git command the Town Hall runs, so that none runs a hook |
 | `harness/`, `pi-sessions/` | Per-run harness files and pi session files |
 
 Work in a git repository happens in a worktree of that repository, created under `wt/`, on a
