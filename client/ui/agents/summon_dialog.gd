@@ -420,7 +420,8 @@ func _rebuild_harnesses() -> void:
 	for pv: Variant in _providers:
 		var p := J.d(pv)
 		var id := J.gs(p, "id")
-		if id == "":
+		# Only the harnesses the Town Hall runs, never a legacy one an older Town Hall may still report.
+		if not id in Protocol.Provider.ALL:
 			continue
 		var state := AgentUi.harness_state(p)
 		var card := ChoiceCard.new(look, 12)

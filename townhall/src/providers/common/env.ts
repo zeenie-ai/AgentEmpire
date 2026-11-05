@@ -2,7 +2,7 @@ import type { Env } from "./exec.js";
 
 /**
  * Variables a parent agent session sets for its own child processes. When the Town Hall is
- * started from inside Claude Code, Codex or pi they would leak into the harnesses it launches
+ * started from inside Claude Code or Codex they would leak into the harnesses it launches
  * and make them believe they are nested (or hand them another session's messaging token).
  */
 const INHERITED_SESSION_VARS: RegExp[] = [
@@ -11,7 +11,6 @@ const INHERITED_SESSION_VARS: RegExp[] = [
   /^CLAUDE_(PID|EFFORT|AGENT_SDK_VERSION)$/,
   /^MCP_CONNECTION_NONBLOCKING$/,
   /^AI_AGENT$/,
-  /^PI_(CODING_AGENT|SESSION_ID|SESSION_FILE|PROVIDER|MODEL|REASONING_LEVEL)$/,
   /^CODEX_(THREAD_ID|SANDBOX|SANDBOX_NETWORK_DISABLED|MANAGED_BY_NPM|MANAGED_BY_BUN|MANAGED_BY_PNPM|MANAGED_PACKAGE_ROOT)$/,
 ];
 

@@ -3,24 +3,15 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Economy } from "../../src/core/economy.js";
 import { defaultEconomyPath, defaultPricingPath } from "../../src/paths.js";
-import { approvalFor, claudeCategory, describeToolCall, piCategory } from "../../src/providers/common/approvals.js";
-import { claudePlan, codexPlan, piPlan, type EconomyTools } from "../../src/providers/common/capabilities.js";
+import { approvalFor, claudeCategory, describeToolCall } from "../../src/providers/common/approvals.js";
+import { claudePlan, codexPlan, type EconomyTools } from "../../src/providers/common/capabilities.js";
 import { harnessEnv } from "../../src/providers/common/env.js";
-import {
-  bundledPiCli,
-  codexNativeFromPackage,
-  findOnPath,
-  launchFor,
-  readCmdShimTarget,
-  resolveClaude,
-  resolveCodex,
-  resolvePi,
-} from "../../src/providers/common/exec.js";
+import { codexNativeFromPackage, findOnPath, launchFor, readCmdShimTarget, resolveClaude, resolveCodex } from "../../src/providers/common/exec.js";
 import { encodeJsonl, JsonlDecoder } from "../../src/providers/common/jsonl.js";
 import { Pricing, RunningTotal } from "../../src/providers/common/pricing.js";
 import { feedbackMessage, firstMessageFor, systemPromptFor } from "../../src/providers/common/prompt.js";
 import { classifyFailure } from "../../src/providers/common/support.js";
-import { claudeMcpServer, codexMcpOverrides, mcpServerName, piMcpServer, usableWaygates } from "../../src/providers/common/waygates.js";
+import { claudeMcpServer, codexMcpOverrides, mcpServerName, usableWaygates } from "../../src/providers/common/waygates.js";
 import { insideWorkspace, parsePermissionRequest, permissionApproval } from "../../src/providers/codex/permissions.js";
 import { framingNames } from "../../src/providers/real.js";
 import { removeRoot, tempRoot } from "../helpers/harness.js";
@@ -81,12 +72,12 @@ describe("harness executables resolve without a shell", () => {
     const launch = launchFor(shim, "path");
     expect(launch).toMatchObject({ file: exe, prefix: [], source: "path", display: shim });
 
-    const js = touch(path.join(npm, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "bundle", "cli.js"), "#!/usr/bin/env node\n");
-    const piShim = touch(
-      path.join(npm, "pi.cmd"),
-      '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js" %*\r\n',
+    const js = touch(path.join(npm, "node_modules", "@openai", "codex", "bin", "codex.js"), "#!/usr/bin/env node\n");
+    const nodeShim = touch(
+      path.join(npm, "codex.cmd"),
+      '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n',
     );
-    expect(launchFor(piShim, "path")).toMatchObject({ file: process.execPath, prefix: [js] });
+    expect(launchFor(nodeShim, "path")).toMatchObject({ file: process.execPath, prefix: [js] });
   });
 
   it("finds a harness on PATH, preferring a real executable on Windows", () => {
@@ -118,18 +109,14 @@ describe("harness executables resolve without a shell", () => {
     const bad = resolveClaude({ PATH: "", AURELHAVEN_CLAUDE_BIN: path.join(root, "nope.exe") });
     expect(bad.launch).toBeNull();
     expect(bad.problem).toMatch(/AURELHAVEN_CLAUDE_BIN/);
-    expect(resolvePi({ PATH: "", AURELHAVEN_PI_BIN: path.join(root, "nope.js") }).launch).toBeNull();
-  });
-
-  it("falls back to the pi bundled with the Town Hall", () => {
-    const cli = bundledPiCli();
-    expect(cli).toMatch(/pi-coding-agent[\\/]dist[\\/]bundle[\\/]cli\.js$/);
-    expect(resolvePi({ PATH: "" }).launch).toMatchObject({ file: process.execPath, prefix: [cli], source: "bundled" });
+    const badCodex = resolveCodex({ PATH: "", AURELHAVEN_CODEX_BIN: path.join(root, "nope.js") });
+    expect(badCodex.launch).toBeNull();
+    expect(badCodex.problem).toMatch(/AURELHAVEN_CODEX_BIN/);
   });
 
   it("strips a parent agent session's markers from the harness environment", () => {
     const env = harnessEnv(
-      { PATH: "p", CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_MESSAGING_TOKEN: "t", CLAUDE_CODE_GIT_BASH_PATH: "b", PI_SESSION_ID: "x", HOME: "h" },
+      { PATH: "p", CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_MESSAGING_TOKEN: "t", CLAUDE_CODE_GIT_BASH_PATH: "b", CODEX_THREAD_ID: "x", HOME: "h" },
       { EXTRA: "1" },
     );
     expect(env).toEqual({ PATH: "p", CLAUDE_CODE_GIT_BASH_PATH: "b", HOME: "h", EXTRA: "1" });
@@ -149,14 +136,6 @@ describe("approval categories and summaries", () => {
     expect(claudeCategory("WebFetch")).toBe("network");
     expect(claudeCategory("mcp__github__search")).toBe("mcp");
     expect(claudeCategory("SomethingNew")).toBe("command");
-  });
-
-  it("maps pi tools", () => {
-    for (const t of ["read", "grep", "find", "ls"]) expect(piCategory(t)).toBe("read");
-    for (const t of ["edit", "write"]) expect(piCategory(t)).toBe("write");
-    expect(piCategory("bash")).toBe("command");
-    expect(piCategory("powershell")).toBe("command");
-    expect(piCategory("mcp__docs__lookup")).toBe("mcp");
   });
 
   it("describes calls", () => {
@@ -251,11 +230,11 @@ describe("add-ons map to harness tools through economy.json", () => {
     });
   });
 
-  it("pi", () => {
-    const plan = piPlan(tools, ["lectern", "quillworks", "forge", "rookery", "archive"]);
-    expect(plan.tools).toEqual(["read", "grep", "find", "ls", "edit", "write", "bash"]);
-    expect(plan.charter).toBe(true);
-    expect(plan.unavailable).toEqual([{ type: "rookery", note: expect.stringMatching(/no built-in web/) }]);
+  it("grants add-ons to Claude Code and Codex only", () => {
+    for (const [type, def] of Object.entries(tools)) {
+      const grants = Object.keys(def).filter((k) => typeof def[k] === "object" && def[k] !== null && !Array.isArray(def[k]) && k !== "cost");
+      expect(grants, type).toEqual(["claude", "codex"]);
+    }
   });
 });
 
@@ -263,10 +242,9 @@ describe("Waygate configs name secrets, never copy them", () => {
   const stdio = { server_name: "github", transport: "stdio" as const, command: "npx", args: ["-y", "gh-mcp"], env_refs: ["GH_TOKEN"], allowed_tools: ["search"] };
   const http = { server_name: "docs.site", transport: "http" as const, url: "https://mcp.example.invalid", header_refs: { Authorization: "DOCS_AUTH" } };
 
-  it("Claude Code and pi use ${VAR} references", () => {
+  it("Claude Code uses ${VAR} references", () => {
     expect(claudeMcpServer(stdio)).toEqual({ type: "stdio", command: "npx", args: ["-y", "gh-mcp"], env: { GH_TOKEN: "${GH_TOKEN}" } });
     expect(claudeMcpServer(http)).toEqual({ type: "http", url: "https://mcp.example.invalid", headers: { Authorization: "${DOCS_AUTH}" } });
-    expect(piMcpServer(http)).toEqual({ name: "docs_site", config: { url: "https://mcp.example.invalid", headers: { Authorization: "${DOCS_AUTH}" }, exposure: "direct" } });
   });
 
   it("Codex forwards variables by name and asks before every tool", () => {

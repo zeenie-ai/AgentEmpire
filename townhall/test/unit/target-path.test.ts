@@ -66,16 +66,12 @@ describe("path readings (pure)", () => {
   it("reads a Git Bash drive path only as the drive for the harnesses that convert it", () => {
     expect(pathReadings("/d/work/a.ts", winRules)).toEqual(["/d/work/a.ts", "D:\\work\\a.ts"]);
     expect(pathReadings("/d/work/a.ts", winRules, { drives: "letter" })).toEqual(["D:\\work\\a.ts"]);
-    expect(pathReadings("/d/work/a.ts", winRules, { drives: "pi" })).toEqual(["D:\\work\\a.ts"]);
   });
 
   it("keeps the plain reading of a drive path the harness does not convert", () => {
     // Claude Code converts only /c/...; /mnt/c/... and /cygdrive/c/... stay paths on the current drive.
     expect(pathReadings("/mnt/d/work/a.ts", winRules, { drives: "letter" })).toEqual(["/mnt/d/work/a.ts", "D:\\work\\a.ts"]);
     expect(pathReadings("/cygdrive/d/a.ts", winRules, { drives: "letter" })).toContain("/cygdrive/d/a.ts");
-    expect(pathReadings("/mnt/d/work/a.ts", winRules, { drives: "pi" })).toEqual(["D:\\work\\a.ts"]);
-    // pi's expression stops at a line break, so it leaves such a path as it is.
-    expect(pathReadings("/d/work/a\u2028b", winRules, { drives: "pi" })).toContain("/d/work/a\u2028b");
   });
 });
 
@@ -357,19 +353,6 @@ describe("verdicts on this machine's filesystem", () => {
     expect(targetInside("../ab1k2cd3/app/notes.md", { cwd: missing, root: missing, home })).toBe(false);
   });
 
-  it("follows pi's read into a lookalike spelling of a missing file", () => {
-    const quoted = path.join(base, "o'brien", "wt", "ab12cd34");
-    mkdirSync(quoted, { recursive: true });
-    writeFileSync(path.join(quoted, "real.txt"), "real\n");
-    const lookalike = path.join(base, "o\u2019brien", "wt", "ab12cd34");
-    mkdirSync(lookalike, { recursive: true });
-    writeFileSync(path.join(lookalike, "secret.txt"), "secret\n");
-    const there: TargetScope = { cwd: quoted, root: quoted, home };
-    expect(reachesOutside("read", { path: "secret.txt" }, there)).toBe(true);
-    expect(reachesOutside("read", { path: "real.txt" }, there)).toBe(false);
-    expect(reachesOutside("Read", { file_path: path.join(quoted, "secret.txt") }, there)).toBe(false);
-  });
-
   describe("every path field of each harness's tools", () => {
     const outsideGlob = `${posixSlashes(outside)}/*`;
     const msys = win ? `/${cwd[0]!.toLowerCase()}${posixSlashes(cwd.slice(2))}/notes.md` : null;
@@ -408,20 +391,13 @@ describe("verdicts on this machine's filesystem", () => {
       ["Grep", { pattern: "x", glob: "*.ts" }, false],
       ["Grep", { pattern: "x", glob: outsideGlob }, true],
       ["LS", { path: "linked" }, true],
-      // pi
-      ["write", { path: "~/.bashrc", content: "x" }, true],
-      ["edit", { path: `@${path.join(outside, "secret.txt")}`, edits: [] }, true],
-      ["read", { path: pathToFileURL(path.join(outside, "secret.txt")).href }, true],
-      ["ls", {}, false],
-      ["ls", { path: "~" }, true],
-      ["find", { pattern: "*.pem", path: "~" }, true],
-      ["find", { pattern: "src/**/*.spec.ts" }, false],
-      ["grep", { pattern: "token", path: "@~" }, true],
-      ["grep", { pattern: "x", glob: "**/*.ts" }, false],
-      ...(msys ? ([["write", { path: msys, content: "x" }, false], ["mcp__files__write", { path: msys }, true]] as Array<[string, Record<string, unknown>, boolean]>) : []),
-      // pi resolves a relative path against its own folder, which never moves.
-      ["read", { path: "notes.md" }, false],
-      ["write", { path: ".git/config", content: "x" }, true],
+      // An MCP tool's path gets every common reading: ~, a leading @, a file:// URL, a .git segment.
+      ["mcp__files__write", { path: "~/.bashrc", content: "x" }, true],
+      ["mcp__files__edit", { path: `@${path.join(outside, "secret.txt")}` }, true],
+      ["mcp__files__read", { path: pathToFileURL(path.join(outside, "secret.txt")).href }, true],
+      ["mcp__files__read", { path: "notes.md" }, false],
+      ["mcp__files__write", { path: ".git/config", content: "x" }, true],
+      ...(msys ? ([["mcp__files__write", { path: msys }, true]] as Array<[string, Record<string, unknown>, boolean]>) : []),
       // Codex
       ["apply_patch", { path: abs("a.txt"), changes: [abs("a.txt")] }, false],
       ["apply_patch", { path: abs("a.txt"), changes: [abs("a.txt"), path.join(outside, "b.txt")] }, true],

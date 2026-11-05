@@ -2,8 +2,10 @@
 
 This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change. `townhall/test/unit/protocol.test.ts` checks the command, event, error-code, close-code and enum names below against the schemas; the payload shapes are checked only by review.
 
-**Changes in 1.4** (backward compatible; a 1.3 client keeps working):
+**Changes in 1.4** (a 1.3 client keeps working, without pi):
 - `Approval.rule` says what `Allow for this task` and `Always for` would store: the signature a task or agent rule matches, and for a command whether it matches only these exact words. It is null when only `once` is offered.
+- The pi harness is removed. The providers are `claude` and `codex`: `check_providers`, `list_models`, `create_agent`, `Mana.by_provider`, `Mana.provider_windows` and the `set_budget` billing have no `pi` any more, and a `billing.pi` from an older client is ignored.
+- A town from before 1.4 may still hold an agent summoned on pi. It keeps `"provider": "pi"` and is blocked with the new reason `provider_unsupported` until the player retires it (`retire_agent`). `assign_task`, `resume_task`, `send_back`, `place_home`, `attach_tool`, and `form_party` with it as a member answer `INVALID_STATE` with the message `pi is no longer supported; retire this agent` (for `form_party`, after the agent's name). Its finished work can still be reviewed and accepted.
 
 **Changes in 1.3** (all backward compatible; a 1.2 client keeps working):
 - `get_progress` and the `progress_updated` event: the town's progression in one object (the age, the facts behind the milestones, the next age with its structured milestones and whether it can be started now, and the Quartermaster's current rates). `get_state` carries the same object as `progress`.
@@ -13,9 +15,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 - `Mana.provider_windows` is filled from the harnesses' own usage reports, and each entry names its `window` and `window_minutes`.
 
 **Changes in 1.2** (all backward compatible; a 1.1 client keeps working):
-- A third provider, `pi`, runs agents on any other model provider through the pi coding agent. It appears in `Agent.provider`, `check_providers`, `list_models`, `Mana.by_provider` and `set_budget` billing.
-- A pi agent's `model` is `"<pi provider>/<model id>"`, for example `"openrouter/deepseek/deepseek-chat"`. `create_agent` and `update_agent` refuse other forms with `BAD_REQUEST`.
-- `set_budget` accepts an optional `billing.pi`.
+- A third provider, `pi` (removed in 1.4).
 - `hello_result.sdk_versions` now lists the installed harness versions, and `features` names the provider mode.
 
 ## Connection
@@ -83,7 +83,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 ```jsonc
 // Agent
 {
-  "id": "agt_...", "name": "Mira", "provider": "claude|codex|pi", "model": "claude-opus-5-5",   // pi: added in 1.2, model "<pi provider>/<model id>"
+  "id": "agt_...", "name": "Mira", "provider": "claude|codex", "model": "claude-opus-5-5",   // "pi" only in a town from before 1.4
   "role": "artificer|scholar|scribe|warden|herald", "instructions": "...",
   "approval_mode": "ask_every_time|trusted_edits|plan_first|free_hand",
   "workspace": { "path": "D:/work/app", "mode": "git_worktree|plain_folder", "repo_root": "D:/work/app" },
@@ -91,7 +91,8 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "billing": "api_key|subscription",
   "lifecycle": "training|settling|active|retired",           // settling = walking out / building home or tools
   "activity": "idle|working|awaiting_approval|blocked",     // meaningful when lifecycle = active
-  "blocked_reason": null,   // "missing_tools"|"no_mana"|"provider_offline"|"workspace_error"|null
+  "blocked_reason": null,   // "missing_tools"|"no_mana"|"provider_offline"|"workspace_error"|"provider_unsupported"|null
+                            // provider_unsupported (1.4): the agent's provider is pi, which the Town Hall no longer runs
   "home": { "tile": {"x":40,"y":52}, "built": false },      // null until placed
   "tool_ids": ["tl_..."], "starting_tools": ["lectern", "quillworks"],   // starting_tools: added in 1.1
   "current_task_id": null, "queue": ["tsk_..."],
@@ -146,7 +147,7 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
 { "period": "day|week|month", "period_start": "...", "period_end": "...",
   "cap_micros": 5000000, "spent_micros": 0, "reserved_micros": 0, "remaining_micros": 5000000,
   "level": "normal|dim|warning|depleted",
-  "by_provider": { "claude": 0, "codex": 0, "pi": 0 }, "estimates": true,   // pi: added in 1.2
+  "by_provider": { "claude": 0, "codex": 0 }, "estimates": true,
   "provider_windows": [ { "provider": "codex", "window": "five_hour", "window_minutes": 300,
                           "used_percent": 12.5, "resets_at": "..." } ] }
 // provider_windows: each provider's own usage limits, as its harness last reported them
@@ -190,12 +191,12 @@ The table shows each command's payload and the payload of its successful reply.
 
 | Command | Payload | Result |
 |---|---|---|
-| `hello` | `{token, protocol:{major:1,minor:4}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
+| `hello` | `{token, protocol:{major:1,minor:4}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
 | `ping` | `{}` | `{}` |
 | `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers, progress}` (`tasks` = open tasks plus the 50 most recent; `progress`, the Progress object, was added in 1.3) |
 | `get_progress` | `{}` | The Progress object (1.3). |
-| `check_providers` | `{}` | `{providers:[{id, installed, version?, logged_in, billing_hint:"api_key"\|"subscription"\|"unknown", message?}]}`. One entry per provider: `claude`, `codex` and `pi` (1.2). |
-| `list_models` | `{provider}` | `{models:[{id,label,default,cost_hint?}]}`. pi model ids are `"<pi provider>/<model id>"` and list only models whose provider has credentials. |
+| `check_providers` | `{}` | `{providers:[{id, installed, version?, logged_in, billing_hint:"api_key"\|"subscription"\|"unknown", message?}]}`. One entry per provider: `claude` and `codex`. |
+| `list_models` | `{provider}` | `{models:[{id,label,default,cost_hint?}]}` |
 | `browse_folder` | `{path?}` | `{path, parent, entries:[{name,path,is_git_repo}], roots}` (directories only, inside allowed roots) |
 | `create_agent` | `{spec:{name, provider, model, role, instructions, approval_mode, workspace:{path}, seals?, billing?, starting_tools:[type]}}` | `{agent_id, cost, free:bool, training:{duration_ms}}`. Charges the agent's cost, or nothing under Font's Grace, and checks the age and agent limits. |
 | `agent_trained` | `{agent_id}` | `{}`. The client's training timer finished and the unit has left the Keep. |
@@ -220,7 +221,7 @@ The table shows each command's payload and the payload of its successful reply.
 | `discard_workspace` | `{task_id, confirm:true}` | `{}` |
 | `form_party` | `{lead_agent_id, member_ids}` | `{party_id}` |
 | `disband_party` | `{party_id}` | `{}` |
-| `set_budget` | `{period, refill_hour_local?, pool_usd, billing:{claude,codex,pi?}, confirm_raise?}` | `{mana}`. Raising the pool in the middle of a period requires `confirm_raise:true`. `billing.pi` was added in 1.2; when it is left out, the current pi billing is kept. |
+| `set_budget` | `{period, refill_hour_local?, pool_usd, billing:{claude,codex}, confirm_raise?}` | `{mana}`. Raising the pool in the middle of a period requires `confirm_raise:true`. A `billing.pi` from a client older than 1.4 is ignored. |
 | `spend_resources` | `{op_id, reason, cost, ref?}` | `{treasury}`. For simulation purchases such as a townsperson, Cottage, Farm, Storehouse or Quartermaster trade. The server checks the balance, and `op_id` makes retries safe. |
 | `refund_resources` | `{op_id, spend_op_id, fraction}` | `{treasury}`. At most one refund per spend, and never more than the spend. |
 | `report_gather` | `{op_id, deposits:{food?,wood?}, storehouses}` | `{treasury}`. Batched. Food and Wood are capped at `storage.cap_by_age[age] + storehouses × storage.storehouse_bonus`. `storehouses` is the number of completed Storehouses, as counted by the client. Rewards may push a resource past the cap; gathering may not. |

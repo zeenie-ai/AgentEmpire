@@ -1,11 +1,9 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Economy } from "../../src/core/economy.js";
-import { defaultEconomyPath, defaultPricingPath, srcPath } from "../../src/paths.js";
+import { defaultEconomyPath, defaultPricingPath } from "../../src/paths.js";
 import { ClaudeCodeAdapter } from "../../src/providers/claude/adapter.js";
 import { CodexCliAdapter } from "../../src/providers/codex/adapter.js";
-import { FakeProvider } from "../../src/providers/fake/adapter.js";
-import { ScenarioLibrary } from "../../src/providers/fake/scenarios.js";
 import { harnessDeps } from "../../src/providers/real.js";
 import { makeRepo } from "../helpers/git.js";
 import { summonAgent, TestTown, type TestClient } from "../helpers/harness.js";
@@ -69,8 +67,7 @@ describe("provider usage windows in Mana (protocol 1.3)", () => {
         });
         const econ = Economy.load(defaultEconomyPath()).data;
         const deps = harnessDeps({ econ, dataDir, pricingPath: defaultPricingPath(), env });
-        const fake = new FakeProvider("pi", { library: new ScenarioLibrary(srcPath("providers", "fake", "scenarios")), defaultScenario: "basic", microsPerMana: 10_000 });
-        return { claude: new ClaudeCodeAdapter(deps), codex: new CodexCliAdapter(deps), pi: fake };
+        return { claude: new ClaudeCodeAdapter(deps), codex: new CodexCliAdapter(deps) };
       },
     });
     c = await town.client();

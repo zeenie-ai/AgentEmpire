@@ -2,8 +2,8 @@
 
 The Town Hall is AgentEmpire's local service. It owns everything real: agents and their add-ons,
 tasks and their workspaces, approvals, Mana, the resource ledger, ranks, ages and saved towns. It
-runs each agent on an existing harness (the Claude Code CLI, the Codex CLI or pi) as a child
-process and sends every permission request to the player. The game talks to it over a WebSocket
+runs each agent on an existing harness (the Claude Code CLI or the Codex CLI) as a child process
+and sends every permission request to the player. The game talks to it over a WebSocket
 on 127.0.0.1; see [../protocol/PROTOCOL.md](../protocol/PROTOCOL.md) and
 [../docs/architecture.md](../docs/architecture.md).
 
@@ -47,14 +47,14 @@ Environment variables, all optional:
 | `AURELHAVEN_WORK_ROOTS` | your home folder and, on Windows, every other drive letter from D: that exists (of any type) | Folders under which agents may be given a work folder, separated by the system's path separator (`;` on Windows, `:` on macOS and Linux) |
 | `AURELHAVEN_WEB_DIR` | `client/export/web` | The web build to serve |
 | `AURELHAVEN_ECONOMY_PATH` | `protocol/economy.json` | Game constants |
-| `AURELHAVEN_PRICING_PATH` | `protocol/pricing.json` | Token prices: all Codex usage, the cost hints in model lists, and Claude Code results that report no cost (pi prices its own usage) |
+| `AURELHAVEN_PRICING_PATH` | `protocol/pricing.json` | Token prices: all Codex usage, the cost hints in model lists, and Claude Code results that report no cost |
 | `AURELHAVEN_DEV_ORIGINS` | none | Extra origins allowed to open the WebSocket, separated by `,` |
 | `AURELHAVEN_CROSS_ORIGIN_ISOLATION` | off | `1` sends COOP and COEP headers (only threaded web builds need them) |
 | `AURELHAVEN_RITE_TIMEOUT_S` | `600` | Time limit for a task's Rite (its optional check command) |
 | `AURELHAVEN_PLAIN_MAX_FILES`, `AURELHAVEN_PLAIN_MAX_MB` | `20000`, `200` | Size limits for copying a plain (non-git) work folder |
 | `AURELHAVEN_FAKE_SCENARIO` | `basic` | The default script for practice agents (`src/providers/fake/scenarios/`) |
 | `AURELHAVEN_LOG_LEVEL` | `info` | pino log level |
-| `AURELHAVEN_CLAUDE_BIN`, `AURELHAVEN_CODEX_BIN`, `AURELHAVEN_PI_BIN` | found on PATH | A harness executable to use instead (an .exe, a Node script or an npm .cmd shim) |
+| `AURELHAVEN_CLAUDE_BIN`, `AURELHAVEN_CODEX_BIN` | found on PATH | A harness executable to use instead (an .exe, a Node script or an npm .cmd shim) |
 
 The Town Hall makes a new session token at every start and writes `{pid, port, token, url,
 data_dir}` to `<data>/runtime.json` and to the discovery file. The web client's address carries
@@ -70,7 +70,7 @@ the token in its `#t=` fragment.
 | `wt/` | Task worktrees (git worktrees of the player's repositories) |
 | `mirrors/` | Versioned copies of plain (non-git) work folders |
 | `no-hooks/` | An empty folder, the hooks folder of every git command the Town Hall runs, so that none runs a hook |
-| `harness/`, `pi-sessions/` | Per-run harness files and pi session files |
+| `harness/` | Per-run harness files |
 
 Work in a git repository happens in a worktree of that repository, created under `wt/`, on a
 branch `agentempire/<agent>/<task>`. The player's own checkout is touched only when they accept
@@ -85,7 +85,7 @@ and choose to merge. [../docs/security.md](../docs/security.md) describes every 
 | `src/protocol/` | zod schemas for every message; the source of `protocol/generated/protocol.gd` (`npm run gen:gd`) |
 | `src/server/` | HTTP (web build), WebSocket connections, command routing, event broadcasting |
 | `src/core/` | Agents, tools, tasks (state machine, scheduler, run supervisor), approvals, incidents, Mana, ledger, bounty, ranks, ages, parties, workspaces |
-| `src/providers/` | `fake/` (scripted scenarios), `claude/`, `codex/`, `pi/`, `common/` (processes, approvals, pricing, prompts, Waygates) |
+| `src/providers/` | `fake/` (scripted scenarios), `claude/`, `codex/`, `common/` (processes, approvals, pricing, prompts, Waygates) |
 | `src/db/` | Database access and migrations |
 | `src/security/` | Token, Host and Origin checks, work-folder path guard, secret redaction |
 
@@ -93,8 +93,7 @@ and choose to merge. [../docs/security.md](../docs/security.md) describes every 
 
 ```powershell
 npm run typecheck
-npm test                    # unit and integration tests: no network, no Claude Code or Codex;
-                            # the integration tests run the bundled pi with a scripted model
+npm test                    # unit and integration tests: no network, no Claude Code or Codex
 ```
 
 - `test/unit/`: pure logic (state machine, bounty, Mana, ranks, guards, the harness helpers). A
@@ -102,12 +101,12 @@ npm test                    # unit and integration tests: no network, no Claude 
   worktree removal) appears in `src/` or `scripts/`, and that `assertSafeGitArgs` refuses them
   at run time.
 - `test/integration/`: a real Town Hall over WebSocket with the scripted agent (the full loop,
-  approvals, restarts, budgets, auth, parties), and each real adapter against a fake Claude Code
-  CLI, a fake Codex app server or the real pi with a scripted model.
+  approvals, restarts, budgets, auth, parties, a town with an agent on a removed harness), and
+  each real adapter against a fake Claude Code CLI or a fake Codex app server.
 - `test/smoke/`: opt-in runs against the real harnesses, each capped at $0.10 of real usage:
 
   ```powershell
-  $env:AURELHAVEN_SMOKE_CLAUDE = "1"   # or _CODEX, _PI, or _PARTY (a Claude lead and member)
+  $env:AURELHAVEN_SMOKE_CLAUDE = "1"   # or _CODEX, or _PARTY (a Claude lead and member)
   npm run test:smoke
   ```
 

@@ -183,7 +183,8 @@ class BlockedReason:
 	const NO_MANA := "no_mana"
 	const PROVIDER_OFFLINE := "provider_offline"
 	const WORKSPACE_ERROR := "workspace_error"
-	const ALL := ["missing_tools", "no_mana", "provider_offline", "workspace_error"]
+	const PROVIDER_UNSUPPORTED := "provider_unsupported"
+	const ALL := ["missing_tools", "no_mana", "provider_offline", "workspace_error", "provider_unsupported"]
 
 # Agent.role
 class Role:
@@ -194,12 +195,11 @@ class Role:
 	const HERALD := "herald"
 	const ALL := ["artificer", "scholar", "scribe", "warden", "herald"]
 
-# Agent.provider
+# check_providers id, list_models provider; Agent.provider (or a legacy id, 1.4)
 class Provider:
 	const CLAUDE := "claude"
 	const CODEX := "codex"
-	const PI := "pi"
-	const ALL := ["claude", "codex", "pi"]
+	const ALL := ["claude", "codex"]
 
 # Agent.approval_mode
 class ApprovalMode:

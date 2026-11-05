@@ -200,10 +200,9 @@ export class Daemon {
         adapters = {
           claude: new FakeProvider("claude", fakeOpts),
           codex: new FakeProvider("codex", fakeOpts),
-          pi: new FakeProvider("pi", fakeOpts),
         };
       } else {
-        // The installed harnesses: Claude Code, the Codex CLI and pi, each launched as a child process.
+        // The installed harnesses: Claude Code and the Codex CLI, each launched as a child process.
         adapters = realAdapters(
           harnessDeps({ econ: econ.data, dataDir: config.dataDir, pricingPath: config.pricingPath, log, redactor }),
         );

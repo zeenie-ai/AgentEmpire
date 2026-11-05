@@ -3,21 +3,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Economy } from "../../src/core/economy.js";
 import { defaultEconomyPath, defaultPricingPath } from "../../src/paths.js";
-import { bundledPiCli } from "../../src/providers/common/exec.js";
 import { harnessDeps } from "../../src/providers/real.js";
 import { ClaudeCodeAdapter } from "../../src/providers/claude/adapter.js";
 import { CodexCliAdapter } from "../../src/providers/codex/adapter.js";
-import { PiAdapter } from "../../src/providers/pi/adapter.js";
 import { git, makeRepo } from "../helpers/git.js";
 import { summonAgent, TestTown, type TestClient } from "../helpers/harness.js";
 import { FIXTURES, writeJson } from "../helpers/run-host.js";
 
-const PI_CLI = bundledPiCli();
-
-// The whole Town Hall with the real adapters: a fake Claude Code CLI, a fake codex app-server
-// and the real pi with a scripted provider. Approvals go through the ApprovalService (approval
-// modes, cards, respond_approval), finished work goes to review, and Mana is billed per provider.
-describe.skipIf(!PI_CLI)("the Town Hall with the real harness adapters", () => {
+// The whole Town Hall with the real adapters: a fake Claude Code CLI and a fake codex app-server.
+// Approvals go through the ApprovalService (approval modes, cards, respond_approval), finished
+// work goes to review, and Mana is billed per provider.
+describe("the Town Hall with the real harness adapters", () => {
   let town: TestTown;
   let c: TestClient;
   const env: Record<string, string | undefined> = { ...process.env };
@@ -31,15 +27,11 @@ describe.skipIf(!PI_CLI)("the Town Hall with the real harness adapters", () => {
           FAKE_CLAUDE_HOME: path.join(root, "claude-sessions"),
           AURELHAVEN_CODEX_BIN: path.join(FIXTURES, "fake-codex.mjs"),
           FAKE_CODEX_HOME: path.join(root, "codex-threads"),
-          AURELHAVEN_PI_BIN: PI_CLI!,
-          PI_CODING_AGENT_DIR: path.join(root, "pi-agent"),
-          PI_OFFLINE: "1",
         });
         const deps = harnessDeps({ econ: Economy.load(defaultEconomyPath()).data, dataDir, pricingPath: defaultPricingPath(), env });
         return {
           claude: new ClaudeCodeAdapter(deps),
           codex: new CodexCliAdapter(deps),
-          pi: new PiAdapter(deps, { extraArgs: ["-e", path.join(FIXTURES, "pi-faux-provider.mjs"), "--offline"] }),
         };
       },
     });
@@ -90,27 +82,12 @@ describe.skipIf(!PI_CLI)("the Town Hall with the real harness adapters", () => {
       },
       commandTool: "shell",
     },
-    {
-      provider: "pi" as const,
-      model: "faux/faux-1",
-      setup: () => {
-        env.AURELHAVEN_PI_FAUX_SCRIPT = writeJson(town.root, "pi.json", {
-          responses: [
-            { tool: "write", args: { path: "notes.md", content: "# Notes\n" } },
-            { tool: "bash", args: { command: "echo testing" } },
-            { text: "Added notes.md." },
-          ],
-        });
-      },
-      commandTool: "bash",
-    },
   ];
 
-  it("reports all three harnesses as installed and signed in", async () => {
+  it("reports both harnesses as installed and signed in, and no other", async () => {
     const { providers } = await c.ok("check_providers", {});
-    for (const id of ["claude", "codex", "pi"]) {
-      expect(providers.find((p: { id: string }) => p.id === id)).toMatchObject({ installed: true, logged_in: true });
-    }
+    expect(providers.map((p: { id: string }) => p.id)).toEqual(["claude", "codex"]);
+    for (const p of providers) expect(p).toMatchObject({ installed: true, logged_in: true });
   });
 
   it.each(cases)("$provider: edits are automatic in trusted_edits, the command waits for the player, the work reaches review", async (tc) => {

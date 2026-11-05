@@ -3,9 +3,9 @@
 **A town-building game where your villagers are real AI agents.**
 
 AgentEmpire plays like Age of Empires, in the fantasy world of Aurelhaven. The difference: the agents you summon
-at the Keep are real AI coding agents (Claude Code, Codex, or any other model through pi). They
-build their homes and workshops, your townsfolk carry their tasks to them, a bell rings when they
-need your permission, and the town grows on the work you accept.
+at the Keep are real AI coding agents (Claude Code or Codex). They build their homes and
+workshops, your townsfolk carry their tasks to them, a bell rings when they need your permission,
+and the town grows on the work you accept.
 
 ![The town: the Keep, an agent's workshop with its add-ons, and the game's controls](docs/images/town.jpg)
 
@@ -73,8 +73,6 @@ does not touch them.
    - **Claude Code** ([how to install](https://docs.claude.com/en/docs/claude-code/setup)): then
      run `claude` in a terminal and sign in.
    - **Codex CLI** ([how to install](https://github.com/openai/codex)): then run `codex login`.
-   - **pi** comes with the game and works with many other model providers; it needs a sign-in
-     with the provider you choose.
 2. In the game, click **PRACTICE TOWN** in the top bar and choose **Real agents**. The game closes
    the practice Town Hall and opens your real town; practice and real towns are kept apart.
 3. Summon an agent at the Keep (select the Keep with H, then press W), choose its work folder, and
@@ -164,7 +162,7 @@ automatically on Windows, Linux and macOS (Apple Silicon) before it is published
 | 1 | The Town Hall: tasks, approvals, Mana, the resource ledger and rewards, with practice agents | Done |
 | 2 | The town: map, camera, units, gathering, construction, the controls | Done |
 | 3 | Agents as villagers: summoning, homes and add-ons, couriers, approvals, review and rewards | Done |
-| 4 | Real agents on Claude Code, Codex and pi | Done |
+| 4 | Real agents on Claude Code and Codex | Done |
 | 5 | Ages and walls, menus and onboarding, sound | In progress. Done: the Town Hall side (practice and real towns, switching and closing the Town Hall, party leads, usage limits), the four town walls with the wall-rise animation, the wanderer, sound and music, and the task tracker with its animated task seals and agent sigils. Still to come: the menus, the onboarding, and the Age, Quartermaster and party windows (until then the town stays in its first age) |
 
 ## For developers
@@ -174,7 +172,7 @@ Godot client (desktop or web) <-- WebSocket on 127.0.0.1 --> Town Hall (TypeScri
   the town: map, units, gathering,                             agents, tasks, approvals, parties,
   construction, HUD                                            Mana, resource ledger, ages, saves
                                                                |
-                                    Claude Code CLI, Codex CLI (app-server), pi (RPC mode)
+                                            Claude Code CLI, Codex CLI (app-server)
                                                                |
                                               git worktrees in your work folders
 ```

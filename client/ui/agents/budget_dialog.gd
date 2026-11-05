@@ -164,16 +164,17 @@ func _build_body() -> void:
 
 # --- data ---------------------------------------------------------------------------------------------
 
-## Harness ids to show: those the Town Hall reported, then any in the Mana figures.
+## Harness ids to show: those the Town Hall reported, then any in the Mana figures. Only the
+## harnesses it runs (Protocol.Provider), never a legacy one an older Town Hall may still name.
 func harness_ids() -> Array[String]:
 	var out: Array[String] = []
 	for p: Variant in Realm.providers:
 		var id := J.gs(J.d(p), "id")
-		if id != "" and not id in out:
+		if id in Protocol.Provider.ALL and not id in out:
 			out.append(id)
 	for k: Variant in J.gd(Realm.mana, "by_provider").keys():
 		var id := String(k)
-		if not id in out:
+		if id in Protocol.Provider.ALL and not id in out:
 			out.append(id)
 	return out
 
@@ -269,15 +270,19 @@ func _refresh() -> void:
 
 	clear_box(_by_provider)
 	var by := J.gd(m, "by_provider")
+	var ids := harness_ids()
 	var total := 0
-	for k: Variant in by.keys():
-		total += J.i(by[k])
-	for id in harness_ids():
+	for id in ids:
+		total += J.gi(by, id)
+	for id in ids:
 		var micros := J.gi(by, id)
 		_figure_row(_by_provider, AgentUi.harness_name(id), float(micros), float(maxi(total, 1)), false,
 			"%s MANA  ·  %s" % [AgentUi.mana_text(micros), AgentUi.usd_text(micros)])
 	clear_box(_windows)
-	var windows := J.a(m.get("provider_windows"))
+	var windows: Array = []
+	for w: Variant in J.a(m.get("provider_windows")):
+		if J.gs(J.d(w), "provider") in Protocol.Provider.ALL:
+			windows.append(w)
 	_windows_col.visible = not windows.is_empty()
 	for w: Variant in windows:
 		var wd := J.d(w)

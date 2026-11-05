@@ -194,7 +194,7 @@ export class ConnectionManager {
       replyOk("hello", requestId, {
         protocol: { major: PROTOCOL_MAJOR, minor: PROTOCOL_MINOR },
         daemon_version: DAEMON_VERSION,
-        // The installed harness versions (claude, codex, pi) from the latest provider probe.
+        // The installed harness versions (claude, codex) from the latest provider probe.
         sdk_versions: Object.fromEntries(
           this.ctx.providers
             .cached()

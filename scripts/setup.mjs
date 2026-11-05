@@ -120,8 +120,8 @@ function setupTownHall() {
     return;
   }
   // Through the shell so Windows finds npm.cmd; the arguments contain no spaces. Without install
-  // scripts: none is needed (better-sqlite3 and pi's esbuild ship their programs for every
-  // platform), and npm would otherwise compile better-sqlite3 from source, which needs a C++
+  // scripts: none is needed (better-sqlite3 and esbuild, which tsx uses, ship their programs for
+  // every platform), and npm would otherwise compile better-sqlite3 from source, which needs a C++
   // toolchain most players don't have.
   const r = spawnSync('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: dir, stdio: 'inherit', shell: true });
   if (r.status !== 0) throw new Error('npm ci failed in townhall/');

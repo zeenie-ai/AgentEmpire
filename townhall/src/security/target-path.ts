@@ -32,12 +32,10 @@ const MAX_TARGETS = 64;
 const MAX_ALTERNATIVES = 32;
 const MAX_PATTERN_LENGTH = 4096;
 
-/** Unicode spaces that pi turns into plain spaces. */
-const PI_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-/** Git Bash, MSYS, Cygwin and WSL drive paths, which pi or Claude Code may read as X:\ on Windows. */
+/** Unicode spaces a tool may read as plain spaces. */
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+/** Git Bash, MSYS, Cygwin and WSL drive paths, which Claude Code or a shell may read as X:\ on Windows. */
 const SHELL_DRIVE = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/([\s\S]*))?$/i;
-/** The drive paths pi's normalizeWindowsShellPath converts: its own expression (`.` stops at a line break). */
-const PI_DRIVE = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i;
 /** The drive paths Claude Code's file tools and Git Bash convert: /c/... only. */
 const LETTER_DRIVE = /^\/[a-z]\//i;
 /** ~name (another user's home), ~+ and ~-: shell forms the Town Hall cannot resolve. */
@@ -60,9 +58,9 @@ function isShellDrive(s: string, platform: Platform): boolean {
 }
 
 /** Whether the harness surely reads a drive path as X:\..., so that its plain reading can be dropped. */
-function convertsDrive(s: string, platform: Platform, drives: DriveReading): boolean {
+function convertsDrive(s: string, platform: Platform): boolean {
   if (platform !== "win32" || s.startsWith("//") || s.includes("\\")) return false;
-  return drives === "pi" ? PI_DRIVE.test(s) : LETTER_DRIVE.test(s);
+  return LETTER_DRIVE.test(s);
 }
 
 /** A name that is, or that Windows reads as, `.git`: the repository every worktree shares. */
@@ -123,10 +121,11 @@ type Rewrite = (s: string, rules: PathRules) => string | null;
 const REWRITES: Rewrite[] = [
   // Claude Code trims.
   (s) => s.trim(),
-  // pi makes Unicode spaces plain and drops one leading @.
-  (s) => s.replace(PI_SPACES, " "),
+  // A tool may make Unicode spaces plain or drop one leading @. Each rewrite only adds a reading
+  // to judge, so the check can only get stricter.
+  (s) => s.replace(UNICODE_SPACES, " "),
   (s) => (s.startsWith("@") ? s.slice(1) : s),
-  // Both read /c/... as C:\... on Windows.
+  // Claude Code and the shells read /c/... as C:\... on Windows.
   (s, r) => {
     if (!isShellDrive(s, r.platform)) return s;
     const m = SHELL_DRIVE.exec(s)!;
@@ -138,7 +137,7 @@ const REWRITES: Rewrite[] = [
     if (s.startsWith("~/") || s.startsWith("~\\")) return `${r.home}${sepOf(r.platform)}${s.slice(2)}`;
     return TILDE_USER.test(s) ? null : s;
   },
-  // pi reads file:// URLs.
+  // Some tools, MCP servers among them, read file:// URLs.
   (s, r) => {
     if (!/^file:/i.test(s)) return s;
     try {
@@ -151,18 +150,13 @@ const REWRITES: Rewrite[] = [
   (s, r) => (/[$%]/.test(s) ? expandVariables(s, r) : s),
 ];
 
-/**
- * Which drive paths a harness converts to X:\ on Windows: /c/... in Claude Code's file tools and
- * Git Bash ("letter"), also /mnt/c/... and /cygdrive/c/... in pi's ("pi").
- */
-export type DriveReading = "letter" | "pi";
+/** Which drive paths a harness converts to X:\ on Windows: /c/... in Claude Code's file tools and Git Bash. */
+export type DriveReading = "letter";
 
 /** How a tool reads its paths, beyond the readings every path gets. */
 export interface ToolReading {
   /** The drive paths it surely reads as X:\..., never as \c\... on the current drive. */
   drives?: DriveReading;
-  /** Also reads lookalike spellings of a missing file (pi's read). */
-  readFallback?: boolean;
 }
 
 /**
@@ -185,8 +179,7 @@ export function pathReadings(raw: string, rules: PathRules, how: ToolReading = {
     }
   }
   // The drive reading of each such path is in the set already.
-  const drives = how.drives;
-  return drives ? queue.filter((s) => !convertsDrive(s, rules.platform, drives)) : queue;
+  return how.drives ? queue.filter((s) => !convertsDrive(s, rules.platform)) : queue;
 }
 
 /**
@@ -337,13 +330,6 @@ function within(real: string, root: string, platform: Platform): boolean {
   return real === root || real.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
-/** pi's read retries a missing file as these spellings of the whole path (macOS screenshot names). */
-function readVariants(p: string): string[] {
-  const nfd = p.normalize("NFD");
-  const variants = [p.replace(/ (AM|PM)\./gi, "\u202F$1."), nfd, p.replace(/'/g, "\u2019"), nfd.replace(/'/g, "\u2019")];
-  return [...new Set(variants)].filter((v) => v !== p);
-}
-
 /**
  * True when `raw` (as a tool call wrote it, relative to `scope.cwd`) stays inside the worktree:
  * every reading of it that a harness, a shell or the OS could make lands inside the real location
@@ -385,12 +371,6 @@ export function targetInside(raw: string, scope: TargetScope, how: ToolReading =
         const found = locate(place, rules.platform, shares, near);
         if (!found || !inside(found.real)) return false;
         if (scope.write && found.exists && found.links > 1) return false;
-        if (how.readFallback && !found.exists) {
-          for (const variant of readVariants(place)) {
-            const other = locate(variant, rules.platform, shares);
-            if (!other || (other.exists && !inside(other.real))) return false;
-          }
-        }
       }
     }
     return true;
@@ -462,20 +442,17 @@ const MCP_PATH_WORDS = new Set([
 ]);
 /** Tool-specific lists of paths: a Codex patch's changed files, each of which run.ts has judged already. */
 const LIST_FIELDS = new Map([["apply_patch", "changes"]]);
-/** Glob patterns: Claude Code's Glob pattern (an absolute one overrides `path`) and the filters of the search tools. */
+/** Glob patterns: Claude Code's Glob pattern (an absolute one overrides `path`) and Grep's file filter. */
 const PATTERN_FIELDS = new Map([
   ["Glob", "pattern"],
   ["Grep", "glob"],
-  ["find", "pattern"],
-  ["grep", "glob"],
 ]);
 /** Search tools that search the working folder when `path` is left out. */
-const SEARCH_TOOLS = new Set(["Glob", "Grep", "LS", "find", "grep", "ls"]);
-/** How Claude Code's and pi's file tools read drive paths on Windows. */
-const DRIVE_READINGS = new Map<string, DriveReading>([
-  ...["Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "NotebookRead", "Glob", "Grep", "LS"].map((t): [string, DriveReading] => [t, "letter"]),
-  ...["read", "write", "edit", "grep", "find", "ls"].map((t): [string, DriveReading] => [t, "pi"]),
-]);
+const SEARCH_TOOLS = new Set(["Glob", "Grep", "LS"]);
+/** How Claude Code's file tools read drive paths on Windows. */
+const DRIVE_READINGS = new Map<string, DriveReading>(
+  ["Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "NotebookRead", "Glob", "Grep", "LS"].map((t): [string, DriveReading] => [t, "letter"]),
+);
 /**
  * Claude Code's file tools whose schemas require absolute paths. Claude Code resolves a relative
  * one against its shell's current folder, which a `cd` can move, so the Town Hall cannot tell
@@ -551,9 +528,8 @@ export function reachesOutside(tool: string, input: unknown, scope: TargetScope)
       }
     }
     if (targets.length > MAX_TARGETS) return true;
-    // pi's read also tries lookalike spellings of a missing file.
     const drives = DRIVE_READINGS.get(tool);
-    const how: ToolReading = { ...(drives ? { drives } : {}), readFallback: tool === "read" };
+    const how: ToolReading = drives ? { drives } : {};
     const all = new Set([...targets, ...((listed as string[] | undefined) ?? [])]);
     return [...all].some((t) => !targetInside(t, scope, how));
   } catch {

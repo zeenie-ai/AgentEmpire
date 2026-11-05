@@ -38,23 +38,6 @@ export function claudeCategory(tool: string): ApprovalCategory {
   }
 }
 
-/** pi built-in tool names by approval category. */
-export function piCategory(tool: string): ApprovalCategory {
-  if (tool.startsWith("mcp__")) return "mcp";
-  switch (tool) {
-    case "read":
-    case "grep":
-    case "find":
-    case "ls":
-      return "read";
-    case "edit":
-    case "write":
-      return "write";
-    default:
-      return "command";
-  }
-}
-
 /** Shows paths inside the work folder relative to it, with forward slashes. */
 export function displayTarget(target: string, cwd: string): string {
   const abs = path.resolve(cwd, target);

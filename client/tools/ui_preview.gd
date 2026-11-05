@@ -338,9 +338,14 @@ func _state_one_agent() -> Dictionary:
 			tools.append(t)
 	s["tools"] = tools
 	s["tasks"] = [_demo.task_login(), _demo.task_tests()]
-	var providers: Array = _demo.providers()
-	providers.append({"id": "pi", "installed": false, "logged_in": false, "billing_hint": "unknown",
-		"message": "pi was not found on this machine."})
+	# Codex missing, so the harness cards show a ready one and one that is not installed.
+	var providers: Array = []
+	for p: Dictionary in _demo.providers():
+		if String(p["id"]) == "codex":
+			providers.append({"id": "codex", "installed": false, "logged_in": false, "billing_hint": "unknown",
+				"message": "Codex CLI was not found: install it, or set AURELHAVEN_CODEX_BIN"})
+		else:
+			providers.append(p)
 	s["providers"] = providers
 	return s
 

@@ -464,7 +464,7 @@ func _update_dim() -> void:
 func _on_town_hall_mode_requested(mode: String) -> void:
 	if mode == TownHallLauncher.MODE_REAL:
 		confirm("Use real agents?",
-			"Real agents work in your folders on your own Claude Code, Codex or pi sign-in, and what they use is real (your Mana budget caps it). The practice Town Hall closes and your real town opens.",
+			"Real agents work in your folders on your own Claude Code or Codex sign-in, and what they use is real (your Mana budget caps it). The practice Town Hall closes and your real town opens.",
 			_switch_town_hall.bind(TownHallLauncher.MODE_REAL))
 	else:
 		confirm("Use practice agents?",

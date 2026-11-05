@@ -543,6 +543,12 @@ func _build_agent(w: SimWorld, agent_id: String) -> void:
 static func describe_agent(w: SimWorld, agent_id: String) -> String:
 	var a := Realm.agent(agent_id)
 	var home := w.agent_home(agent_id) if w != null else null
+	# An agent on a harness the Town Hall no longer runs: what it finished, else that it can only be retired.
+	if TownLink.unsupported(a):
+		var done := AgentUi.review_task(agent_id)
+		if not done.is_empty():
+			return "Finished \"%s\": ready for review." % J.gs(done, "title")
+		return AgentUi.blocked_text(J.gs(a, "blocked_reason"), a) + "."
 	match J.gs(a, "lifecycle"):
 		"training":
 			return "Training at the Keep: %d s left." % int(ceil(Game.link.training_left_s(agent_id)))

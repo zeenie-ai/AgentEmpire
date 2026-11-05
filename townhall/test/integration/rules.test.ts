@@ -202,7 +202,7 @@ describe("economy rules through the protocol", () => {
 
   it("lists providers, models and folders", async () => {
     const providers = await c.ok("check_providers", {});
-    expect(providers.providers.map((p: { id: string }) => p.id)).toEqual(["claude", "codex", "pi"]);
+    expect(providers.providers.map((p: { id: string }) => p.id)).toEqual(["claude", "codex"]);
     expect(providers.providers[0].installed).toBe(true);
     const models = await c.ok("list_models", { provider: "codex" });
     expect(models.models[0].default).toBe(true);
@@ -230,7 +230,7 @@ describe("approval rules for commands through the protocol", () => {
     town = await TestTown.start("command-rules", {
       adapters: () => {
         const fake = (id: Provider) => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
-        return { claude: fake("claude"), codex: fake("codex"), pi: fake("pi") };
+        return { claude: fake("claude"), codex: fake("codex") };
       },
     });
     c = await town.client();

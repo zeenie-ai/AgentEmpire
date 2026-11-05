@@ -4,6 +4,7 @@ import type {
   Agent,
   AgentActivity,
   AgentLifecycle,
+  AgentProvider,
   AgentStats,
   ApprovalMode,
   Billing,
@@ -13,7 +14,7 @@ import type {
   Tile,
   ToolType,
 } from "../protocol/objects.js";
-import { Provider } from "../protocol/objects.js";
+import { isProvider, Provider } from "../protocol/objects.js";
 import { displayPath, validateWorkFolder } from "../security/path-guard.js";
 import type { Ctx } from "./context.js";
 import { scaleCost, toResources, zeroResources, type Resources } from "./economy.js";
@@ -23,7 +24,8 @@ import { computeRank, median, rankAtLeast } from "./ranks.js";
 export interface AgentRow {
   id: string;
   name: string;
-  provider: Provider;
+  /** A legacy harness only in a town an older Town Hall made (see LegacyProvider). */
+  provider: AgentProvider;
   model: string;
   role: Role;
   instructions: string;
@@ -88,6 +90,11 @@ const EMPTY_STATS: AgentStats = {
 };
 
 const ACTIVE_TASK_STATES = "('preparing','running','awaiting_approval')";
+
+/** What the player reads about an agent on a legacy harness: it never works again, so retire it. */
+export function legacyHarnessMessage(provider: string): string {
+  return `${provider} is no longer supported; retire this agent`;
+}
 
 export class AgentService {
   private readonly dirty: DirtySet;
@@ -209,6 +216,8 @@ export class AgentService {
   /** Lifecycle, activity and blocked reason derived from tools, tasks, Mana and the provider. */
   private computeStatus(r: AgentRow): { lifecycle: AgentLifecycle; activity: AgentActivity; blocked_reason: BlockedReason | null } {
     if (r.retired_at) return { lifecycle: "retired", activity: "idle", blocked_reason: null };
+    // A legacy harness never runs again: the agent stays blocked until the player retires it.
+    if (!isProvider(r.provider)) return { lifecycle: r.lifecycle, activity: "blocked", blocked_reason: "provider_unsupported" };
     if (r.lifecycle === "training") return { lifecycle: "training", activity: "idle", blocked_reason: null };
     const toolsOk = this.ctx.tools.requiredToolsActive(r.id, r.role);
     let lifecycle: AgentLifecycle = r.lifecycle;
@@ -230,13 +239,18 @@ export class AgentService {
 
   /** True when the agent can be given a new run right now (lifecycle and blockers only). */
   isDispatchable(r: AgentRow): boolean {
-    if (r.retired_at || r.lifecycle !== "active") return false;
+    if (r.retired_at || r.lifecycle !== "active" || !isProvider(r.provider)) return false;
     if (r.workspace_ready !== 1 || r.workspace_error) return false;
     if (!this.ctx.tools.requiredToolsActive(r.id, r.role)) return false;
     return this.ctx.providers.isOnline(r.provider);
   }
 
-  private checkApprovalMode(mode: ApprovalMode, provider: Provider, rank: string): void {
+  /** Refuses new work and spending for an agent on a legacy harness, with what the player should do. */
+  requireHarness(r: AgentRow): void {
+    if (!isProvider(r.provider)) throw fail.invalidState(legacyHarnessMessage(r.provider));
+  }
+
+  private checkApprovalMode(mode: ApprovalMode, provider: AgentProvider, rank: string): void {
     const def = this.ctx.econ.data.approval_modes[mode];
     if (!def) throw fail.badRequest(`unknown approval mode ${mode}`);
     const age = this.ctx.ages.current();
@@ -244,13 +258,6 @@ export class AgentService {
     if (!rankAtLeast(this.ctx.econ, rank, def.min_rank)) throw fail.rank(`${mode} needs rank ${def.min_rank}`);
     if (def.providers && !def.providers.includes(provider)) {
       throw fail.badRequest(`${mode} is only available for ${def.providers.join(", ")}`);
-    }
-  }
-
-  /** pi serves many model providers, so a pi agent's model names both: "<pi provider>/<model id>". */
-  private checkModel(provider: Provider, model: string): void {
-    if (provider === "pi" && !/^[A-Za-z0-9._-]+\/\S+$/.test(model.trim())) {
-      throw fail.badRequest('a pi model is written "<pi provider>/<model id>", for example "openrouter/deepseek/deepseek-chat"');
     }
   }
 
@@ -282,7 +289,6 @@ export class AgentService {
     if (role.age > age) throw fail.age(`${role.name} can be summoned from Age ${role.age}`);
     const mode = spec.approval_mode ?? this.defaultApprovalMode();
     this.checkApprovalMode(mode, spec.provider, econ.rankOrder[0]!);
-    this.checkModel(spec.provider, spec.model);
     if (this.nonRetiredCount() >= econ.agentLimit(age)) {
       throw fail.limit(`Age ${age} allows at most ${econ.agentLimit(age)} agents`);
     }
@@ -353,6 +359,7 @@ export class AgentService {
       if (r.lifecycle === "training") throw fail.invalidState("the agent is still training");
       if (r.lifecycle === "retired") throw fail.invalidState("the agent is retired");
       if (r.home_tile_json) throw fail.invalidState("the agent already has a home");
+      this.requireHarness(r);
       const home = this.ctx.econ.data.buildings[this.ctx.econ.data.roles[r.role]!.home];
       const cost = this.graceFrees(r, "home") ? zeroResources() : toResources(home?.cost ?? {});
       this.ctx.treasury.charge(cost, "home", agentId, `home:${agentId}`);
@@ -404,7 +411,6 @@ export class AgentService {
       if (r.version !== expectedVersion) throw fail.conflict(`agent version is ${r.version}, not ${expectedVersion}`);
       if (r.retired_at) throw fail.invalidState("the agent is retired");
       if (patch.approval_mode) this.checkApprovalMode(patch.approval_mode, r.provider, r.rank);
-      if (patch.model !== undefined) this.checkModel(r.provider, patch.model);
       const seals = patch.seals ? { ...this.seals(r), ...patch.seals } : this.seals(r);
       this.ctx.db.run(
         "UPDATE agents SET name = ?, model = ?, instructions = ?, approval_mode = ?, seals_json = ? WHERE id = ?",

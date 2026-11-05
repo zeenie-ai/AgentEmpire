@@ -92,6 +92,6 @@ Bundled in `client/ui/fonts/`, each folder with its `OFL.txt`:
   third-party notices are listed there.
 - **GUT 9.7.1** (MIT licence), by Tom "Butch" Wesley: the client's test framework, bundled in
   `client/addons/gut/`.
-- The Town Hall runs on **Node.js** with **better-sqlite3**, **ws**, **zod**, **pino** and the
-  **pi coding agent** (`@earendil-works/pi-coding-agent`), all under the MIT licence; it is
-  written in **TypeScript** (Apache 2.0) and tested with **vitest** (MIT).
+- The Town Hall runs on **Node.js** with **better-sqlite3**, **ws**, **zod** and **pino**, all
+  under the MIT licence; it is written in **TypeScript** (Apache 2.0) and tested with **vitest**
+  (MIT).

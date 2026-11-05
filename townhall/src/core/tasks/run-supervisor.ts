@@ -1,10 +1,11 @@
 import { toJson } from "../../db/db.js";
 import { isTownError } from "../../protocol/errors.js";
-import type { PauseReason, ProgressPhase, TaskResult } from "../../protocol/objects.js";
+import type { PauseReason, ProgressPhase, Provider, TaskResult } from "../../protocol/objects.js";
+import { isProvider } from "../../protocol/objects.js";
 import { TASK_PROGRESS_MIN_INTERVAL_MS } from "../../protocol/version.js";
 import type { RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../../providers/types.js";
 import { canonicalJson } from "../approvals.js";
-import type { AgentRow } from "../agents.js";
+import { legacyHarnessMessage, type AgentRow } from "../agents.js";
 import type { TimerHandle } from "../clock.js";
 import type { Ctx } from "../context.js";
 import type { Size } from "../economy.js";
@@ -26,7 +27,7 @@ const STOP_PRIORITY: Record<StopRequest["kind"], number> = { pause: 1, stop_revi
 interface ActiveRun {
   taskId: string;
   agentId: string;
-  provider: AgentRow["provider"];
+  provider: Provider;
   attempt: number;
   size: Size;
   handle: RunHandle | null;
@@ -99,10 +100,17 @@ export class RunSupervisor {
   async start(taskId: string): Promise<void> {
     const task = this.ctx.tasks.row(taskId);
     const agent = this.ctx.agents.row(task.agent_id);
+    const provider = agent.provider;
+    if (!isProvider(provider)) {
+      // The scheduler never dispatches an agent on a legacy harness (AgentService.isDispatchable).
+      this.failTask(taskId, "INVALID_STATE", legacyHarnessMessage(provider));
+      this.ctx.scheduler.kick();
+      return;
+    }
     const run: ActiveRun = {
       taskId,
       agentId: agent.id,
-      provider: agent.provider,
+      provider,
       attempt: task.attempt,
       size: task.size as Size,
       handle: null,
@@ -163,7 +171,7 @@ export class RunSupervisor {
       const cur = this.ctx.tasks.row(taskId);
       if (cur.state !== "preparing" || run.stop || this.stopping) return null;
       // Build the request before the pending feedback is consumed below.
-      const req = this.buildRequest(cur, this.ctx.agents.row(agent.id), ws);
+      const req = this.buildRequest(cur, this.ctx.agents.row(agent.id), provider, ws);
       this.ctx.tasks.setState(taskId, "running");
       const now = this.ctx.clock.iso();
       this.ctx.db.run(
@@ -183,7 +191,7 @@ export class RunSupervisor {
 
     let handle: RunHandle;
     try {
-      handle = this.ctx.providers.get(agent.provider).start(request, this.hostFor(run, ws, agent));
+      handle = this.ctx.providers.get(provider).start(request, this.hostFor(run, ws, agent));
     } catch (err) {
       void this.onRunEnded(run, {
         kind: "failed",
@@ -202,7 +210,7 @@ export class RunSupervisor {
     if (run.stop) this.sendInterrupt(run);
   }
 
-  private buildRequest(task: TaskRow, agent: AgentRow, ws: TaskWorkspace): RunRequest {
+  private buildRequest(task: TaskRow, agent: AgentRow, provider: Provider, ws: TaskWorkspace): RunRequest {
     const fresh = this.ctx.tasks.row(task.id);
     const hasResume = !!(fresh.session_id || fresh.provider_state_json || fresh.pending_feedback);
     let party: RunRequest["party"] = null;
@@ -221,7 +229,7 @@ export class RunSupervisor {
       taskId: fresh.id,
       agentId: agent.id,
       attempt: fresh.attempt,
-      provider: agent.provider,
+      provider,
       model: agent.model,
       role: agent.role,
       size: fresh.size,

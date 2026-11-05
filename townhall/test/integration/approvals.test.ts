@@ -5,12 +5,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Economy } from "../../src/core/economy.js";
 import { defaultEconomyPath, defaultPricingPath, srcPath } from "../../src/paths.js";
 import { CodexCliAdapter } from "../../src/providers/codex/adapter.js";
-import { bundledPiCli } from "../../src/providers/common/exec.js";
 import { FakeProvider } from "../../src/providers/fake/adapter.js";
 import { ScenarioLibrary, type Step } from "../../src/providers/fake/scenarios.js";
-import { PiAdapter } from "../../src/providers/pi/adapter.js";
 import { harnessDeps } from "../../src/providers/real.js";
-import type { ProviderAdapter } from "../../src/providers/types.js";
 import { makeRepo } from "../helpers/git.js";
 import { summonAgent, TestTown, type TestClient } from "../helpers/harness.js";
 import { FIXTURES, readLog, writeJson } from "../helpers/run-host.js";
@@ -100,14 +97,10 @@ describe("approval modes, scopes and rules", () => {
 });
 
 describe("tool paths that lead outside the worktree reach the player", () => {
-  const PI_CLI = bundledPiCli();
-  const env: Record<string, string | undefined> = { ...process.env };
   let town: TestTown;
   let c: TestClient;
   let scout: string;
-  let pim: string;
   let outside = "";
-  let home = "";
 
   type Attack = { tool: string; category: "read" | "write" | "mcp"; input: Record<string, unknown> };
   // Each spelling a harness reads as a place outside the worktree. In trusted_edits they all
@@ -115,17 +108,17 @@ describe("tool paths that lead outside the worktree reach the player", () => {
   // ~ as its own home folder, so the home paths name a folder that does not exist.
   const NOWHERE = "aurelhaven-test-nowhere";
   const attacks = (out: string): Attack[] => [
-    { tool: "write", category: "write", input: { path: `~/${NOWHERE}/.bashrc`, content: "export EVIL=1\n" } },
-    { tool: "edit", category: "write", input: { path: `@${path.join(out, "notes.txt")}`, edits: [] } },
-    { tool: "read", category: "read", input: { path: pathToFileURL(path.join(out, "secret.txt")).href } },
+    { tool: "mcp__files__write_file", category: "mcp", input: { path: `~/${NOWHERE}/.bashrc`, content: "export EVIL=1\n" } },
+    { tool: "mcp__files__edit_file", category: "mcp", input: { path: `@${path.join(out, "notes.txt")}`, edits: [] } },
+    { tool: "mcp__files__read_file", category: "mcp", input: { path: pathToFileURL(path.join(out, "secret.txt")).href } },
     { tool: "Grep", category: "read", input: { pattern: "token", path: `~/${NOWHERE}`, output_mode: "content" } },
     { tool: "Glob", category: "read", input: { pattern: `${out.replace(/\\/g, "/")}/*`, path: "src" } },
     { tool: "NotebookEdit", category: "write", input: { notebook_path: path.join(out, "nb.ipynb"), new_source: "x" } },
-    { tool: "ls", category: "read", input: { path: `$HOME/${NOWHERE}` } },
+    { tool: "mcp__files__list_directory", category: "mcp", input: { path: `$HOME/${NOWHERE}` } },
     // The repository's .git, which every worktree shares: its pointer file, a nested one, a hook.
-    { tool: "write", category: "write", input: { path: ".git", content: "gitdir: evil\n" } },
-    { tool: "write", category: "write", input: { path: "sub/.git/config", content: "[core]\n\tfsmonitor = ./evil.sh\n" } },
-    { tool: "edit", category: "write", input: { path: ".GIT/hooks/post-commit", edits: [] } },
+    { tool: "mcp__files__write_file", category: "mcp", input: { path: ".git", content: "gitdir: evil\n" } },
+    { tool: "mcp__files__write_file", category: "mcp", input: { path: "sub/.git/config", content: "[core]\n\tfsmonitor = ./evil.sh\n" } },
+    { tool: "mcp__files__edit_file", category: "mcp", input: { path: ".GIT/hooks/post-commit", edits: [] } },
     // Claude Code's file tools take absolute paths; a relative one starts from a folder that can move.
     { tool: "Read", category: "read", input: { file_path: "README.md" } },
     { tool: "Write", category: "write", input: { file_path: "notes.md", content: "x" } },
@@ -136,11 +129,9 @@ describe("tool paths that lead outside the worktree reach the player", () => {
 
   beforeAll(async () => {
     town = await TestTown.start("approval-paths", {
-      adapters: ({ root, dataDir }) => {
+      adapters: ({ root }) => {
         outside = path.join(root, "outside");
-        home = path.join(root, "home");
         mkdirSync(outside, { recursive: true });
-        mkdirSync(home, { recursive: true });
         writeFileSync(path.join(outside, "secret.txt"), "secret\n");
         const library = new ScenarioLibrary(srcPath("providers", "fake", "scenarios"));
         library.add({
@@ -158,7 +149,7 @@ describe("tool paths that lead outside the worktree reach the player", () => {
           steps: [
             { op: "emit", kind: "message", text: "Waiting for the link." },
             { op: "hang", until: "nudge" },
-            ask({ tool: "write", category: "write", input: { path: "linked/escape.txt", content: "x" } }),
+            ask({ tool: "mcp__files__write_file", category: "mcp", input: { path: "linked/escape.txt", content: "x" } }),
             ask({ tool: "Read", category: "read", input: { file_path: "linked/secret.txt" } }),
             { op: "emit", kind: "message", text: "Done with the link." },
             { op: "hang", until: "nudge" },
@@ -166,28 +157,12 @@ describe("tool paths that lead outside the worktree reach the player", () => {
             { op: "end", summary: "Followed the link." },
           ],
         });
-        const fake = (id: "claude" | "codex" | "pi") => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
-        let pi: ProviderAdapter = fake("pi");
-        if (PI_CLI) {
-          // The real pi with a scripted model, its home folder a temp folder.
-          Object.assign(env, {
-            AURELHAVEN_PI_BIN: PI_CLI,
-            PI_CODING_AGENT_DIR: path.join(root, "pi-agent"),
-            PI_OFFLINE: "1",
-            USERPROFILE: home,
-            HOME: home,
-          });
-          const deps = harnessDeps({ econ: Economy.load(defaultEconomyPath()).data, dataDir, pricingPath: defaultPricingPath(), env });
-          pi = new PiAdapter(deps, { extraArgs: ["-e", path.join(FIXTURES, "pi-faux-provider.mjs"), "--offline"] });
-        }
-        return { claude: fake("claude"), codex: fake("codex"), pi };
+        const fake = (id: "claude" | "codex") => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
+        return { claude: fake("claude"), codex: fake("codex") };
       },
     });
     c = await town.client();
     scout = await summonAgent(c, { name: "Scout", workspace: makeRepo(town.work, "scout") });
-    if (PI_CLI) {
-      pim = await summonAgent(c, { name: "Pim", provider: "pi", model: "faux/faux-1", workspace: makeRepo(town.work, "pim"), tile: { x: 60, y: 52 } });
-    }
   });
 
   afterAll(async () => {
@@ -233,7 +208,7 @@ describe("tool paths that lead outside the worktree reach the player", () => {
     const link = path.join(worktreeOf(taskId).cwd, "linked");
     symlinkSync(outside, link, process.platform === "win32" ? "junction" : "dir");
     await c.ok("nudge_task", { task_id: taskId, message: "The link is there." });
-    await denyOutside(taskId, "write");
+    await denyOutside(taskId, "mcp__files__write_file");
     await denyOutside(taskId, "Read");
     await c.waitEvent((e) => e.type === "task_activity" && e.payload.task_id === taskId && e.payload.entry.text.includes("Done with the link"));
     // Gone again before the result is committed.
@@ -242,27 +217,6 @@ describe("tool paths that lead outside the worktree reach the player", () => {
     await c.waitTask(taskId, "awaiting_review");
     expect(cards(taskId)).toHaveLength(2);
     expect(existsSync(path.join(outside, "escape.txt"))).toBe(false);
-  });
-
-  it.skipIf(!PI_CLI)("pi: writes to ~, @<path> and file:// wait for the player, and a denial keeps them from happening", async () => {
-    env.AURELHAVEN_PI_FAUX_SCRIPT = writeJson(town.root, "pi-paths.json", {
-      responses: [
-        { tool: "write", args: { path: `~/${NOWHERE}/.bashrc`, content: "export EVIL=1\n" } },
-        { tool: "write", args: { path: `@${path.join(outside, "at.txt")}`, content: "x\n" } },
-        { tool: "write", args: { path: pathToFileURL(path.join(outside, "url.txt")).href, content: "x\n" } },
-        { tool: "write", args: { path: "notes.md", content: "# Notes\n" } },
-        { text: "Wrote notes.md." },
-      ],
-    });
-    const taskId = await assign(pim, "Write some notes.");
-    for (let i = 0; i < 3; i++) await denyOutside(taskId, "write");
-    const review = await c.waitTask(taskId, "awaiting_review", 30_000);
-    expect(review.payload.task.result.summary).toBe("Wrote notes.md.");
-    expect(cards(taskId)).toHaveLength(3);
-    expect(existsSync(path.join(home, NOWHERE))).toBe(false);
-    expect(existsSync(path.join(outside, "at.txt"))).toBe(false);
-    expect(existsSync(path.join(outside, "url.txt"))).toBe(false);
-    expect(readFileSync(path.join(worktreeOf(taskId).cwd, "notes.md"), "utf8")).toBe("# Notes\n");
   });
 
   it("Codex: a command's extra sandbox access and its working folder are judged like file paths", async () => {
@@ -279,8 +233,8 @@ describe("tool paths that lead outside the worktree reach the player", () => {
         });
         const deps = harnessDeps({ econ: Economy.load(defaultEconomyPath()).data, dataDir, pricingPath: defaultPricingPath(), env: codexEnv });
         const library = new ScenarioLibrary(srcPath("providers", "fake", "scenarios"));
-        const fake = (id: "claude" | "pi") => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
-        return { claude: fake("claude"), codex: new CodexCliAdapter(deps), pi: fake("pi") };
+        const fake = (id: "claude") => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
+        return { claude: fake("claude"), codex: new CodexCliAdapter(deps) };
       },
     });
     const cc = await codexTown.client();

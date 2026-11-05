@@ -558,6 +558,56 @@ func test_budget_dialog_saves_and_confirms_a_raise() -> void:
 	assert_true(bool((link.last("set_budget")["args"] as Dictionary)["confirm_raise"]))
 
 
+# --- an agent on a harness the Town Hall no longer runs ---------------------------------------------------
+
+## A town an older Town Hall made: Corvin was summoned on pi, which now leaves him blocked until he
+## is retired, and that Town Hall still names pi among its harnesses and in its Mana figures.
+func _legacy_state() -> Dictionary:
+	var s := AgentUiDemo.state()
+	var corvin: Dictionary = (s["agents"] as Array)[1]
+	corvin.merge({"provider": "pi", "model": "openrouter/deepseek/deepseek-chat", "activity": "blocked",
+		"blocked_reason": Protocol.BlockedReason.PROVIDER_UNSUPPORTED}, true)
+	(s["providers"] as Array).append({"id": "pi", "installed": true, "version": "0.87.1", "logged_in": true, "billing_hint": "api_key"})
+	var mana: Dictionary = s["mana"]
+	(mana["by_provider"] as Dictionary)["pi"] = 40 * AgentUiDemo.MICROS
+	(mana["provider_windows"] as Array).append({"provider": "pi", "used_percent": 80.0, "resets_at": null})
+	return s
+
+
+func test_an_agent_on_a_legacy_harness_shows_its_review_then_that_it_can_only_be_retired() -> void:
+	var s := _legacy_state()
+	Realm.apply_state(s)
+	var corvin := Realm.agent("agt_corvin")
+	assert_true(TownLink.unsupported(corvin))
+	var status := AgentUi.agent_status(corvin)
+	assert_eq(String(status["text"]), "Result ready for review", "the work it finished comes first")
+	assert_eq(String(status["task_id"]), "tsk_docs")
+	s["tasks"] = [AgentUiDemo.task_login(), AgentUiDemo.task_tests()]
+	Realm.apply_state(s)
+	status = AgentUi.agent_status(Realm.agent("agt_corvin"))
+	assert_eq(String(status["text"]), "Blocked: pi is no longer supported; retire this agent")
+	assert_eq(String(status["mood"]), "blocked")
+	assert_eq(SelectionPanel.describe_agent(null, "agt_corvin"), "Blocked: pi is no longer supported; retire this agent.")
+	var retired := corvin.duplicate()
+	retired["lifecycle"] = Protocol.AgentLifecycle.RETIRED
+	assert_false(TownLink.unsupported(retired), "a retired agent is only retired")
+
+
+func test_budget_and_summon_offer_only_the_harnesses_the_town_hall_runs() -> void:
+	Realm.apply_state(_legacy_state())
+	var b := _open(BudgetDialog.new()) as BudgetDialog
+	await wait_process_frames(1)
+	var ids := b.harness_ids()
+	assert_eq(ids.size(), 2)
+	assert_false("pi" in ids, "no billing row for a legacy harness")
+	assert_false(b.billing_payload().has("pi"))
+	assert_eq(b._windows.get_child_count(), 2, "the usage windows of Claude Code and Codex only")
+	var d := _open(SummonDialog.new()) as SummonDialog
+	await wait_process_frames(1)
+	assert_eq(d._harness_cards.size(), 2)
+	assert_false(d._harness_cards.has("pi"), "no harness card for it")
+
+
 # --- the frame --------------------------------------------------------------------------------------------------
 
 func test_windows_fit_1280x720_and_scroll() -> void:

@@ -15,6 +15,7 @@ import type {
   TaskSize,
   TaskState,
 } from "../../protocol/objects.js";
+import { LegacyProvider } from "../../protocol/objects.js";
 import { ACTIVITY_TEXT_MAX_BYTES, DIFF_PATCH_MAX_BYTES, RECENT_TASKS_IN_STATE } from "../../protocol/version.js";
 import { capBytes } from "../../security/redact.js";
 import { computeBounty, splitPartyXp, splitReward, zeroRewards, type ZeroReason } from "../bounty.js";
@@ -269,6 +270,7 @@ export class TaskService {
       }
       const agent = this.ctx.agents.row(agentId);
       if (agent.retired_at) throw fail.invalidState("the agent is retired");
+      this.ctx.agents.requireHarness(agent);
       const age = this.ctx.ages.current();
       const waiting =
         this.ctx.db.get<{ n: number }>(
@@ -394,6 +396,7 @@ export class TaskService {
 
   resume(taskId: string, extendSealMana?: number): void {
     const r = this.row(taskId);
+    this.ctx.agents.requireHarness(this.ctx.agents.row(r.agent_id));
     if (r.state === "failed") {
       this.ctx.db.tx(() => {
         this.requeueFront(taskId);
@@ -647,6 +650,7 @@ export class TaskService {
       }
       const agent = this.ctx.agents.row(r.agent_id);
       if (agent.retired_at) throw fail.invalidState("the agent is retired");
+      this.ctx.agents.requireHarness(agent);
       this.requeueFront(taskId);
       this.ctx.db.run(
         "UPDATE tasks SET attempt = attempt + 1, pending_feedback = ?, result_json = NULL, finished_at = NULL, rift_retries = 0 WHERE id = ?",
@@ -785,6 +789,8 @@ export class TaskService {
   recoverAfterRestart(): void {
     this.ctx.db.tx(() => {
       this.ctx.approvals.orphanAllPending();
+      // A legacy harness never runs again, so a usage limit it reached can no longer clear.
+      for (const p of LegacyProvider.options) this.ctx.incidents.resolve(incidentKey.fontDarkProvider(p));
       const live = this.ctx.db.all<TaskRow>("SELECT * FROM tasks WHERE state IN ('preparing','running','awaiting_approval')");
       for (const r of live) {
         const segment = r.run_started_at ? Math.max(0, Date.parse(r.updated_at) - Date.parse(r.run_started_at)) : 0;
