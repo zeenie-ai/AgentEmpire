@@ -201,7 +201,7 @@ func _child() -> void:
 	_check(settings.get_value("townhall/provider", "") == "real", "townhall/provider is now real")
 	_check(game.world != null and String(game.world.town_id) != practice_town, "the real town is not the practice town")
 	var providers: Array = realm.providers
-	_check(providers.size() == 3, "the real Town Hall probed three harnesses")
+	_check(providers.size() == 2, "the real Town Hall probed both harnesses")
 	for p: Variant in providers:
 		var d := J.d(p)
 		_step("  %s: installed=%s signed_in=%s %s" % [J.gs(d, "id"), str(J.b(d.get("installed"))), str(J.b(d.get("logged_in"))), J.gs(d, "message")])

@@ -32,7 +32,7 @@ identify you.
 
 This section is about AgentEmpire for Windows, macOS and Linux only; the Android app has no
 agents. The desktop version also runs on your computer and sends nothing to us. If you choose
-real agents, the game runs agent programs with your own sign-ins: Claude Code, Codex or pi.
+real agents, the game runs agent programs with your own sign-ins: Claude Code or Codex.
 Those programs send your tasks and the files they work on to the AI provider you signed in
 with, under that provider's terms and privacy policy. Practice agents run entirely on your
 computer.

@@ -26,8 +26,8 @@ of `client/`, `townhall/`, `protocol/` and `scripts/`.
   by default), import the client, and look at the `rive_states` and `task_tracker` shots of
   `client/tools/ui_preview.gd`. Never edit `client/art/rive/` by hand, and never run
   `rive push`: it uploads to a Rive account.
-- **Agents run on existing harnesses only**: the Claude Code CLI, `codex app-server` and pi's RPC
-  mode. Do not add an agent SDK or a model loop of our own.
+- **Agents run on existing harnesses only**: the Claude Code CLI and `codex app-server`. Do not
+  add an agent SDK or a model loop of our own.
 - **No destructive git** in the Town Hall or its tests (`reset --hard`, `clean`, `stash`, forced
   worktree removal); a unit test enforces it.
 - **Test Town Halls stay isolated:** a temporary `AURELHAVEN_DATA_DIR`,

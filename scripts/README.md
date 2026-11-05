@@ -61,10 +61,9 @@ It syncs the shared files into the client, imports it, exports each preset once 
 targets share one universal export) and compiles the Town Hall into a new `townhall/dist/`. For
 each target it stages a package in `build/release/<name>/`: the game; the compiled Town Hall with
 its `src/` (read at run time), `scripts/launch.mjs`, `release.json` and its packages for that
-platform (`npm ci --omit=dev --ignore-scripts --os --cpu`, keeping only that platform's
-esbuild); Node.js 22.20.0 for that platform, checked against nodejs.org's `SHASUMS256.txt` and
-cached in `.tools/downloads/`; `protocol/economy.json` and `pricing.json`; `CREDITS.md`,
-`licenses/` and a `README.txt`. It zips each into `dist/AgentEmpire-<version>-<target>.zip`, with
+platform (`npm ci --omit=dev --ignore-scripts --os --cpu`); Node.js 22.20.0 for that platform,
+checked against nodejs.org's `SHASUMS256.txt` and cached in `.tools/downloads/`;
+`protocol/economy.json` and `pricing.json`; `CREDITS.md`, `licenses/` and a `README.txt`. It zips each into `dist/AgentEmpire-<version>-<target>.zip`, with
 Unix permissions that keep the programs runnable, and writes `dist/SHA256SUMS.txt` and
 `dist/RELEASE_NOTES.md`. It needs `setup.mjs` first (`--all-templates` for other platforms), and
 nodejs.org and the npm registry. There is no package for Linux on ARM.
@@ -89,14 +88,13 @@ exits with code 0 on a pass, 1 on a failure and 2 when it finds no Godot.
 
 1. The package's Node.js runs its compiled Town Hall with practice agents, which writes its
    runtime file and answers HTTP on its port.
-2. esbuild's native program, which pi needs for its extensions, runs with that Node.js.
-3. The game, started headless, starts its own practice Town Hall and connects to it, as that
+2. The game, started headless, starts its own practice Town Hall and connects to it, as that
    Town Hall's log shows within 90 s.
 
 Everything runs with `AURELHAVEN_DISCOVERY_FILE=off`, port 0 and its data in a temporary folder,
 `aurelhaven-smoke-*`; every process it started is stopped and the folder removed. The game still
 reads your own game settings: if you last chose real agents in the game, it starts a real Town
-Hall instead and the third check fails. It exits with code 1 on any failure, and 2 for a folder
+Hall instead and the second check fails. It exits with code 1 on any failure, and 2 for a folder
 without `townhall/release.json`. The release workflow runs it on Windows, Linux and Apple Silicon.
 
 **`check-exe.ps1`** `[-Seconds 12] [-Exe <path>]` (Windows) starts the exported game

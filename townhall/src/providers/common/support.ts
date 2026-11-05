@@ -12,7 +12,7 @@ import type { FramingNames } from "./prompt.js";
 export interface HarnessDeps {
   /** The environment harnesses inherit (process.env in production). */
   env: Env;
-  /** The Town Hall data folder: per-run scratch files and pi sessions live under it, never in a worktree. */
+  /** The Town Hall data folder: per-run scratch files live under it, never in a worktree. */
   dataDir: string;
   /** economy.json: add-on grants per provider, plus role and size names for the task framing. */
   tools: EconomyTools;

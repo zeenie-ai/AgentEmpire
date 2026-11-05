@@ -37,23 +37,6 @@ export function claudeCategory(tool: string): ApprovalCategory {
   }
 }
 
-/** pi built-in tool names by approval category. */
-export function piCategory(tool: string): ApprovalCategory {
-  if (tool.startsWith("mcp__")) return "mcp";
-  switch (tool) {
-    case "read":
-    case "grep":
-    case "find":
-    case "ls":
-      return "read";
-    case "edit":
-    case "write":
-      return "write";
-    default:
-      return "command";
-  }
-}
-
 /** Commands that can destroy work or reach far are high risk: they are only ever allowed once. */
 const HIGH_RISK_COMMAND = [
   /\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r/i,

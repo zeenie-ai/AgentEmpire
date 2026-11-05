@@ -1,6 +1,7 @@
 import { fromJson, toJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
-import type { Billing, Mana, ManaLevel, ManaPeriod, Provider, ProviderWindow } from "../protocol/objects.js";
+import type { Billing, Mana, ManaLevel, ManaPeriod, ProviderWindow } from "../protocol/objects.js";
+import { isProvider, Provider } from "../protocol/objects.js";
 import type { RateWindow } from "../providers/types.js";
 import type { TimerHandle } from "./clock.js";
 import type { Ctx } from "./context.js";
@@ -18,12 +19,12 @@ export interface BudgetConfig {
 type ByProvider = Record<Provider, number>;
 
 function zeroByProvider(): ByProvider {
-  return { claude: 0, codex: 0, pi: 0 };
+  return { claude: 0, codex: 0 };
 }
 
 /** Where the providers' usage windows are kept between runs and restarts. */
 const WINDOWS_KEY = "provider_windows";
-const PROVIDER_ORDER: Provider[] = ["claude", "codex", "pi"];
+const PROVIDER_ORDER: readonly Provider[] = Provider.options;
 
 interface PeriodRow {
   id: number;
@@ -90,15 +91,11 @@ export function levelFor(capMicros: number, spentMicros: number, stages: { dim: 
   return "normal";
 }
 
-/**
- * Default billing per provider. pi prices every assistant message from its own model catalog,
- * so it defaults to API-key billing; the player can mark it as a subscription in set_budget.
- */
+/** Default billing per provider: API-key billing when the harness's key is set, else a subscription. */
 function detectBilling(env: Record<string, string | undefined>): ProviderBilling {
   return {
     claude: env.ANTHROPIC_API_KEY ? "api_key" : "subscription",
     codex: env.OPENAI_API_KEY || env.CODEX_API_KEY ? "api_key" : "subscription",
-    pi: "api_key",
   };
 }
 
@@ -136,8 +133,8 @@ export class ManaService {
       pool_micros: this.ctx.econ.usdToMicros(this.m.default_pool_usd),
       billing: detected,
     });
-    // Budgets saved before pi existed (protocol 1.1) have no pi entry.
-    return { ...cfg, billing: { ...detected, ...cfg.billing } };
+    // Only the harnesses the Town Hall runs: a budget an older Town Hall saved may also bill a legacy one.
+    return { ...cfg, billing: { claude: cfg.billing?.claude ?? detected.claude, codex: cfg.billing?.codex ?? detected.codex } };
   }
 
   defaultBilling(provider: Provider): Billing {
@@ -211,7 +208,8 @@ export class ManaService {
       reserved_micros: reserved,
       remaining_micros: Math.max(0, p.cap_micros - p.spent_micros - reserved),
       level: levelFor(p.cap_micros, p.spent_micros, this.m.stages, this.m.lights_out_fraction),
-      by_provider: { claude: byProvider.claude, codex: byProvider.codex, pi: byProvider.pi },
+      // A period an older Town Hall opened may also count a legacy harness's spending: left out.
+      by_provider: { claude: byProvider.claude, codex: byProvider.codex },
       estimates,
       provider_windows: this.providerWindows(),
     };
@@ -222,16 +220,20 @@ export class ManaService {
    * that have reset since: by provider, then shortest window first.
    */
   providerWindows(): ProviderWindow[] {
+    return this.storedWindows().sort(
+      (a, b) =>
+        PROVIDER_ORDER.indexOf(a.provider) - PROVIDER_ORDER.indexOf(b.provider) ||
+        (a.window_minutes ?? Number.MAX_SAFE_INTEGER) - (b.window_minutes ?? Number.MAX_SAFE_INTEGER) ||
+        a.window.localeCompare(b.window),
+    );
+  }
+
+  /** The stored windows that still count: not reset yet, and of a harness the Town Hall runs. */
+  private storedWindows(): ProviderWindow[] {
     const now = this.ctx.clock.now();
     return this.ctx.settings
       .getState<ProviderWindow[]>(WINDOWS_KEY, [])
-      .filter((w) => !w.resets_at || Date.parse(w.resets_at) > now)
-      .sort(
-        (a, b) =>
-          PROVIDER_ORDER.indexOf(a.provider) - PROVIDER_ORDER.indexOf(b.provider) ||
-          (a.window_minutes ?? Number.MAX_SAFE_INTEGER) - (b.window_minutes ?? Number.MAX_SAFE_INTEGER) ||
-          a.window.localeCompare(b.window),
-      );
+      .filter((w) => isProvider(w.provider) && (!w.resets_at || Date.parse(w.resets_at) > now));
   }
 
   /**
@@ -242,10 +244,7 @@ export class ManaService {
   updateProviderWindows(provider: Provider, windows: RateWindow[]): void {
     if (windows.length === 0) return;
     this.ctx.db.tx(() => {
-      const now = this.ctx.clock.now();
-      const stored = this.ctx.settings
-        .getState<ProviderWindow[]>(WINDOWS_KEY, [])
-        .filter((w) => !w.resets_at || Date.parse(w.resets_at) > now);
+      const stored = this.storedWindows();
       const before = JSON.stringify(stored);
       for (const w of windows) {
         const next: ProviderWindow = {
@@ -444,14 +443,13 @@ export class ManaService {
     period: ManaPeriod;
     refill_hour_local?: number | undefined;
     pool_usd: number;
-    billing: { claude: Billing; codex: Billing; pi?: Billing | undefined };
+    billing: ProviderBilling;
     confirm_raise?: boolean | undefined;
   }): Mana {
     this.maybeRollover();
     this.ctx.db.tx(() => {
       const cfg = this.config();
-      // A 1.1 client sends no pi entry: keep the current one.
-      const billing: ProviderBilling = { claude: input.billing.claude, codex: input.billing.codex, pi: input.billing.pi ?? cfg.billing.pi };
+      const billing: ProviderBilling = { claude: input.billing.claude, codex: input.billing.codex };
       const p = this.current();
       const newPool = this.ctx.econ.usdToMicros(input.pool_usd);
       const refill = input.refill_hour_local ?? cfg.refill_hour_local;

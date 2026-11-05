@@ -2,11 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Economy } from "../../src/core/economy.js";
-import { defaultEconomyPath, defaultPricingPath, srcPath } from "../../src/paths.js";
+import { defaultEconomyPath, defaultPricingPath } from "../../src/paths.js";
 import { ClaudeCodeAdapter } from "../../src/providers/claude/adapter.js";
 import { CodexCliAdapter } from "../../src/providers/codex/adapter.js";
-import { FakeProvider } from "../../src/providers/fake/adapter.js";
-import { ScenarioLibrary } from "../../src/providers/fake/scenarios.js";
 import { harnessDeps } from "../../src/providers/real.js";
 import { makeRepo } from "../helpers/git.js";
 import { summonAgent, TestTown, type TestClient } from "../helpers/harness.js";
@@ -42,8 +40,7 @@ describe("parties on the real harnesses: a Claude lead with the town tools", () 
           FAKE_CODEX_LOG: codexLog,
         });
         const deps = harnessDeps({ econ: Economy.load(defaultEconomyPath()).data, dataDir, pricingPath: defaultPricingPath(), env });
-        const pi = new FakeProvider("pi", { library: new ScenarioLibrary(srcPath("providers", "fake", "scenarios")), defaultScenario: "basic", microsPerMana: 10_000 });
-        return { claude: new ClaudeCodeAdapter(deps), codex: new CodexCliAdapter(deps), pi };
+        return { claude: new ClaudeCodeAdapter(deps), codex: new CodexCliAdapter(deps) };
       },
     });
     c = await town.client();

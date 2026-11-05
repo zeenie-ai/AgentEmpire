@@ -275,11 +275,6 @@ static func models(harness: String) -> Array:
 				{"id": "gpt-5.3-codex", "label": "GPT-5.3 Codex", "default": true, "cost_hint": "$1.25 / $10 per million tokens"},
 				{"id": "gpt-5.3-codex-mini", "label": "GPT-5.3 Codex Mini", "default": false, "cost_hint": "$0.25 / $2 per million tokens"},
 			]
-		"pi":
-			return [
-				{"id": "anthropic/claude-sonnet-5", "label": "anthropic/claude-sonnet-5", "default": true},
-				{"id": "openai/gpt-5.3", "label": "openai/gpt-5.3", "default": false},
-			]
 	return []
 
 

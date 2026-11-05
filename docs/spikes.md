@@ -103,16 +103,14 @@ Verified on 2026-09-29 with the Phase 3 client.
 |---|---|---|
 | `claude` | Claude Code CLI 2.1.281 | `claude -p`, stream-json in and out |
 | `codex` | Codex CLI 0.144.2 | `codex app-server`, JSON-RPC over stdio |
-| `pi` (any other model provider) | pi 0.87.1 (`@earendil-works/pi-coding-agent`, pinned in townhall/package.json) | `pi --mode rpc`, JSON Lines commands and events |
 
-The only glue plugs into documented extension points: an MCP server for Claude Code's `--permission-prompt-tool` (`approval-mcp.mjs`, no dependencies) and a pi extension (`aurelhaven-gate.ts`). Code lives in `townhall/src/providers/{claude,codex,pi,common}`. `AURELHAVEN_PROVIDER=real` selects these adapters.
+The only glue plugs into a documented extension point: an MCP server for Claude Code's `--permission-prompt-tool` (`approval-mcp.mjs`, no dependencies). Code lives in `townhall/src/providers/{claude,codex,common}`. `AURELHAVEN_PROVIDER=real` selects these adapters.
 
 **Finding the executables, never through a shell.**
-- Overrides: `AURELHAVEN_CLAUDE_BIN`, `AURELHAVEN_CODEX_BIN`, `AURELHAVEN_PI_BIN` (an .exe, a Node script, or an npm .cmd shim).
+- Overrides: `AURELHAVEN_CLAUDE_BIN`, `AURELHAVEN_CODEX_BIN` (an .exe, a Node script, or an npm .cmd shim).
 - Otherwise PATH, where an npm `.cmd` shim is read and followed to its target: Claude Code's `bin/claude.exe` (a native binary), and for Codex the `codex.js` launcher is replaced by the native `codex.exe` in `@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin` (S2).
-- pi: `AURELHAVEN_PI_BIN`, then a `pi` on PATH, then the Town Hall's own copy, run as `node <pkg>/dist/bundle/cli.js`. The package exports only an `import` entry, so it is found by walking `node_modules` rather than `require.resolve`.
-- `--ignore-scripts` is not needed locally: pi's README says it needs no lifecycle scripts, the three in its tree are a no-op (`@google/genai`), esbuild's binary check and a protobufjs version warning, and better-sqlite3 13 has no install script at all (its prebuilds ship in the package). `npm ci` works with or without scripts.
-- Harness environments drop the markers a parent agent session sets (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_TOKEN`, `PI_SESSION_*`, ...), so a Town Hall started from inside Claude Code, Codex or pi launches clean harnesses.
+- `--ignore-scripts` is not needed locally: the only install script that runs here is esbuild's binary check, and better-sqlite3 13 has none at all (its prebuilds ship in the package). `npm ci` works with or without scripts.
+- Harness environments drop the markers a parent agent session sets (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_TOKEN`, ...), so a Town Hall started from inside Claude Code or Codex launches clean harnesses.
 
 **Process ends.** A run ends on the harness process's `exit`, then waits at most 2 s for stdout and stderr to close. On Windows a program the harness started (a shell command, a dev server, a build server) can inherit those pipes and hold them open long after the harness is gone; Node-based harnesses end their own direct children on exit (libuv job object), but not the children's children, and Codex (Rust) does neither. Once the process has exited it is never signalled again, since Windows can give its id to another process; taskkill runs from `%SystemRoot%\System32`. A launch that fails at once is reported as a spawn error rather than thrown.
 
@@ -161,35 +159,19 @@ The only glue plugs into documented extension points: an MCP server for Claude C
 
 **Probe and models.** `codex --version`; `codex login status` ("Logged in using ChatGPT", or "using an API key" followed by a masked key, which is never passed on); `model/list` (this account now offers gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna and gpt-5.5, not S2's list).
 
-### pi
-
-**Launch:** `pi --mode rpc --no-approve --session-dir <data>/pi-sessions/<task> --session-id aurelhaven-<task>` (or `--session <file>` from the checkpoint when resuming), `--provider <p> --model <id>` from `"<p>/<id>"`, `--tools <list>` or `--no-tools`, `--append-system-prompt <run>/system-prompt.md`, `--no-context-files --no-skills` without an Archive, `-e aurelhaven-gate.ts`, and `PI_SKIP_VERSION_CHECK=1`. Framing is LF-only; Node's readline is never used.
-
-**The docs on GitHub are ahead of the release.** pi's `main` branch documents built-in MCP support, `pi.registerMcpServer` and a `data.disposition` on prompt responses; 0.87.1 has none of them. The docs bundled in `node_modules/@earendil-works/pi-coding-agent/docs` match the installed version.
-
-**Approvals.** The gate's `tool_call` hook calls `ctx.ui.input("aurelhaven:approval", <call as JSON>, {signal})`; in RPC mode that is an `extension_ui_request`, answered with `extension_ui_response {value: {"decision":"allow"|"deny",...}}` or `{cancelled:true}`. A denial blocks with the player's message. `tool_execution_start` arrives before the dialog. `abort` cancels a pending dialog through `ctx.signal`, and the tool ends as "Operation aborted". Dialogs from other extensions are dismissed; their notifications become activity.
-
-**Events.** `message_update` usage is cumulative per assistant message and `message_end` is final, so the adapter charges growth per message; `agent_settled` means done. `steer` and `follow_up` only queue while pi is idle (checked: they wait for the next prompt), so a nudge is a `steer` while streaming and a `prompt` otherwise. pi retries transient errors itself (`retry.*` settings), so a failure is classified on every error message seen, not only the last.
-
-**Testing without a model.** pi-ai's faux provider (`createFauxCore`, `fauxAssistantMessage`, `fauxToolCall`) is registered with `pi.registerProvider` from a test extension (`test/fixtures/pi-faux-provider.mjs`, loaded with `-e`). The faux provider reports tokens but no cost, so the test extension prices them with `calculateCost`. Tests run the real pi this way, with a private `PI_CODING_AGENT_DIR`.
-
-**Probe and models.** `pi --version`; `get_available_models` over RPC (only models whose provider has credentials); `pi auth check --provider <p> --json --no-refresh` for up to four of those providers (it prints a status and `authType`, never the credential). This machine has no pi credentials, so pi reports `logged_in: false`.
-
 ### Limitations found
 
-- **Tools that do not ask.** Claude Code: none once `ask ["*"]` is set, except EndConversation, which ask rules never cover and `--tools` cannot remove; it only ends the conversation. Codex: its known-safe read-only commands (ls, cat, rg, Get-Content, git status and similar) run without asking under `untrusted`, and it has no ask-for-everything policy; web search is server side and never asks; MCP servers from the player's own `~/.codex/config.toml` keep their own approval mode. pi: none; every built-in, extension and MCP tool call goes through the gate.
-- **Player configuration.** Codex still reads the player's `~/.codex/config.toml` (auth lives there): here that means `service_tier = "priority"` (1.5x usage), a `notify` command, hooks, and two user-level MCP servers (node_repl, openaiDeveloperDocs). pi still loads the player's user-level extensions (a custom provider may live there); project ones are refused.
-- **Waygates on pi** need `pi.registerMcpServer`, which 0.87.1 lacks: the gate skips them and the run shows a warning. When pi ships MCP, the `--tools` allowlist may also need the MCP tool names.
-- **Rookery on pi** gives nothing: pi has no web search or fetch tool.
+- **Tools that do not ask.** Claude Code: none once `ask ["*"]` is set, except EndConversation, which ask rules never cover and `--tools` cannot remove; it only ends the conversation. Codex: its known-safe read-only commands (ls, cat, rg, Get-Content, git status and similar) run without asking under `untrusted`, and it has no ask-for-everything policy; web search is server side and never asks; MCP servers from the player's own `~/.codex/config.toml` keep their own approval mode.
+- **Player configuration.** Codex still reads the player's `~/.codex/config.toml` (auth lives there): here that means `service_tier = "priority"` (1.5x usage), a `notify` command, hooks, and two user-level MCP servers (node_repl, openaiDeveloperDocs).
 - **Leftover programs.** A program an agent starts that outlives its harness (a dev server, a build server) is not ended by the Town Hall: `taskkill /T` reaches only the tree of a process that is still running, and there is no job object around the harness. The run no longer waits for such a program's inherited pipes.
-- **Parties.** Resolved in Phase 5 for Claude Code leads (see Parties below). A Codex lead could use the same MCP server (Codex reads `mcp_servers` from `-c`), and a pi lead would need pi's MCP support or a gate extension tool; both wait, since economy.json allows only Claude leads (`parties.lead_providers`).
+- **Parties.** Resolved in Phase 5 for Claude Code leads (see Parties below). A Codex lead could use the same MCP server (Codex reads `mcp_servers` from `-c`); it waits, since economy.json allows only Claude leads (`parties.lead_providers`).
 - **Provider windows.** Resolved in Phase 5 (see Usage windows below).
 
 ### Parties (Phase 5, 2026-10-01)
 
 A Claude Code party lead gets a second Town Hall MCP server, `town` (`townhall/src/providers/common/town-mcp.mjs`, dependency-free like the approval server), with three tools: `delegate` (a sub-task on a member's queue, by name; returns at once), `check_status` (each sub-task's status, Mana used, and what the lead's seal has left) and `collect_results` (waits for the sub-tasks, at most 600 s per call and `parties.await_timeout_max_s`, and returns each member's summary and changed files).
 - The tool list and every call go to a per-run listener on 127.0.0.1 with its own random bearer secret, kept only in the run's MCP config: the approval bridge's design, now shared as `LoopbackListener`. The members' names are the `member` parameter's enum, and the lead's system prompt lists them with the tools.
-- With `permissions.ask ["*"]` the lead's town tool calls reach the permission prompt tool like any other; the Town Hall allows them without a card (they act on nothing outside the Town Hall). Members are ordinary runs on their own harness (Claude Code, Codex or pi), so every one of their actions still asks the player, and sub-tasks pay only through the party task (40% lead, 60% members).
+- With `permissions.ask ["*"]` the lead's town tool calls reach the permission prompt tool like any other; the Town Hall allows them without a card (they act on nothing outside the Town Hall). Members are ordinary runs on their own harness (Claude Code or Codex), so every one of their actions still asks the player, and sub-tasks pay only through the party task (40% lead, 60% members).
 - A sub-task's budget comes out of the lead's Mana Seal: `budget_mana`, or by default the member's seal for the size, at most half of what is left. The lead's wait ends when the lead's run stops (cancel, pause, shutdown).
 - **Tool search.** Claude Code 2.1.281 turns tool search on by default for first-party accounts, which defers MCP tools behind the ToolSearch tool; `--tools` (the add-ons' built-ins) leaves ToolSearch out. Leads therefore run with `ENABLE_TOOL_SEARCH=false`, so the town tools are always in front of the model. Waygate tools for other agents are not changed and were not checked against a model in this phase.
 - **Real run** (`AURELHAVEN_SMOKE_PARTY=1`, opt-in): a Claude Code lead and member on Haiku 4.5, Max subscription, the whole party within a 9-Mana seal. On 2026-10-01 the lead called `mcp__town__delegate` (no card), wrote its file, called `mcp__town__collect_results`, which returned the member's summary and `member.txt`, and finished; both tasks reached review in 13 s. Cost: $0.0461 in all (lead $0.0313, member $0.0148), an estimate on the subscription. The run's session transcripts (four folders under `~/.claude/projects` named after the temporary worktrees and repos) were removed afterwards.
@@ -203,13 +185,12 @@ A Claude Code party lead gets a second Town Hall MCP server, `town` (`townhall/s
 ### The Town Hall's lifecycle (Phase 5)
 
 - Practice (the scripted agents) keeps its town in `townhall/data/practice`, real agents in `townhall/data`; `AURELHAVEN_DATA_ROOT` moves both. The game starts the mode in `townhall/provider`, switches with the protocol 1.3 `shutdown` command (save, shut down, wait for the process to end, start the other mode, open its town) and falls back to an offline town when anything fails. `client/tools/townhall_mode_check.gd` runs practice, real, a failed start, practice again and a close against temporary data in a child Godot whose APPDATA is temporary too.
-- Starting a real Town Hall probes the harnesses (no model call). pi 0.87.1 creates `~/.pi/agent/auth.json` and `models-store.json` (both `{}`) when they do not exist, and Codex refreshed its own `~/.codex/models_cache.json`; Claude Code's probe left `~/.claude` as it was.
+- Starting a real Town Hall probes the harnesses (no model call). Codex refreshed its own `~/.codex/models_cache.json`; Claude Code's probe left `~/.claude` as it was.
 - A town made with the scripted agents in `townhall/data` before this change now opens as the real town; move it to `townhall/data/practice` to keep it as the practice town.
 
-### Smoke runs (opt-in: `npm run test:smoke` with `AURELHAVEN_SMOKE_CLAUDE=1`, `_CODEX=1` or `_PI=1`)
+### Smoke runs (opt-in: `npm run test:smoke` with `AURELHAVEN_SMOKE_CLAUDE=1` or `_CODEX=1`)
 
 Each asks for one file, interrupts while the first approval waits (stop, then withdraw the approval, as the Town Hall does), resumes the session, and lets the write through, under a $0.10 cap.
 
 - **Claude Code, Haiku 4.5, Max subscription: passed in 12 s.** Run 1: the Write waited, the interrupt answered it with a deny plus interrupt, and the transcript shows "[Request interrupted by user for tool use]"; Claude Code saved a session total of $0.0118845. Run 2 resumed session 74b5f608-7e9a-4f8c-9944-9dc3ff5e1869, the Write was approved, `smoke.txt` holds "aurelhaven smoke", and the reply was "Created smoke.txt with "aurelhaven smoke"." Claude Code's session total became $0.0167735, the restored $0.0118845 plus $0.004889 new. The adapter charged the deltas: 11,885 then 4,889 micro-USD, $0.0168 in all (an estimate: subscription). These figures come from the session transcript, because vitest 5 hid the console output of the passing test; the smoke config now prints reports and saves them to `%TEMP%\aurelhaven-smoke-<provider>.json`.
 - **Codex, gpt-5.6-luna (the cheapest model model/list offers), ChatGPT plan: blocked by the account.** Its Codex usage limit is spent until 2026-10-05 16:50, so the turn failed before any model call: the adapter reported `failed`, code `provider_limit` ("You've hit your usage limit ... (usageLimitExceeded)"), which pauses a task and lights the Font Dark incident; no cost. The first attempt waited 240 s for an approval that could not come; the helper now races the run's outcome. Codex approvals are therefore tested only against the fake app server.
-- **pi: skipped.** pi 0.87.1 is installed but has no provider credentials here.

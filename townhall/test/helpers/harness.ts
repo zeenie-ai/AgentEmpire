@@ -245,7 +245,7 @@ export class TestTown {
 export interface AgentSetup {
   name?: string;
   role?: string;
-  provider?: "claude" | "codex" | "pi";
+  provider?: "claude" | "codex";
   model?: string;
   workspace: string;
   approval_mode?: string;
@@ -260,7 +260,7 @@ export async function summonAgent(c: TestClient, spec: AgentSetup): Promise<stri
     spec: {
       name: spec.name ?? "Mira",
       provider: spec.provider ?? "claude",
-      model: spec.model ?? (spec.provider === "pi" ? "fake/pi" : "fake-claude"),
+      model: spec.model ?? "fake-claude",
       role,
       instructions: "Be careful.",
       approval_mode: spec.approval_mode ?? "trusted_edits",

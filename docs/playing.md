@@ -7,7 +7,7 @@ The numbers are the game's defaults, most of them from `protocol/economy.json`.
 ## The idea
 
 AgentEmpire plays like Age of Empires, with townsfolk who gather and build around the Keep, but
-its agents are real coding agents (Claude Code, Codex or pi) working in folders on your computer.
+its agents are real coding agents (Claude Code or Codex) working in folders on your computer.
 Each builds its own home and add-ons, townsfolk carry it your tasks as scrolls, a bell rings when
 it wants to do something only you may allow, and you review its work before you accept it.
 Accepted work pays the town and earns the agent experience. The real part runs in the
@@ -40,8 +40,8 @@ Select the Keep (H) and press **Summon** (W). The Summoning Font asks for:
 
 | Field | What to give |
 |---|---|
-| Harness | Claude Code, Codex or pi; each card shows its version, whether it is Ready, Not logged in or Not installed, and its billing |
-| Model | One from the harness's list, with cost hints; type an id when it lists none (pi: `<provider>/<model>`) |
+| Harness | Claude Code or Codex; each card shows its version, whether it is Ready, Not logged in or Not installed, and its billing |
+| Model | One from the harness's list, with cost hints; type an id when it lists none |
 | Name | Up to 40 letters; the dice offers another |
 | Role | The agent's work, home and required add-ons (see Roles) |
 | Oath | Standing instructions it reads before every task, written for the role; edit freely |
@@ -92,7 +92,7 @@ agent is blocked.
 | Lectern | Reading and searching files | Codex: a read-only sandbox |
 | Quillworks | Writing and editing files | Needs a Lectern. Codex: a sandbox that may write in the work folder |
 | Forge | Shell commands | Needs a Lectern |
-| Rookery | Web search and fetch | Codex gets web search; pi has no web tools, so it gains nothing |
+| Rookery | Web search and fetch | Codex gets web search |
 | Archive | The project's own instruction files and skills, such as `CLAUDE.md` or `AGENTS.md` | Without one, agents ignore them; raises rewards |
 | Waygate | An MCP server | From the Market Age; no window to set one up yet |
 
@@ -174,7 +174,7 @@ into the new one with a small pop.
 | The bell swinging on the post by the door, a banner raised | An approval waits (a blue banner: the task has spent its seal) |
 | A glowing chest at the door | A result waits for review |
 | Smoke from the roof | A task failed |
-| A red "!" floating over the roof | Blocked: a required add-on is missing (not while a new agent's add-ons are still going up), there is not enough Mana to start, the harness is offline, or the work folder has a problem |
+| A red "!" floating over the roof | Blocked: a required add-on is missing (not while a new agent's add-ons are still going up), there is not enough Mana to start, the harness is offline or no longer supported, or the work folder has a problem |
 
 The name plate over the roof carries the agent's sigil, a small animated gem whose colour and
 motion follow its mood: waiting for you, a result ready, trouble, working, settling in, retired or
@@ -190,6 +190,9 @@ order: a petition, a result to review, a failed task, a paused one; then the wor
 - **Your controls.** **Resume** (Z) restarts a paused or failed task. **Cancel** (X) stops the
   current or a waiting task with no reward, keeping its work. **Retire** (B) cancels the waiting
   scrolls, lets the current task finish, then sends the agent away with its home and add-ons.
+- **An agent summoned on pi.** The game no longer runs pi, so an agent an older town summoned on
+  it stays blocked ("pi is no longer supported; retire this agent") and takes no new work.
+  Review any result it left, then retire it.
 
 ## Approvals
 
@@ -298,7 +301,7 @@ menu. **TOWN HALL OFFLINE** means no Town Hall runs (a click starts it again), a
   your answer shows as paused instead, and asks again after **Resume**.
 - **Quitting.** Closing the game saves the town and leaves the Town Hall running: agents finish
   their tasks and start the waiting ones, and their requests wait for you.
-- **Practice agents** stand in for all three harnesses and spend a few Mana, never money. One
+- **Practice agents** stand in for both harnesses and spend a few Mana, never money. One
   writes a small note in its copy of the work folder and finishes at once, so accepting puts the
   note into your folder: give it a scratch folder. It asks nothing under Trusted Edits (choose Ask
   Every Time to practise approvals), and its runs are usually too short to earn a reward.

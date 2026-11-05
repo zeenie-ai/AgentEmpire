@@ -135,7 +135,7 @@ static func _summon_slot(w: SimWorld) -> Dictionary:
 	var realm := _realm()
 	if not _live() or realm == null:
 		return _slot("summon", "Summon", "summon",
-			"Summon an agent\nStart the Town Hall to summon Claude Code, Codex or pi agents.", {}, false)
+			"Summon an agent\nStart the Town Hall to summon Claude Code or Codex agents.", {}, false)
 	var count: int = realm.agent_count()
 	var limit := w.econ.agent_limit(realm.current_age())
 	var tip := "Summon an agent (W)\nChoose its harness, role, oath and add-ons. It trains here, then builds its home."

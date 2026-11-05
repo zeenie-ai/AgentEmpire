@@ -8,7 +8,7 @@ extends RefCounted
 const Protocol = preload("res://net/protocol.gd")
 
 ## Harness ids as the player knows them. Unknown ids are shown capitalised.
-const HARNESS_NAMES := {"claude": "Claude Code", "codex": "Codex", "pi": "pi"}
+const HARNESS_NAMES := {"claude": "Claude Code", "codex": "Codex"}
 
 const LORE_NAMES := ["Mira", "Aldric", "Seraphine", "Corvin", "Isolde", "Thessaly", "Rowan", "Elowen",
 	"Brannoc", "Liora", "Caspian", "Wynne", "Osric", "Ysmay", "Tamsin", "Evander", "Maelis", "Ronan",
@@ -168,7 +168,11 @@ static func blocked_text(reason: String, agent: Dictionary) -> String:
 			return "Blocked: %s is offline" % harness_name(J.gs(agent, "provider"))
 		Protocol.BlockedReason.WORKSPACE_ERROR:
 			return "Blocked: the work folder has a problem"
+		Protocol.BlockedReason.PROVIDER_UNSUPPORTED:
+			var harness := J.gs(agent, "provider")
+			return "Blocked: %s is no longer supported; retire this agent" % (harness if harness != "" else "its harness")
 	return "Blocked"
+
 
 
 static func pause_text(reason: String) -> String:
@@ -224,9 +228,15 @@ static func zero_reward_text(reason: String) -> String:
 ## the work, the next task. `caption` is the name plate's line ("" leaves it the role and rank).
 ## mood, one per sheet of the Rive "agent_sigil" set: "training", "settling", "working", "waiting"
 ## (for the player's approval), "review", "blocked", "idle" or "retired". `link` answers
-## training_left_s() and waiting_tools (TownLink or a fake).
+## training_left_s() and waiting_tools (TownLink or a fake). An agent on a harness the Town Hall
+## no longer runs shows a result to review, else that it can only be retired.
 static func agent_status(a: Dictionary, link: Object = null) -> Dictionary:
 	var id := J.gs(a, "id")
+	if TownLink.unsupported(a):
+		var finished := review_task(id)
+		if not finished.is_empty():
+			return {"text": "Result ready for review", "caption": "RESULT READY", "mood": "review", "task_id": J.gs(finished, "id")}
+		return {"text": blocked_text(Protocol.BlockedReason.PROVIDER_UNSUPPORTED, a), "caption": "BLOCKED", "mood": "blocked"}
 	match J.gs(a, "lifecycle"):
 		Protocol.AgentLifecycle.RETIRED:
 			return {"text": "Retired", "caption": "RETIRED", "mood": "retired"}
@@ -263,11 +273,10 @@ static func agent_status(a: Dictionary, link: Object = null) -> Dictionary:
 	var activity := J.gs(a, "activity", "idle")
 	if activity == Protocol.AgentActivity.AWAITING_APPROVAL or not Realm.approvals_for(id).is_empty():
 		return {"text": "Waiting for your approval", "caption": "NEEDS YOUR APPROVAL", "mood": "waiting", "task_id": J.gs(cur, "id")}
+	var done := review_task(id)
+	if not done.is_empty():
+		return {"text": "Result ready for review", "caption": "RESULT READY", "mood": "review", "task_id": J.gs(done, "id")}
 	var tasks := Realm.tasks_of(id)
-	for t in tasks:
-		var s := J.gs(t, "state")
-		if s == Protocol.TaskState.AWAITING_REVIEW or s == Protocol.TaskState.ACCEPTING:
-			return {"text": "Result ready for review", "caption": "RESULT READY", "mood": "review", "task_id": J.gs(t, "id")}
 	for t in tasks:
 		if J.gs(t, "state") == Protocol.TaskState.FAILED:
 			return {"text": "A task failed: resume or dismiss it", "caption": "TASK FAILED", "mood": "blocked", "task_id": J.gs(t, "id")}
@@ -294,6 +303,15 @@ static func agent_status(a: Dictionary, link: Object = null) -> Dictionary:
 
 static func _settling(text: String) -> Dictionary:
 	return {"text": text, "caption": "SETTLING IN", "mood": "settling"}
+
+
+## The agent's first task waiting for review (or being accepted), or {}.
+static func review_task(agent_id: String) -> Dictionary:
+	for t in Realm.tasks_of(agent_id):
+		var s := J.gs(t, "state")
+		if s == Protocol.TaskState.AWAITING_REVIEW or s == Protocol.TaskState.ACCEPTING:
+			return t
+	return {}
 
 
 static func mood_color(mood: String, look: int) -> Color:

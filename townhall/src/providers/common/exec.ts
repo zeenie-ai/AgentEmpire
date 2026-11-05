@@ -1,12 +1,11 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 export type Env = Record<string, string | undefined>;
 
 /** How a harness executable was found. */
-export type LaunchSource = "env" | "path" | "known_location" | "bundled";
+export type LaunchSource = "env" | "path" | "known_location";
 
 /**
  * A harness to spawn directly, never through a shell: `file` is an executable, and `prefix`
@@ -221,52 +220,4 @@ export function resolveCodex(env: Env = process.env): Resolution {
     if (native) return { launch: { file: native, prefix: [], source: "known_location", display: native } };
   }
   return { launch: null, problem: "Codex CLI was not found: install it, or set AURELHAVEN_CODEX_BIN" };
-}
-
-// ---------- pi ----------
-
-const PI_PACKAGE = "@earendil-works/pi-coding-agent";
-
-/**
- * Finds an installed package folder the way Node does: node_modules/<name> in this module's
- * folder or any parent. (The pi package exports only an "import" entry, so require.resolve
- * cannot locate it.)
- */
-export function findPackageDir(name: string, fromDir = path.dirname(fileURLToPath(import.meta.url))): string | null {
-  let dir = fromDir;
-  for (;;) {
-    const candidate = path.join(dir, "node_modules", ...name.split("/"));
-    if (isFile(path.join(candidate, "package.json"))) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-/** The pi CLI bundled as a dependency of the Town Hall package. */
-export function bundledPiCli(): string | null {
-  const root = findPackageDir(PI_PACKAGE);
-  if (!root) return null;
-  try {
-    const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { bin?: string | Record<string, string> };
-    const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
-    if (!bin) return null;
-    const cli = path.join(root, bin);
-    return existsSync(cli) ? cli : null;
-  } catch {
-    return null;
-  }
-}
-
-/** pi: AURELHAVEN_PI_BIN, then `pi` on PATH, then the copy bundled with the Town Hall. */
-export function resolvePi(env: Env = process.env): Resolution {
-  const override = fromOverride(env, "AURELHAVEN_PI_BIN");
-  if (override) return override;
-  const onPath = findOnPath("pi", env);
-  const fromPath = onPath ? launchFor(onPath, "path") : null;
-  if (fromPath) return { launch: fromPath };
-  const cli = bundledPiCli();
-  const bundled = cli ? launchFor(cli, "bundled") : null;
-  if (bundled) return { launch: bundled };
-  return { launch: null, problem: `pi was not found: reinstall the Town Hall's dependencies (${PI_PACKAGE}), or set AURELHAVEN_PI_BIN` };
 }

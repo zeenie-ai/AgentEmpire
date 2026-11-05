@@ -1,8 +1,9 @@
 import { fromJson, toJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
-import type { Party, TaskResult, TaskState } from "../protocol/objects.js";
+import type { Party, Provider, TaskResult, TaskState } from "../protocol/objects.js";
+import { isProvider } from "../protocol/objects.js";
 import type { ChildResult, DelegateHandle, DelegateRequest, PartyStatus, SubtaskInfo, SubtaskStatus } from "../providers/types.js";
-import type { AgentRow } from "./agents.js";
+import { legacyHarnessMessage, type AgentRow } from "./agents.js";
 import type { Ctx } from "./context.js";
 import type { Size } from "./economy.js";
 import { rankAtLeast } from "./ranks.js";
@@ -82,11 +83,12 @@ export class PartyService {
       .map((r) => this.toProtocol(r));
   }
 
-  members(partyId: string): AgentRow[] {
+  /** The members who can take work: not retired, and on a harness the Town Hall runs. */
+  members(partyId: string): Array<AgentRow & { provider: Provider }> {
     const r = this.activeRow(partyId);
     return fromJson<string[]>(r.member_ids_json, [])
       .map((id) => this.ctx.agents.rowOrNull(id))
-      .filter((a): a is AgentRow => !!a && !a.retired_at);
+      .filter((a): a is AgentRow & { provider: Provider } => !!a && !a.retired_at && isProvider(a.provider));
   }
 
   form(leadId: string, memberIds: string[]): { party_id: string } {
@@ -110,6 +112,7 @@ export class PartyService {
       for (const id of unique) {
         const m = this.ctx.agents.row(id);
         if (m.retired_at) throw fail.invalidState(`agent ${id} is retired`);
+        if (!isProvider(m.provider)) throw fail.invalidState(`${m.name}: ${legacyHarnessMessage(m.provider)}`);
         if (m.party_id) throw fail.conflict(`agent ${id} is already in a party`);
       }
       const id = this.ctx.ids.next("pty");

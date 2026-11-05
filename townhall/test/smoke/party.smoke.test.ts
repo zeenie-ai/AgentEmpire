@@ -17,7 +17,7 @@ const MEMBER_BUDGET_MANA = 4;
 
 // Opt-in: a real party on the installed Claude Code, Haiku 4.5 for the lead and the member (real,
 // paid model calls). The lead delegates with the town tools, the member writes its file, the lead
-// collects the result and writes its own. Codex and pi are not run (scripted stand-ins only).
+// collects the result and writes its own. Codex is not run (a scripted stand-in only).
 describe.skipIf(process.env.AURELHAVEN_SMOKE_PARTY !== "1")("smoke: a Claude Code party", () => {
   it("delegates through the town tools, collects the member's result, and stays under the cap", async () => {
     const started = Date.now();
@@ -25,8 +25,7 @@ describe.skipIf(process.env.AURELHAVEN_SMOKE_PARTY !== "1")("smoke: a Claude Cod
       adapters: ({ dataDir }) => {
         const deps = harnessDeps({ econ: Economy.load(defaultEconomyPath()).data, dataDir, pricingPath: defaultPricingPath(), env: process.env });
         const library = new ScenarioLibrary(srcPath("providers", "fake", "scenarios"));
-        const fake = (id: "codex" | "pi") => new FakeProvider(id, { library, defaultScenario: "basic", microsPerMana: 10_000 });
-        return { claude: new ClaudeCodeAdapter(deps), codex: fake("codex"), pi: fake("pi") };
+        return { claude: new ClaudeCodeAdapter(deps), codex: new FakeProvider("codex", { library, defaultScenario: "basic", microsPerMana: 10_000 }) };
       },
     });
     const c = await town.client();

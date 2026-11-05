@@ -177,18 +177,11 @@ function stageTownHall(t, dir, version) {
   for (const f of ['package.json', 'package-lock.json', 'README.md']) copyFileSync(join(townhall, f), join(dir, f));
   copyFileSync(join(townhall, 'scripts', 'launch.mjs'), join(dir, 'scripts', 'launch.mjs'));
   cpSync(join(townhall, 'dist'), join(dir, 'dist'), { recursive: true });
-  // The migrations, the practice scenarios, the MCP glue scripts and pi's gate extension are read
-  // from src/ at run time (townhall/src/paths.ts, srcPath).
+  // The migrations, the practice scenarios and the MCP glue scripts are read from src/ at run
+  // time (townhall/src/paths.ts, srcPath).
   cpSync(join(townhall, 'src'), join(dir, 'src'), { recursive: true });
   writeFileSync(join(dir, 'release.json'), `${JSON.stringify({ version, target: t.id, built: new Date().toISOString() }, null, 2)}\n`);
   npm(['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', `--os=${t.os}`, `--cpu=${t.cpu}`], dir);
-  // pi loads TypeScript extensions with esbuild, whose program is a per-platform package.
-  const esbuild = join(dir, 'node_modules', '@esbuild');
-  if (existsSync(join(dir, 'node_modules', 'esbuild'))) {
-    const want = `${t.os}-${t.cpu}`;
-    if (!existsSync(join(esbuild, want))) throw new Error(`the ${t.id} package is missing @esbuild/${want}`);
-    for (const other of readdirSync(esbuild)) if (other !== want) rmSync(join(esbuild, other), { recursive: true, force: true });
-  }
 }
 
 /** The licences of what a package ships besides its own code and Node.js (which keeps its own). */
@@ -280,8 +273,8 @@ function readme(t, version) {
 
 /**
  * The Unix mode of a file with no recorded mode. On macOS and Linux the programs in node_modules
- * must stay runnable: esbuild's native program (pi loads TypeScript extensions with it) and the
- * bin/ and .bin/ scripts. A Windows build host records no permissions, so they come from here.
+ * (its bin/ and .bin/ scripts) must stay runnable. A Windows build host records no permissions,
+ * so they come from here.
  */
 function defaultMode(rel, t) {
   if (t.os === 'win32') return 0o644;
@@ -312,7 +305,7 @@ function zipFolder(stage, out, top, modes, t) {
 function releaseNotes(version, targets) {
   const rows = targets.map((t) => `| ${t.label} | \`AgentEmpire-${version}-${t.id}.zip\` |`).join('\n');
   return `AgentEmpire ${version} is an early preview: the town, agents as villagers, practice agents, real
-agents on Claude Code, Codex and pi, the town walls, and sound and music. The menus, the onboarding
+agents on Claude Code and Codex, the town walls, and sound and music. The menus, the onboarding
 and the windows for advancing an age and for trading are still being built.
 
 ## Download

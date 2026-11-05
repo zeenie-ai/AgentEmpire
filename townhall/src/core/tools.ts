@@ -118,6 +118,7 @@ export class ToolService {
     return this.ctx.db.tx(() => {
       const agent = this.ctx.agents.row(agentId);
       if (agent.retired_at) throw fail.invalidState("the agent is retired");
+      this.ctx.agents.requireHarness(agent);
       if (!agent.home_tile_json) throw fail.invalidState("the agent has no home yet");
       const def = econ.data.tools[type];
       if (!def) throw fail.badRequest(`unknown tool ${type}`);

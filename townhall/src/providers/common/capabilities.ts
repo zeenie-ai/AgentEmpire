@@ -18,14 +18,6 @@ const CodexGrant = z.looseObject({
   mcp: z.boolean().optional(),
 });
 
-const PiGrant = z.looseObject({
-  tools: z.array(z.string()).optional(),
-  charter: z.boolean().optional(),
-  mcp: z.boolean().optional(),
-  available: z.boolean().optional(),
-  note: z.string().optional(),
-});
-
 function grants<T extends z.ZodType>(econ: EconomyTools, tools: Iterable<ToolType>, provider: string, schema: T): Array<{ type: ToolType; grant: z.infer<T> }> {
   const out: Array<{ type: ToolType; grant: z.infer<T> }> = [];
   for (const type of tools) {
@@ -76,26 +68,5 @@ export function codexPlan(econ: EconomyTools, tools: Iterable<ToolType>): CodexP
     webSearch: list.find((g) => g.grant.web_search)?.grant.web_search ?? "disabled",
     charter: list.some((g) => g.grant.charter === true),
     mcp: list.some((g) => g.grant.mcp === true),
-  };
-}
-
-export interface PiPlan {
-  /** Built-in tools for `--tools`. */
-  tools: string[];
-  charter: boolean;
-  mcp: boolean;
-  /** Add-ons the agent has that give pi nothing, with the reason from economy.json. */
-  unavailable: Array<{ type: ToolType; note: string }>;
-}
-
-export function piPlan(econ: EconomyTools, tools: Iterable<ToolType>): PiPlan {
-  const list = grants(econ, tools, "pi", PiGrant);
-  return {
-    tools: unique(list.flatMap((g) => g.grant.tools ?? [])),
-    charter: list.some((g) => g.grant.charter === true),
-    mcp: list.some((g) => g.grant.mcp === true),
-    unavailable: list
-      .filter((g) => g.grant.available === false)
-      .map((g) => ({ type: g.type, note: g.grant.note ?? "not available for pi" })),
   };
 }

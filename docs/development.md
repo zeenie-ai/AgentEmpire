@@ -351,8 +351,8 @@ frames long, and the fallback states `queued` and `idle` exist. The game has no 
   ```
   A Town Hall in a terminal stops cleanly with Ctrl+C.
 - **Real agents behave differently from the player's own harness setup.** Codex still reads the
-  player's `~/.codex/config.toml`, and pi loads the player's own extensions. The full list of
-  known harness limits is in [spikes.md](spikes.md), section S5.
+  player's `~/.codex/config.toml`. The full list of known harness limits is in
+  [spikes.md](spikes.md), section S5.
 - **Short freezes of about half a second on one machine.** Seen on a development machine with
   every renderer, even on an empty Godot scene, so it comes from the environment (overlay or
   capture software), not from the game. The simulation keeps real time through them.

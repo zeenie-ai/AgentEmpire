@@ -17,7 +17,7 @@ const defaultRunner: ShellRunner = (shell, args, timeoutMs) => {
 const MARK = "__AURELHAVEN_PATH__";
 const SHELL_TIMEOUT_MS = 5000;
 
-/** Folders where Claude Code, Codex, pi and Node.js are commonly installed on macOS and Linux. */
+/** Folders where Claude Code, Codex and Node.js are commonly installed on macOS and Linux. */
 export function commonBinDirs(home: string, platform: NodeJS.Platform): string[] {
   const dirs = [
     path.posix.join(home, ".local", "bin"),

@@ -53,17 +53,13 @@ firing every timer that falls due. `town.stop()` stops the Town Hall and removes
 Agents are the scripted practice agents unless the test passes `adapters`. `shutdown.test.ts`
 runs `src/main.ts` as a process, on its own temporary data folder and discovery file.
 
-**The stand-ins** in `test/fixtures/`, which the adapters find through `AURELHAVEN_CLAUDE_BIN`,
-`AURELHAVEN_CODEX_BIN` and `AURELHAVEN_PI_BIN`:
+**The stand-ins** in `test/fixtures/`, which the adapters find through `AURELHAVEN_CLAUDE_BIN`
+and `AURELHAVEN_CODEX_BIN`:
 
 | Fixture | Stands in for | Controlled by |
 |---|---|---|
 | `fake-claude.mjs` | The Claude Code CLI: `--version`, `auth status`, and `-p` with stream-json. It starts the approval MCP server named in `--mcp-config` and calls it for every tool call, so the whole approval path runs | `FAKE_CLAUDE_SCENARIO` (or `FAKE_CLAUDE_SCENARIOS`, picked by `[scenario:<name>]`), `FAKE_CLAUDE_HOME` (sessions, so `--resume` works), `FAKE_CLAUDE_LOG`, `FAKE_CLAUDE_AUTH` |
 | `fake-codex.mjs` | The Codex CLI: `--version`, `login status`, and `app-server` speaking JSON-RPC with approval requests, as codex 0.144 does | `FAKE_CODEX_SCENARIO`, `FAKE_CODEX_HOME`, `FAKE_CODEX_LOG`, `FAKE_CODEX_AUTH` |
-| `pi-faux-provider.mjs` | The model: a pi extension (`pi -e`) with a scripted provider, `faux/faux-1`, for the real pi bundled in `node_modules` | `AURELHAVEN_PI_FAUX_SCRIPT`, `AURELHAVEN_PI_FAUX_LOG` |
-
-pi runs with `PI_OFFLINE=1` and a temporary `PI_CODING_AGENT_DIR`, so it needs no network and
-never reads your `~/.pi`. The pi tests skip when the bundled pi is missing.
 
 **Adding a test.** Put pure logic in `test/unit/<area>.test.ts`, and anything that goes through
 the protocol in `test/integration/`, against a `TestTown` (`courier.test.ts` is a short example).
@@ -86,10 +82,9 @@ when its switch is `1`; with none set, every one is skipped.
 |---|---|---|
 | `AURELHAVEN_SMOKE_CLAUDE` | Claude Code on `haiku` | Claude Code installed and signed in |
 | `AURELHAVEN_SMOKE_CODEX` | The Codex CLI on the cheapest model in `protocol/pricing.json` that it offers | The Codex CLI installed and signed in (`codex login`) |
-| `AURELHAVEN_SMOKE_PI` | pi on the cheapest model among the providers it has credentials for | Credentials for a provider (an API key in the environment, or `/login` in pi); without them the test skips |
-| `AURELHAVEN_SMOKE_PARTY` | A party in a `TestTown`: a Claude Code lead and member on `haiku`, the lead delegating through the town tools; Codex and pi stay scripted | Claude Code installed and signed in |
+| `AURELHAVEN_SMOKE_PARTY` | A party in a `TestTown`: a Claude Code lead and member on `haiku`, the lead delegating through the town tools; Codex stays scripted | Claude Code installed and signed in |
 
-The first three ask for one file, interrupt the run while its first approval waits, resume the
+The first two ask for one file, interrupt the run while its first approval waits, resume the
 session and let the write through. Each run gets a $0.08 seal, the test's host interrupts a run
 once its reported usage reaches $0.10, and the test fails if the total is above $0.10 (at API
 prices, also on a subscription). The party works within a 9 Mana ($0.09) seal.

@@ -69,7 +69,7 @@ const ENUMS: Array<[string, AnyEnum, string]> = [
   ["AgentActivity", AgentActivity as unknown as AnyEnum, "Agent.activity"],
   ["BlockedReason", BlockedReason as unknown as AnyEnum, "Agent.blocked_reason"],
   ["Role", Role as unknown as AnyEnum, "Agent.role"],
-  ["Provider", Provider as unknown as AnyEnum, "Agent.provider"],
+  ["Provider", Provider as unknown as AnyEnum, "check_providers id, list_models provider; Agent.provider (or a legacy id, 1.4)"],
   ["ApprovalMode", ApprovalMode as unknown as AnyEnum, "Agent.approval_mode"],
   ["WorkspaceMode", WorkspaceMode as unknown as AnyEnum, "Agent.workspace.mode"],
   ["Billing", Billing as unknown as AnyEnum, "Agent.billing"],

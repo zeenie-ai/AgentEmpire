@@ -9,7 +9,6 @@ import type { Env } from "./common/exec.js";
 import { Pricing } from "./common/pricing.js";
 import type { FramingNames } from "./common/prompt.js";
 import type { HarnessDeps } from "./common/support.js";
-import { PiAdapter } from "./pi/adapter.js";
 import type { ProviderAdapter } from "./types.js";
 
 /** Role and size names from economy.json for the task framing. */
@@ -54,11 +53,10 @@ export function harnessDeps(opts: RealAdapterOptions): HarnessDeps {
   };
 }
 
-/** The real harness adapters: Claude Code, the Codex CLI and pi. */
+/** The real harness adapters: Claude Code and the Codex CLI. */
 export function realAdapters(deps: HarnessDeps): Record<Provider, ProviderAdapter> {
   return {
     claude: new ClaudeCodeAdapter(deps),
     codex: new CodexCliAdapter(deps),
-    pi: new PiAdapter(deps),
   };
 }

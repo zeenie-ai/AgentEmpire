@@ -312,7 +312,7 @@ func _reconcile_agent(w: SimWorld, a: Dictionary) -> void:
 			var exits := w.exit_cells(w.keep(), w.rally_point(w.keep()))
 			at = exits[0] if not exits.is_empty() else Vector2i(w.map_center())
 		Game.issue(GameCommands.spawn_agent(id, role, at))
-	if typeof(home) != TYPE_DICTIONARY and not _plot_announced.has(id):
+	if typeof(home) != TYPE_DICTIONARY and not _plot_announced.has(id) and not unsupported(a):
 		_plot_announced[id] = true
 		plot_needed.emit(id)
 	for t in Realm.tools_of(id):
@@ -354,6 +354,12 @@ func _sync_state(a: Dictionary) -> void:
 	var u := world().agent_unit(id) if world() != null else null
 	if u != null and (u.activity != activity or u.work_tool != tool):
 		Game.issue(GameCommands.set_agent_state(id, activity, tool))
+
+
+## True for an agent on a harness the Town Hall no longer runs (in an older town): it can only be
+## retired, though work it finished can still be reviewed. It is offered no plot and no add-ons.
+static func unsupported(a: Dictionary) -> bool:
+	return J.gs(a, "blocked_reason") == Protocol.BlockedReason.PROVIDER_UNSUPPORTED and J.gs(a, "lifecycle") != Protocol.AgentLifecycle.RETIRED
 
 
 ## The add-on type that grants a harness tool name ("Bash" -> "forge"), or "".
@@ -477,7 +483,7 @@ func _on_notice(kind: String, data: Dictionary) -> void:
 			var name := J.gs(Realm.agent(id), "name", "Your agent")
 			Notify.push("%s is ready. Choose a plot for their home." % name, "good", "trained_" + id, 0)
 			Audio.play("train_complete")
-			if not _plot_announced.has(id):
+			if not _plot_announced.has(id) and not unsupported(Realm.agent(id)):
 				_plot_announced[id] = true
 				plot_needed.emit(id)
 		"home_complete":
@@ -512,13 +518,14 @@ func _delivered(task_id: String) -> void:
 # --- starting add-ons ------------------------------------------------------------------------------
 
 ## Attaches each agent's next missing starting add-on once its home stands: required ones first,
-## never before the add-ons they require. A shortfall is retried every few seconds.
+## never before the add-ons they require. A shortfall is retried every few seconds. An agent on a
+## harness the Town Hall no longer runs gets nothing (the Town Hall refuses it).
 func _build_starting_tools() -> void:
 	var w := world()
 	var now := Time.get_ticks_msec()
 	for a in Realm.active_agents():
 		var id := String(a["id"])
-		if _tool_pending.has(id) or now < int(_tool_retry_at.get(id, 0)):
+		if _tool_pending.has(id) or now < int(_tool_retry_at.get(id, 0)) or unsupported(a):
 			continue
 		var home_b := w.agent_home(id)
 		if home_b == null or not home_b.complete:

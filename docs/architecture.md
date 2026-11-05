@@ -12,10 +12,10 @@ Godot client (desktop or web)                         Town Hall (Node 22, 127.0.
   TownLink: mirrors the Town Hall into the town  <-->   core: agents, tools, tasks, approvals,
   Realm: copy of the Town Hall's state                        Mana, ledger, rewards, ranks, ages,
   Net: WebSocket, requests, catch-up                          incidents, parties, workspaces
-  world views, HUD, windows, input                      providers: fake | claude | codex | pi
+  world views, HUD, windows, input                      providers: fake | claude | codex
                                                         db: SQLite (WAL), append-only logs
                                                                |
-                                    child processes: Claude Code CLI, codex app-server, pi --mode rpc
+                                      child processes: Claude Code CLI, codex app-server
                                                                |
                                                   git worktrees in the player's work folders
 ```
@@ -61,6 +61,9 @@ the client uses (`protocol/generated/protocol.gd`, copied to `client/net/protoco
 - Version 1.3 adds `get_progress` (the town's facts, the next age's cost and milestones, the
   Quartermaster's current rates), the `progress_updated` event with the same data, and
   `shutdown`, which lets the game close the Town Hall.
+- Version 1.4 removes the pi harness, so the providers are `claude` and `codex`. An agent an
+  older town summoned on pi stays in the town, blocked with `provider_unsupported`, until the
+  player retires it.
 
 ## The Town Hall
 
@@ -128,19 +131,17 @@ harness as a child process and translates its headless interface:
 |---|---|---|---|
 | `claude` | Claude Code CLI | `claude -p` with stream-json in and out | an MCP permission-prompt tool bridged to the Town Hall |
 | `codex` | Codex CLI | `codex app-server`, JSON-RPC over stdio | the app server's approval requests |
-| `pi` | pi coding agent (bundled npm package) | `pi --mode rpc`, JSON lines | a pi extension (`aurelhaven-gate.ts`) |
 | `fake` | none | scripted scenarios in `src/providers/fake/scenarios/` | scripted |
 
-`AURELHAVEN_PROVIDER` selects `fake` (practice agents for all three harness names) or `real`.
+`AURELHAVEN_PROVIDER` selects `fake` (practice agents for both harness names) or `real`.
 The add-ons decide which tools each harness gets; the approval mode decides which calls ask the
 player. Claude Code reports its own running cost total (`protocol/pricing.json` prices a result
-only when it carries none), pi prices each message itself, and Codex reports only tokens, which
-are priced with `pricing.json`. The usage limits the harnesses report (Claude Code's rate-limit
+only when it carries none), and Codex reports only tokens, which are priced with `pricing.json`. The usage limits the harnesses report (Claude Code's rate-limit
 events, Codex's rate-limit updates) appear in `Mana.provider_windows`, and a run that hits one
 pauses with reason `provider_limit`.
 
 A Claude agent leading a party also gets the Town Hall's own `town` tools, served by a small MCP
-server, to delegate sub-tasks to its members (Claude, Codex or pi), follow them and collect their
+server, to delegate sub-tasks to its members (Claude or Codex), follow them and collect their
 results. Every member's approval requests still come to the player. The game has no window to
 form a party yet. The details, flags and known limits are in [docs/spikes.md](spikes.md), section
 S5, and the safeguards in [docs/security.md](security.md).
@@ -274,6 +275,6 @@ folders in the player's data folder instead: `%APPDATA%\AgentEmpire\townhall\` o
 | `townhall/data/townhall.log` | The log of a Town Hall the game started |
 | `townhall/data/wt/` | Task worktrees of the player's repositories |
 | `townhall/data/mirrors/` | Versioned copies of plain (non-git) work folders |
-| `townhall/data/harness/`, `townhall/data/pi-sessions/` | Per-run harness files and pi session files |
+| `townhall/data/harness/` | Per-run harness files |
 | `%APPDATA%\AgentEmpire\runtime.json` | The shared copy of the running Town Hall's runtime file (`AURELHAVEN_DISCOVERY_FILE` moves it) |
 | `%APPDATA%\Godot\app_userdata\AgentEmpire\` | The game's `settings.cfg`, offline saves (`saves/quick.json`) and `logs/godot.log` |

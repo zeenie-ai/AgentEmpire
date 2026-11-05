@@ -15,7 +15,7 @@ do, and the known limits. How to play is in [playing.md](playing.md).
 Out of scope:
 
 - **A harness's own behaviour** beyond its headless interface; see [Known limits](#known-limits).
-- **A tampered harness.** The Town Hall runs the `claude`, `codex` or `pi` it finds and trusts it.
+- **A tampered harness.** The Town Hall runs the `claude` or `codex` it finds and trusts it.
 - **What an approved command does.** It runs with your rights; only Codex sandboxes commands.
 - **Other programs running as you,** which can read the session token.
 - **What AI providers do with what they are sent;** see [privacy.md](privacy.md).
@@ -47,21 +47,21 @@ can read `runtime.json` and connect, and that includes a command you allow an ag
 
 An agent can use only what its finished add-ons grant (`tools` in `protocol/economy.json`):
 
-| Add-on | Claude Code | Codex | pi |
-|---|---|---|---|
-| Lectern: read files | `Read`, `Glob`, `Grep` | the `read-only` sandbox | `read`, `grep`, `find`, `ls` |
-| Quillworks: write files | `Edit`, `Write` | the `workspace-write` sandbox | `edit`, `write` |
-| Forge: run commands | `Bash` | commands beyond its known-safe reads | `bash` |
-| Rookery: web search and fetch | `WebSearch`, `WebFetch` | `web_search = "live"` | nothing (pi has no such tool) |
-| Archive: instructions and skills | `CLAUDE.md` files | `AGENTS.md` files | context files and skills |
-| Waygate: an MCP server | the server, limited to its `allowed_tools` | the same | skipped (see [Known limits](#known-limits)) |
+| Add-on | Claude Code | Codex |
+|---|---|---|
+| Lectern: read files | `Read`, `Glob`, `Grep` | the `read-only` sandbox |
+| Quillworks: write files | `Edit`, `Write` | the `workspace-write` sandbox |
+| Forge: run commands | `Bash` | commands beyond its known-safe reads |
+| Rookery: web search and fetch | `WebSearch`, `WebFetch` | `web_search = "live"` |
+| Archive: instructions and skills | `CLAUDE.md` files | `AGENTS.md` files |
+| Waygate: an MCP server | the server, limited to its `allowed_tools` | the same |
 
-- **Claude Code and pi** get an explicit list of built-in tools (`--tools`, or pi's `--no-tools`).
+- **Claude Code** gets an explicit list of built-in tools (`--tools`).
 - **Codex** has no tool list. Its sandbox is `read-only` without a Quillworks, and the Town Hall
   declines, without asking you, commands from an agent without a Forge and file edits or write
   access from one without a Quillworks. Web search is `disabled` without a Rookery.
-- **Without an Archive** the instruction files are switched off (`CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`,
-  `project_doc_max_bytes=0`, and pi's `--no-context-files` and `--no-skills`).
+- **Without an Archive** the instruction files are switched off (`CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`
+  and `project_doc_max_bytes=0`).
 - **Fixed per run.** The tools are read when a run starts, so dismantling an add-on takes effect
   at the next run. An agent missing its role's required add-ons starts no task.
 
@@ -113,11 +113,6 @@ The launch lines and the reasons for each flag are in [spikes.md](spikes.md), se
   and an allowed one grants exactly what was understood, for one turn. Apps, plugins, multiple
   agents, browser and computer use and image generation are switched off. The worktree is
   marked `trust_level = "untrusted"`, so a repository's `.codex` config does not load.
-- **pi.** `pi --mode rpc --no-approve` (pi then ignores the project's own pi settings, extensions
-  and skills), with `--tools` from the add-ons and the gate, `-e aurelhaven-gate.ts`, which turns
-  every tool call, built-in or from an extension, into an `aurelhaven:approval` dialog that the
-  Town Hall answers. A denial, a missing dialog channel or an unreadable answer blocks the call.
-  Dialogs from other extensions are dismissed.
 
 ## Work folders
 
@@ -177,12 +172,11 @@ API, marked as an estimate.
 - **Pauses.** A task warns at 80% of its seal and pauses at 100%, for you to extend the seal or
   stop and review. With 2% of the pool left or less, every run pauses until Mana is back. A run
   silent for 15 minutes pauses too (waiting for you or for party members does not count).
-- **Measured after the fact.** Claude Code reports its running cost, pi each message's cost, and
-  Codex its tokens, priced with `protocol/pricing.json`; usage that pi reports without a price
-  costs nothing. A task pauses on the report that crosses its seal and has 10 seconds to stop
-  before it is killed, so it can end slightly over.
+- **Measured after the fact.** Claude Code reports its running cost, and Codex its tokens, priced
+  with `protocol/pricing.json`. A task pauses on the report that crosses its seal and has 10
+  seconds to stop before it is killed, so it can end slightly over.
 - **Backstop.** Claude Code gets `--max-budget-usd`: its session's restored total, plus 1.1 times
-  what is left of the seal, plus $0.01; the task fails if it stops there. Codex and pi have none.
+  what is left of the seal, plus $0.01; the task fails if it stops there. Codex has none.
 - **Provider usage limits.** A run stopped by its provider's usage limit pauses (`provider_limit`)
   and lights the Font Dark incident; you resume it. F4 shows the usage windows harnesses report.
 
@@ -207,7 +201,7 @@ API, marked as an estimate.
 - **No shell.** Harnesses start directly (an npm `.cmd` shim is followed to its program), with no
   console window on Windows and in a process group of their own elsewhere.
 - **Ending process trees.** A stop asks the harness first (Claude Code's interrupt, Codex's
-  `turn/interrupt`, pi's `abort`), closes its input, then ends the tree: `taskkill /T` from
+  `turn/interrupt`), closes its input, then ends the tree: `taskkill /T` from
   `System32`, then with `/F`, on Windows; `SIGTERM`, then `SIGKILL`, to the group elsewhere. A
   stop still running after 10 seconds kills the tree. An exited process is never signalled again.
 - **The Rite**, a task's optional check command, is yours: it runs through the system shell in
@@ -229,22 +223,17 @@ The first four are also described in [spikes.md](spikes.md), section S5.
   side; and Claude Code's `EndConversation` tool, which only ends the conversation.
 - **Your harness configuration still loads.** Codex reads your `~/.codex/config.toml`: its
   service tier, `notify` command, hooks and MCP servers apply, and the agent can use those
-  servers without a Waygate, under their own approval mode. pi loads your user-level extensions;
-  their tool calls still go through the gate.
-- **No Waygates or Rookery on pi.** pi 0.87.1 (pinned in `townhall/package.json`) cannot add MCP
-  servers, so a pi agent skips its Waygates with a warning; pi has no web search or fetch tool.
+  servers without a Waygate, under their own approval mode.
 - **Leftover programs.** A program an agent starts that outlives its harness (a dev server, a
   build server) keeps running: ending a tree reaches only the processes of a running harness.
-- **No sandbox on Claude Code and pi.** Their approved commands run with your rights and can read
+- **No sandbox on Claude Code.** Its approved commands run with your rights and can read
   `runtime.json`, any key in the environment the harnesses inherit (the Town Hall's, minus a
   parent agent session's markers, so your Waygates' variables too), and anything else you can.
 - **The path check is textual.** It resolves a tool's `file_path` or `path` against the working
-  folder as written, without following symbolic links. pi's file tools expand `~/`, drop a
-  leading `@` and accept `file://` URLs, so such a path counts as inside the work folder, and
-  under Trusted Edits a pi agent reads or writes it without asking.
+  folder as written, without following symbolic links.
 - **Worktrees share `.git`.** Git commands an agent runs reach the repository's branches, tags,
   configuration and hooks; only the approval of each command stands in the way.
 - **The Rite runs the agent's version.** It runs without asking after the agent finishes, so if
   the agent changed what it runs (a `package.json` script, a test), that code runs too.
-- **Free Hand outside Codex.** Its "network off" relies on Codex's sandbox; on Claude Code and
-  pi it would let commands run unasked, with your rights and the network. No town has it yet.
+- **Free Hand outside Codex.** Its "network off" relies on Codex's sandbox; on Claude Code it
+  would let commands run unasked, with your rights and the network. No town has it yet.

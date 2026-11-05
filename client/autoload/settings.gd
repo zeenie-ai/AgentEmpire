@@ -32,7 +32,7 @@ const DEFAULTS := {
 	# Start the Town Hall when the game opens and none is running (desktop).
 	"townhall/auto_start": true,
 	# What the auto-started Town Hall runs: "fake" (scripted agents) or "real" (the installed
-	# Claude Code, Codex and pi).
+	# Claude Code and Codex).
 	"townhall/provider": "fake",
 }
 

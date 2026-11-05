@@ -34,8 +34,6 @@ anything.
   it grows. `pricing.json` prices a Claude result only when it carries no cost, and gives the
   cost hints in Claude's model list.
 - **Codex** reports only token counts, so Codex usage is always priced with `pricing.json`.
-- **pi** prices every message itself from its own model catalogue, so pi models are not listed
-  here.
 
 1 Mana is $0.01 (`mana.usd_per_mana`). On a subscription the figures are API-equivalent
 estimates, and the game marks them as such.
@@ -57,7 +55,7 @@ age, from the first to the fourth.
 | `sizes` | The task sizes S, M, L and XL and their names |
 | `roles` | The five agent roles: cost, training time, home, required, recommended and default add-ons, and how their rewards split across the resources |
 | `buildings`, `construction` | Every building's footprint, cost, build time and population; the build-time formula for several builders |
-| `tools` | The six add-ons: cost, build time, age, prerequisites, and what each grants on Claude Code, Codex and pi |
+| `tools` | The six add-ons: cost, build time, age, prerequisites, and what each grants on Claude Code and Codex |
 | `tool_slots_by_age`, `home_task_queue_by_age` | How many add-ons and queued tasks an agent's home holds, by age |
 | `approval_modes` | The four approval modes, with the age, minimum rank and harnesses each needs |
 | `ages` | The four ages: wall ring, cost, research time and milestones |

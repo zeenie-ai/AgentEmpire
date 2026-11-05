@@ -218,7 +218,7 @@ describe("protocol round trips", () => {
         reserved_micros: 0,
         remaining_micros: 5000000,
         level: "normal",
-        by_provider: { claude: 0, codex: 0, pi: 0 },
+        by_provider: { claude: 0, codex: 0 },
         estimates: true,
         provider_windows: [
           { provider: "claude", window: "five_hour", window_minutes: 300, used_percent: 41.5, resets_at: "2026-09-28T12:00:00.000Z" },

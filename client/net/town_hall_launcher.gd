@@ -13,7 +13,7 @@ extends RefCounted
 ## and its own Node.js in runtime/node/ next to townhall/, so players need not install Node.
 ##
 ## Two modes, each with its own town: "fake" (practice: scripted stand-in agents) keeps its data
-## in <data root>/practice, "real" (the installed Claude Code, Codex and pi) in <data root>
+## in <data root>/practice, "real" (the installed Claude Code and Codex) in <data root>
 ## itself. The data root is <townhall>/data, or AURELHAVEN_DATA_ROOT. Settings: "townhall/
 ## auto_start" (on by default) and "townhall/provider" (the mode to start).
 

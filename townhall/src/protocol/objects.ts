@@ -2,15 +2,24 @@ import { z } from "zod";
 
 // ---------- enums ----------
 
-/** The agent harness: Claude Code, the Codex CLI, or pi (any other model provider; 1.2). */
-export const Provider = z.enum(["claude", "codex", "pi"]);
+/** The agent harness: Claude Code or the Codex CLI. */
+export const Provider = z.enum(["claude", "codex"]);
+/**
+ * Harnesses an earlier Town Hall ran and this one no longer does (1.4). Only the `provider` of an
+ * agent summoned before then can hold one: that agent is blocked (`provider_unsupported`) until
+ * the player retires it. No list a player chooses from or configures includes these ids.
+ */
+export const LegacyProvider = z.enum(["pi"]);
+/** `Agent.provider`: a harness the Town Hall runs, or a legacy one in an older town (1.4). */
+export const AgentProvider = z.enum([...Provider.options, ...LegacyProvider.options]);
 export const Role = z.enum(["artificer", "scholar", "scribe", "warden", "herald"]);
 export const ApprovalMode = z.enum(["ask_every_time", "trusted_edits", "plan_first", "free_hand"]);
 export const WorkspaceMode = z.enum(["git_worktree", "plain_folder"]);
 export const Billing = z.enum(["api_key", "subscription"]);
 export const AgentLifecycle = z.enum(["training", "settling", "active", "retired"]);
 export const AgentActivity = z.enum(["idle", "working", "awaiting_approval", "blocked"]);
-export const BlockedReason = z.enum(["missing_tools", "no_mana", "provider_offline", "workspace_error"]);
+/** `provider_unsupported` (1.4): the agent's harness is a legacy one the Town Hall no longer runs. */
+export const BlockedReason = z.enum(["missing_tools", "no_mana", "provider_offline", "workspace_error", "provider_unsupported"]);
 export const ToolType = z.enum(["lectern", "quillworks", "forge", "rookery", "archive", "waygate"]);
 export const ToolStatus = z.enum(["building", "active", "error", "removed"]);
 export const TaskSize = z.enum(["S", "M", "L", "XL"]);
@@ -80,6 +89,8 @@ export const MilestoneKey = z.enum([
 ]);
 
 export type Provider = z.infer<typeof Provider>;
+export type LegacyProvider = z.infer<typeof LegacyProvider>;
+export type AgentProvider = z.infer<typeof AgentProvider>;
 export type Role = z.infer<typeof Role>;
 export type ApprovalMode = z.infer<typeof ApprovalMode>;
 export type WorkspaceMode = z.infer<typeof WorkspaceMode>;
@@ -108,6 +119,11 @@ export type Integrate = z.infer<typeof Integrate>;
 export type MergeBlockedReason = z.infer<typeof MergeBlockedReason>;
 export type DiffFileStatus = z.infer<typeof DiffFileStatus>;
 export type MilestoneKey = z.infer<typeof MilestoneKey>;
+
+/** True for a harness the Town Hall runs, false for a legacy one (or anything else). */
+export function isProvider(id: string): id is Provider {
+  return (Provider.options as readonly string[]).includes(id);
+}
 
 // ---------- shared objects ----------
 
@@ -146,7 +162,7 @@ export type AgentStats = z.infer<typeof AgentStats>;
 export const Agent = z.object({
   id,
   name: z.string(),
-  provider: Provider,
+  provider: AgentProvider,
   model: z.string(),
   role: Role,
   instructions: z.string(),
@@ -302,7 +318,7 @@ export const Mana = z.object({
   reserved_micros: nonNegInt,
   remaining_micros: nonNegInt,
   level: ManaLevel,
-  by_provider: z.object({ claude: nonNegInt, codex: nonNegInt, pi: nonNegInt }),
+  by_provider: z.object({ claude: nonNegInt, codex: nonNegInt }),
   estimates: z.boolean(),
   provider_windows: z.array(ProviderWindow),
 });

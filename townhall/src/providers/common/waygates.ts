@@ -19,7 +19,7 @@ function headerRefs(refs: Record<string, string> | undefined): Record<string, st
 /**
  * A Waygate's MCP server name as the harnesses use it: Claude Code puts it in tool names
  * (mcp__<server>__<tool>) with anything outside [A-Za-z0-9_-] replaced, and Codex cannot
- * carry dots in a dotted `-c` path. All three harnesses get the same name.
+ * carry dots in a dotted `-c` path. Both harnesses get the same name.
  */
 export function mcpServerName(name: string): string {
   return name.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -91,16 +91,4 @@ export function codexMcpOverrides(w: WaygateConfig): string[] {
   if (w.allowed_tools?.length) out.push(`${p}.enabled_tools=${tomlArray(w.allowed_tools)}`);
   out.push(`${p}.default_tools_approval_mode="prompt"`);
   return out;
-}
-
-/** The mcp.json-shaped entry pi's registerMcpServer takes. */
-export function piMcpServer(w: WaygateConfig): { name: string; config: Record<string, unknown> } {
-  const name = mcpServerName(w.server_name);
-  if (w.transport === "http") {
-    return { name, config: { url: w.url, ...(w.header_refs ? { headers: headerRefs(w.header_refs) } : {}), exposure: "direct" } };
-  }
-  return {
-    name,
-    config: { command: w.command, args: w.args ?? [], ...(w.env_refs?.length ? { env: envRefs(w.env_refs) } : {}), exposure: "direct" },
-  };
 }

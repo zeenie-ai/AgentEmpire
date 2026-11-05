@@ -220,7 +220,7 @@ The town plays offline meanwhile."
 				else:
 					text = "TOWN HALL"
 					color = UiTokens.MINT
-					tip = "Real agents: they work in your folders on your Claude Code, Codex or pi sign-in.\nClick to switch to practice agents or to close the Town Hall."
+					tip = "Real agents: they work in your folders on your Claude Code or Codex sign-in.\nClick to switch to practice agents or to close the Town Hall."
 			else:
 				text = "OPEN TOWN HALL TOWN"
 				color = UiTokens.GOLD_BRIGHT
@@ -270,7 +270,7 @@ func _open_hall_menu() -> void:
 	var mode := Game.town_hall_mode()
 	_hall_menu.add_radio_check_item("Practice agents: nothing real runs", HALL_PRACTICE)
 	_hall_menu.set_item_checked(_hall_menu.get_item_index(HALL_PRACTICE), mode == TownHallLauncher.MODE_FAKE)
-	_hall_menu.add_radio_check_item("Real agents: Claude Code, Codex, pi", HALL_REAL)
+	_hall_menu.add_radio_check_item("Real agents: Claude Code and Codex", HALL_REAL)
 	_hall_menu.set_item_checked(_hall_menu.get_item_index(HALL_REAL), mode == TownHallLauncher.MODE_REAL)
 	_hall_menu.add_separator()
 	_hall_menu.add_item("Close the Town Hall", HALL_CLOSE)

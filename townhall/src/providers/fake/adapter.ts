@@ -10,15 +10,15 @@ export interface FakeProviderOptions {
   env?: Record<string, string | undefined>;
 }
 
-const LABELS: Record<Provider, string> = { claude: "Claude", codex: "Codex", pi: "pi" };
+const LABELS: Record<Provider, string> = { claude: "Claude", codex: "Codex" };
 
-/** The scripted model id: pi models name their pi provider too ("<pi provider>/<model id>"). */
+/** The scripted model id ("fake-claude", "fake-codex"). */
 export function fakeModelId(provider: Provider): string {
-  return provider === "pi" ? "fake/pi" : `fake-${provider}`;
+  return `fake-${provider}`;
 }
 
 /**
- * Scripted stand-in for Claude, Codex and pi (Phase 1). Each run plays a JSON scenario from
+ * Scripted stand-in for Claude and Codex (Phase 1). Each run plays a JSON scenario from
  * `src/providers/fake/scenarios/`, chosen by a `[fake:<name>]` prefix on the task prompt
  * (for example "[fake:full_loop] Add a greeting"), else the configured default scenario.
  */
@@ -30,8 +30,7 @@ export class FakeProvider implements ProviderAdapter {
 
   async probe(): Promise<ProviderInfo> {
     const env = this.opts.env ?? process.env;
-    const hasKey =
-      this.id === "claude" ? !!env.ANTHROPIC_API_KEY : this.id === "codex" ? !!(env.OPENAI_API_KEY || env.CODEX_API_KEY) : true;
+    const hasKey = this.id === "claude" ? !!env.ANTHROPIC_API_KEY : !!(env.OPENAI_API_KEY || env.CODEX_API_KEY);
     return {
       id: this.id,
       installed: true,
