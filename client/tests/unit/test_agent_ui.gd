@@ -386,8 +386,21 @@ func test_deny_asks_why_then_answers() -> void:
 
 func test_scope_rules_are_explained_as_the_town_hall_matches_them() -> void:
 	var approvals := AgentUiDemo.approvals()
-	assert_eq(AgentUi.approval_reach(approvals[0]), "“npm install” commands", "commands match on two words")
+	assert_eq(AgentUi.approval_reach(approvals[0]), "“npm install” commands (with any further arguments inside the work folder)",
+		"a known program's rule covers its subcommand with further arguments")
 	assert_eq(AgentUi.approval_reach(approvals[1]), "requests to developer.mozilla.org", "network matches on the host")
+	var exact: Dictionary = (approvals[0] as Dictionary).duplicate()
+	exact["rule"] = {"signature": "ls -la src", "exact": true}
+	assert_eq(AgentUi.approval_reach(exact), "exactly “ls -la src”", "any other command's rule covers exactly its words")
+	var long: Dictionary = (approvals[0] as Dictionary).duplicate()
+	long["rule"] = {"signature": "x".repeat(300), "exact": true}
+	assert_lt(AgentUi.approval_reach(long).length(), 100, "a long signature is clipped for the tooltip")
+	var older: Dictionary = (approvals[0] as Dictionary).duplicate()
+	older.erase("rule")
+	assert_eq(AgentUi.approval_reach(older), "“npm install” commands", "a Town Hall before 1.4 sends no rule and matched two words")
+	var card := _card(0)
+	assert_string_contains(card.allow_task_button.tooltip_text, "with any further arguments inside the work folder")
+	assert_string_contains(card.allow_agent_button.tooltip_text, "“npm install” commands")
 	var high: Dictionary = (approvals[0] as Dictionary).duplicate()
 	high["risk"] = "high"
 	high["scopes"] = ["once"]

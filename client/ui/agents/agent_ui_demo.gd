@@ -151,12 +151,14 @@ static func approvals() -> Array:
 			"summary": "Run: npm install --save-dev vitest",
 			"input_preview": "{\n  \"command\": \"npm install --save-dev vitest\",\n  \"cwd\": \"D:/work/aurelhaven-web\",\n  \"timeout_ms\": 120000\n}",
 			"reason": "The session tests need a test runner; the project has none yet.", "status": "pending",
-			"scopes": ["once", "task", "agent"], "seal_exhausted": false, "created_at": iso(42.0)},
+			"scopes": ["once", "task", "agent"], "rule": {"signature": "npm install", "exact": false},
+			"seal_exhausted": false, "created_at": iso(42.0)},
 		{"id": "apv_fetch", "task_id": "tsk_login", "agent_id": "agt_mira", "tool": "WebFetch", "category": "network", "risk": "low",
 			"summary": "Fetch developer.mozilla.org: HTTP 302 Found",
 			"input_preview": "{\n  \"url\": \"https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302\",\n  \"prompt\": \"How do browsers treat repeated 302 redirects?\"\n}",
 			"reason": null, "status": "pending",
-			"scopes": ["once", "task", "agent"], "seal_exhausted": true, "created_at": iso(185.0)},
+			"scopes": ["once", "task", "agent"], "rule": {"signature": "developer.mozilla.org", "exact": false},
+			"seal_exhausted": true, "created_at": iso(185.0)},
 	]
 
 
