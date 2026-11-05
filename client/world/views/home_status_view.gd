@@ -299,7 +299,8 @@ func refresh() -> void:
 		_plate.set_text(J.gs(a, "name", "Agent"), caption, color, caption_color)
 		_plate.set_mood(mood)
 	# While its add-ons are being built, a settling agent is "blocked" at the Town Hall (they are
-	# missing); that is no trouble for the player, so it gets no red mark.
+	# missing); that is no trouble for the player, so it gets no red mark. Other blockers of a
+	# settling agent read "blocked" in agent_status() and keep the mark.
 	_flags = {"approval": not approvals.is_empty(), "seal": seal_out, "review": review, "failed": failed,
 		"blocked": activity == "blocked" and mood != "settling", "working": activity == "working"}
 	var ringing := bool(_flags["approval"])

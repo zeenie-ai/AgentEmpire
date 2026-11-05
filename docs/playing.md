@@ -174,7 +174,7 @@ into the new one with a small pop.
 | The bell swinging on the post by the door, a banner raised | An approval waits (a blue banner: the task has spent its seal) |
 | A glowing chest at the door | A result waits for review |
 | Smoke from the roof | A task failed |
-| A red "!" floating over the roof | Blocked: a required add-on is missing, there is not enough Mana to start, the harness is offline, or the work folder has a problem |
+| A red "!" floating over the roof | Blocked: a required add-on is missing (not while a new agent's add-ons are still going up), there is not enough Mana to start, the harness is offline, or the work folder has a problem |
 
 The name plate over the roof carries the agent's sigil, a small animated gem whose colour and
 motion follow its mood: waiting for you, a result ready, trouble, working, settling in, retired or

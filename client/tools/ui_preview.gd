@@ -623,8 +623,8 @@ func _shot_agent_states() -> void:
 	# another waiting for the player.
 	var ysolde: Dictionary = _demo.corvin().duplicate(true)
 	ysolde.merge({"id": "agt_ysolde", "name": "Ysolde", "role": "warden", "provider": "claude", "model": "claude-sonnet-5",
-		"activity": "awaiting_approval", "current_task_id": "tsk_audit", "xp": 640, "level": 4, "rank": "D",
-		"created_at": _demo.iso(12000.0)}, true)
+		"activity": "awaiting_approval", "current_task_id": "tsk_audit", "tool_ids": ["tl_y_lectern", "tl_y_forge"],
+		"starting_tools": ["lectern", "forge"], "xp": 640, "level": 4, "rank": "D", "created_at": _demo.iso(12000.0)}, true)
 	agents.append_array([wren, brisa, osric, elowen, ysolde])
 	var audit: Dictionary = _demo.task_login().duplicate(true)
 	audit.merge({"id": "tsk_audit", "agent_id": "agt_ysolde", "title": "Audit the deploy keys", "state": "awaiting_approval"}, true)
@@ -638,6 +638,8 @@ func _shot_agent_states() -> void:
 		tools.append({"id": "tl_o_" + t, "agent_id": "agt_osric", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
 	for t in ["lectern", "rookery", "archive"]:
 		tools.append({"id": "tl_e_" + t, "agent_id": "agt_elowen", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
+	for t in ["lectern", "forge"]:
+		tools.append({"id": "tl_y_" + t, "agent_id": "agt_ysolde", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
 	_apply(s)
 	var progress: Dictionary = _realm().get("progress")
 	progress["tsk_login"] = {"task_id": "tsk_login", "phase": "tool", "current_tool": "Bash", "files_touched": 3, "spent_micros": 640000}

@@ -243,6 +243,11 @@ static func agent_status(a: Dictionary, link: Object = null) -> Dictionary:
 				return _settling("Waiting for a plot: choose where the %s goes" % home_name)
 			if not J.b((home as Dictionary).get("built"), false):
 				return _settling("Building the %s" % home_name)
+			# Missing add-ons are part of settling in; any other blocker (a work folder the Town Hall
+			# could not set up) keeps the agent settling for good, so the player must see it.
+			var reason := J.gs(a, "blocked_reason")
+			if J.gs(a, "activity") == Protocol.AgentActivity.BLOCKED and reason != Protocol.BlockedReason.MISSING_TOOLS:
+				return {"text": blocked_text(reason, a), "caption": "BLOCKED", "mood": "blocked"}
 			var wait := waiting_tool(link, id)
 			if not wait.is_empty():
 				return {"text": "Needs %s to build the %s" % [cost_text(J.gd(wait, "missing")), addon_name(J.gs(wait, "tool"))],

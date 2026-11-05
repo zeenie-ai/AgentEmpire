@@ -323,7 +323,7 @@ There is no settings window yet: the menus and the onboarding are still to come.
 
 ## Tests
 
-GUT 9.7.1 (`addons/gut/`) runs every `tests/unit/test_*.gd` (39 files, 415 tests today) with the
+GUT 9.7.1 (`addons/gut/`) runs every `tests/unit/test_*.gd` (39 files, 417 tests today) with the
 defaults in `.gutconfig.json`. The autoloads exist in tests, but no test starts a Town Hall.
 
 | Run | Command, from the repository root |

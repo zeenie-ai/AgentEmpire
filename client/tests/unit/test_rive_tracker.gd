@@ -439,11 +439,15 @@ func test_the_name_plate_and_the_panel_agree() -> void:
 
 
 func test_a_settling_agent_is_settling_on_the_plate_too() -> void:
-	# Corvin's home stands and his add-ons go up: the Town Hall reports him blocked (they are
-	# missing), but the player has nothing to do yet.
+	# Corvin's home stands and his Quillworks goes up: the Town Hall reports him blocked (an add-on
+	# is missing), but the player has nothing to do yet.
 	_agent_event("agt_corvin", {"lifecycle": Protocol.AgentLifecycle.SETTLING,
-		"activity": Protocol.AgentActivity.BLOCKED, "blocked_reason": "missing_tools"})
+		"activity": Protocol.AgentActivity.BLOCKED, "blocked_reason": Protocol.BlockedReason.MISSING_TOOLS})
+	var quill: Dictionary = (Realm.tools["tl_c_quill"] as Dictionary).duplicate(true)
+	quill["status"] = Protocol.ToolStatus.BUILDING
+	Realm.apply_event({"type": Protocol.EVT_TOOL_UPDATED, "payload": {"tool": quill}})
 	assert_eq(_status("agt_corvin")["mood"], "settling")
+	assert_string_contains(_status("agt_corvin")["text"], "Setting up")
 	var host := Control.new()
 	add_child_autofree(host)
 	var home := _home("agt_corvin", host)
@@ -459,3 +463,40 @@ func test_a_settling_agent_is_settling_on_the_plate_too() -> void:
 	assert_eq(home._plate._caption.text, "NEEDS RESOURCES")
 	assert_true(home._mark.visible)
 	assert_eq(_status("agt_corvin", link)["mood"], "blocked", "the panel says the same")
+
+
+func test_a_settling_agent_with_a_broken_work_folder_shows_it() -> void:
+	# The Town Hall could not set up Corvin's work folder (a repository with no commits, say): he
+	# stays settling for good, so his plate and his panel say so, with the red mark.
+	_agent_event("agt_corvin", {"lifecycle": Protocol.AgentLifecycle.SETTLING,
+		"activity": Protocol.AgentActivity.BLOCKED, "blocked_reason": Protocol.BlockedReason.WORKSPACE_ERROR})
+	var st := _status("agt_corvin")
+	assert_eq(st["mood"], "blocked")
+	assert_eq(st["text"], "Blocked: the work folder has a problem")
+	var host := Control.new()
+	add_child_autofree(host)
+	var home := _home("agt_corvin", host)
+	assert_eq(home._plate.mood(), "blocked")
+	assert_eq(home._plate._caption.text, "BLOCKED")
+	assert_true(home._mark.visible)
+
+
+func test_the_needs_come_in_the_task_trackers_order() -> void:
+	var s := AgentUiDemo.state()
+	for ap in s["approvals"]:
+		ap["agent_id"] = "agt_corvin"
+	Realm.apply_state(s)
+	assert_eq(_status("agt_corvin")["mood"], "waiting", "a petition before a result to review")
+	s = AgentUiDemo.state()
+	s["approvals"] = []
+	Realm.apply_state(s)
+	_new_task("tsk_broken", Protocol.TaskState.FAILED, "2026-02-01T00:00:00Z", {"agent_id": "agt_corvin"})
+	assert_eq(_status("agt_corvin")["mood"], "review", "a result to review before a failed task")
+	_task_event("tsk_docs", Protocol.TaskState.ACCEPTED)
+	_new_task("tsk_held", Protocol.TaskState.PAUSED, "2026-02-02T00:00:00Z", {"agent_id": "agt_corvin"})
+	assert_eq(_status("agt_corvin")["caption"], "TASK FAILED", "a failed task before a paused one")
+	_task_event("tsk_broken", Protocol.TaskState.CANCELLED)
+	_agent_event("agt_corvin", {"activity": Protocol.AgentActivity.BLOCKED, "blocked_reason": Protocol.BlockedReason.NO_MANA})
+	assert_eq(_status("agt_corvin")["caption"], "PAUSED", "a paused task before a blocker")
+	_task_event("tsk_held", Protocol.TaskState.CANCELLED)
+	assert_eq(_status("agt_corvin")["caption"], "BLOCKED")
