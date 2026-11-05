@@ -1,6 +1,9 @@
-# Town Hall protocol, version 1.3
+# Town Hall protocol, version 1.4
 
 This is the contract between the Town Hall (the local service in `townhall/`) and the Godot client (`client/`). The Town Hall's zod schemas in `townhall/src/protocol/` must match this document. If the two ever disagree, fix the code or update this document in the same change. `townhall/test/unit/protocol.test.ts` checks the command, event, error-code, close-code and enum names below against the schemas; the payload shapes are checked only by review.
+
+**Changes in 1.4** (backward compatible; a 1.3 client keeps working):
+- `Approval.rule` says what `Allow for this task` and `Always for` would store: the signature a task or agent rule matches, and for a command whether it matches only these exact words. It is null when only `once` is offered.
 
 **Changes in 1.3** (all backward compatible; a 1.2 client keeps working):
 - `get_progress` and the `progress_updated` event: the town's progression in one object (the age, the facts behind the milestones, the next age with its structured milestones and whether it can be started now, and the Quartermaster's current rates). `get_state` carries the same object as `progress`.
@@ -126,7 +129,13 @@ This is the contract between the Town Hall (the local service in `townhall/`) an
   "category": "read|write|command|network|outside_workspace|mcp",
   "risk": "low|medium|high", "summary": "Run: npm install", "input_preview": "{...}",  // redacted, <= 4 KB
   "reason": "The agent's stated reason, if any", "status": "pending|orphaned",
-  "scopes": ["once","task","agent"], "seal_exhausted": false, "created_at": "..." }
+  "scopes": ["once","task","agent"],
+  "rule": { "signature": "npm install", "exact": false },          // 1.4; null when scopes is ["once"]
+  "seal_exhausted": false, "created_at": "..." }
+// rule: what a task or agent rule made from this approval matches. For a command, its signature:
+// the program and subcommand ("npm run build", "git status"), covering further arguments that stay
+// inside the work folder, or with exact:true all its words, covering only itself; the commands of a
+// chain in order ("npm run build && npm test"). For a network request, the host; otherwise the tool.
 
 // Incident
 { "id": "inc_...", "kind": "smoke|alarm_bell|hand_bell|dim_lanterns|font_dark|rift|merge_blocked",
@@ -181,7 +190,7 @@ The table shows each command's payload and the payload of its successful reply.
 
 | Command | Payload | Result |
 |---|---|---|
-| `hello` | `{token, protocol:{major:1,minor:3}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
+| `hello` | `{token, protocol:{major:1,minor:4}, client:{name,version,platform:"desktop"\|"web"}, last_seq?, take_over?}` | `{protocol, daemon_version, sdk_versions, features, seq, catchup:"replay"\|"snapshot"}`. When another client is active and `take_over` is not set, the reply is `SESSION_BUSY`. With `take_over`, the old client gets `session_revoked` and is closed with 4409. With `catchup:"replay"`, the missed events follow immediately. With `catchup:"snapshot"`, the client calls `get_state`. `sdk_versions` maps each installed harness to its version, for example `{"claude":"2.1.281","codex":"0.144.2","pi":"0.87.1"}` (1.2). `features` contains `fake_provider` when agents are scripted and `real_providers` otherwise (1.2), and `progress` and `shutdown` (1.3). |
 | `ping` | `{}` | `{}` |
 | `get_state` | `{}` | `{seq, age, treasury, mana, agents, tools, tasks, approvals, parties, incidents, town:{rev,schema_version}\|null, settings, providers, progress}` (`tasks` = open tasks plus the 50 most recent; `progress`, the Progress object, was added in 1.3) |
 | `get_progress` | `{}` | The Progress object (1.3). |

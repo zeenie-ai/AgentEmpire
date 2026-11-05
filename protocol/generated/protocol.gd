@@ -4,7 +4,7 @@
 extends RefCounted
 
 const PROTOCOL_MAJOR := 1
-const PROTOCOL_MINOR := 3
+const PROTOCOL_MINOR := 4
 const ENVELOPE_VERSION := 1
 const MAX_FRAME_BYTES := 1048576
 const HELLO_TIMEOUT_MS := 5000

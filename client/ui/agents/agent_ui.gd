@@ -10,6 +10,9 @@ const Protocol = preload("res://net/protocol.gd")
 ## Harness ids as the player knows them. Unknown ids are shown capitalised.
 const HARNESS_NAMES := {"claude": "Claude Code", "codex": "Codex", "pi": "pi"}
 
+## How much of a rule's signature a tooltip quotes; the card shows the whole request.
+const REACH_MAX := 80
+
 const LORE_NAMES := ["Mira", "Aldric", "Seraphine", "Corvin", "Isolde", "Thessaly", "Rowan", "Elowen",
 	"Brannoc", "Liora", "Caspian", "Wynne", "Osric", "Ysmay", "Tamsin", "Evander", "Maelis", "Ronan",
 	"Sabine", "Idris", "Nerys", "Galen", "Ottilie", "Percival", "Rhosyn", "Soren", "Vesper", "Alaric",
@@ -387,14 +390,31 @@ static func category_verb(category: String) -> String:
 	return "asks for permission"
 
 
-## What a task or agent rule made from this approval would cover, as the Town Hall matches it:
-## the first two words of a command, the host of a network request, otherwise the tool.
-## "“npm install” commands", "requests to developer.mozilla.org", "Edit".
+## What a task or agent rule made from this approval would cover, as the Town Hall matches it
+## (its Approval.rule, protocol 1.4): a command's program and subcommand with further arguments,
+## or exactly its words; the host of a network request; otherwise the tool.
+## "“npm install” commands (with any further arguments inside the work folder)",
+## "exactly “ls -la src”", "requests to developer.mozilla.org", "Edit".
 static func approval_reach(approval: Dictionary) -> String:
 	var tool := J.gs(approval, "tool", "this tool")
+	var category := J.gs(approval, "category")
+	var rule := J.gd(approval, "rule")
+	var signature := J.gs(rule, "signature")
+	if signature.length() > REACH_MAX:
+		signature = signature.substr(0, REACH_MAX - 3) + "..."
+	if signature != "":
+		match category:
+			Protocol.ApprovalCategory.COMMAND:
+				if J.b(rule.get("exact")):
+					return "exactly “%s”" % signature
+				return "“%s” commands (with any further arguments inside the work folder)" % signature
+			Protocol.ApprovalCategory.NETWORK:
+				return "requests to %s" % signature
+		return tool
+	# A Town Hall before 1.4 sends no rule; its rules matched a command's first two words.
 	var parsed: Variant = JSON.parse_string(J.gs(approval, "input_preview"))
 	var input := J.d(parsed)
-	match J.gs(approval, "category"):
+	match category:
 		Protocol.ApprovalCategory.COMMAND:
 			var words := J.gs(input, "command").strip_edges().split(" ", false)
 			if not words.is_empty():

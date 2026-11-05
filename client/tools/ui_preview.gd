@@ -473,13 +473,13 @@ func _shot_approvals() -> void:
 	var list: Array = _demo.approvals()
 	list.append({"id": "apv_write", "task_id": "tsk_login", "agent_id": "agt_mira", "tool": "Edit", "category": "write", "risk": "low",
 		"summary": "Edit src/auth/session.ts", "input_preview": "{\"file_path\": \"src/auth/session.ts\"}", "reason": null, "status": "pending",
-		"scopes": ["once", "task", "agent"], "seal_exhausted": false, "created_at": _demo.iso(20.0)})
+		"scopes": ["once", "task", "agent"], "rule": {"signature": "Edit", "exact": false}, "seal_exhausted": false, "created_at": _demo.iso(20.0)})
 	list.append({"id": "apv_out", "task_id": "tsk_docs", "agent_id": "agt_corvin", "tool": "Read", "category": "outside_workspace", "risk": "high",
 		"summary": "Read C:/Users/Tobin/.ssh/config", "input_preview": "{\"file_path\": \"C:/Users/Tobin/.ssh/config\"}",
-		"reason": "Looking for the deploy host name.", "status": "pending", "scopes": ["once"], "seal_exhausted": false, "created_at": _demo.iso(8.0)})
+		"reason": "Looking for the deploy host name.", "status": "pending", "scopes": ["once"], "rule": null, "seal_exhausted": false, "created_at": _demo.iso(8.0)})
 	list.append({"id": "apv_mcp", "task_id": "tsk_login", "agent_id": "agt_mira", "tool": "mcp__github__create_issue", "category": "mcp", "risk": "medium",
 		"summary": "Open a GitHub issue: Session refresh races the redirect", "input_preview": "{}", "reason": null, "status": "pending",
-		"scopes": ["once", "task", "agent"], "seal_exhausted": false, "created_at": _demo.iso(4.0)})
+		"scopes": ["once", "task", "agent"], "rule": {"signature": "mcp__github__create_issue", "exact": false}, "seal_exhausted": false, "created_at": _demo.iso(4.0)})
 	s["approvals"] = list
 	_apply(s)
 	var tray: Control = load(UI % "approval_tray").new()

@@ -1,17 +1,17 @@
-import path from "node:path";
 import type { ApprovalCategory } from "../../protocol/objects.js";
-import { currentPlatform, isInside } from "../../security/path-guard.js";
+import { targetInside } from "../../security/target-path.js";
 import { displayTarget } from "../common/approvals.js";
 import { asNumber, asString, isPlainObject } from "../common/support.js";
 import type { ApprovalRequest } from "../types.js";
 
 /**
- * True when `target` (relative to `cwd`) names a place inside the work folder. Text a shell or
- * Codex might expand ("~", "$HOME", "%USERPROFILE%") is never taken to be inside.
+ * True when `target` (relative to `cwd`) names a place inside the work folder, judged like any
+ * other tool path (links followed). Codex's own expansion rules are not known, so text it might
+ * expand ("~", "$HOME", "%USERPROFILE%") is never taken to be inside.
  */
 export function insideWorkspace(target: string, cwd: string, workspaceRoot: string): boolean {
   if (!target.trim() || /^~|[$%]/.test(target)) return false;
-  return isInside(path.resolve(cwd, target), workspaceRoot, currentPlatform());
+  return targetInside(target, { cwd, root: workspaceRoot });
 }
 
 export type FsAccess = "read" | "write" | "deny";
@@ -155,20 +155,24 @@ export function permissionApproval(req: PermissionRequest, reason: string | null
   const category: ApprovalCategory = outside ? "outside_workspace" : req.network ? "network" : writes ? "write" : "read";
   const both = req.network && req.files.length > 0;
   const tool = both ? "permissions" : req.network ? "network_access" : "file_access";
+  const { grants, keeps } = describeAccess(req);
+  return {
+    tool,
+    category,
+    input: { permissions: req.profile },
+    summary: `Allow ${grants} for this turn${keeps}`,
+    ...(both ? { risk: "high" as const } : {}),
+    ...(reason ? { reason } : {}),
+  };
+}
 
+/** What a request grants, in words ("network access and write access to src"), and what it keeps blocked. */
+export function describeAccess(req: PermissionRequest): { grants: string; keeps: string } {
   const labels = (access: FsAccess) => req.files.filter((f) => f.access === access).map((f) => f.label);
   const parts: string[] = [];
   if (req.network) parts.push("network access");
   if (labels("read").length > 0) parts.push(`read access to ${labels("read").join(", ")}`);
   if (labels("write").length > 0) parts.push(`write access to ${labels("write").join(", ")}`);
   const blocked = labels("deny");
-  const summary = `Allow ${parts.join(" and ") || "a sandbox change"} for this turn${blocked.length > 0 ? ` (keeping ${blocked.join(", ")} blocked)` : ""}`;
-  return {
-    tool,
-    category,
-    input: { permissions: req.profile },
-    summary,
-    ...(both ? { risk: "high" as const } : {}),
-    ...(reason ? { reason } : {}),
-  };
+  return { grants: parts.join(" and ") || "a sandbox change", keeps: blocked.length > 0 ? ` (keeping ${blocked.join(", ")} blocked)` : "" };
 }

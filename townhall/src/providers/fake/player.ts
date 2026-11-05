@@ -206,10 +206,11 @@ export class ScenarioPlayer implements RunHandle {
 
   private async writeFile(step: Extract<Step, { op: "write_file" }>): Promise<void> {
     const content = step.content.replace("{feedback}", this.req.resume?.feedback ?? "");
+    // Claude Code's Write sends an absolute path; it resolves a relative one before asking.
     const answer = await this.host.requestApproval({
       tool: "Write",
       category: "write",
-      input: { file_path: step.path, content: content.slice(0, 200) },
+      input: { file_path: path.resolve(this.req.cwd, step.path), content: content.slice(0, 200) },
       summary: `Write ${step.path}`,
     });
     this.checkAbort();

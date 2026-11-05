@@ -10,7 +10,7 @@ import { codexRateWindows } from "../common/rate-limits.js";
 import { asNumber, asString, classifyFailure, cleanText, isPlainObject, type HarnessDeps } from "../common/support.js";
 import { codexMcpOverrides, usableWaygates } from "../common/waygates.js";
 import type { ApprovalAnswer, ApprovalRequest, RunEvent, RunHandle, RunHost, RunOutcome, RunRequest } from "../types.js";
-import { insideWorkspace, parsePermissionRequest, permissionApproval } from "./permissions.js";
+import { describeAccess, insideWorkspace, parsePermissionRequest, permissionApproval, type PermissionRequest } from "./permissions.js";
 import { RpcClient, RpcError, type RpcId } from "./rpc.js";
 
 /** Token counts as the app server reports them (a TokenUsageBreakdown, minus the derived fields). */
@@ -77,6 +77,24 @@ function decisionOf(answer: ApprovalAnswer): Decision {
 /** The URL scheme for a network approval's protocol (only the host matters to approval rules). */
 function schemeOf(protocol: unknown): string {
   return protocol === "http" || protocol === "https" ? protocol : "socks5";
+}
+
+/**
+ * Adds the extra sandbox access a command asks for to its approval: it shows on the card, access
+ * outside the work folder makes it an outside-workspace request, and network access can only be
+ * allowed once.
+ */
+function withAccess(req: ApprovalRequest, extra: PermissionRequest | null): ApprovalRequest {
+  if (!extra) return req;
+  const access = permissionApproval(extra, null);
+  const { grants, keeps } = describeAccess(extra);
+  return {
+    ...req,
+    category: access.category === "outside_workspace" || access.category === "network" ? access.category : req.category,
+    input: { ...(isPlainObject(req.input) ? req.input : {}), additionalPermissions: extra.profile },
+    summary: `${req.summary ?? req.tool}, with ${grants}${keeps}`,
+    ...(req.risk === "high" || extra.network ? { risk: "high" as const } : {}),
+  };
 }
 
 /**
@@ -602,6 +620,18 @@ export class CodexRun implements RunHandle {
       // Capability, not approval: without a Forge the agent may only run Codex's known-safe reads.
       return this.refuse(`Refused a command (the agent has no Forge): ${command}`);
     }
+    // Extra sandbox access for this one command: accepting the command grants it too.
+    let extra: PermissionRequest | null = null;
+    if (p.additionalPermissions !== null && p.additionalPermissions !== undefined) {
+      extra = parsePermissionRequest(p.additionalPermissions, cwd, this.req.workspaceRoot);
+      if (!extra) return this.refuse(`Declined a command that asks for sandbox permissions the Town Hall does not understand: ${command}`);
+      if (!extra.network && extra.files.length === 0) extra = null;
+    }
+    if (this.plan.sandbox === "read-only" && extra?.files.some((f) => f.access === "write")) {
+      // Capability, not approval: without a Quillworks the agent may not change files, so no
+      // answer or rule may grant a command write access either.
+      return this.refuse(`Refused a command that asks for write access (the agent has no Quillworks): ${command}`);
+    }
     const net = isPlainObject(p.networkApprovalContext) ? p.networkApprovalContext : null;
     if (net) {
       // A sandboxed command wants to reach a host. The host goes in as a URL, so an answer for
@@ -615,16 +645,17 @@ export class CodexRun implements RunHandle {
         parsed = false;
       }
       const req = approvalFor("shell", "network", { command, cwd, url }, this.req.cwd, asString(p.reason));
-      const answer = await this.ask({
+      const network: ApprovalRequest = {
         ...req,
         summary: `Network access to ${host || "an unknown host"}${command ? ` for: ${clip(command, 120)}` : ""}`,
         // A host that is not understood can only be allowed once.
         ...(parsed ? {} : { risk: "high" as const }),
-      });
+      };
+      const answer = await this.ask(withAccess(network, extra));
       return decisionOf(answer);
     }
     if (!command.trim()) return this.refuse("Declined a command the Town Hall could not see.");
-    const answer = await this.ask(approvalFor("shell", "command", { command, cwd }, this.req.cwd, asString(p.reason)));
+    const answer = await this.ask(withAccess(approvalFor("shell", "command", { command, cwd }, this.req.cwd, asString(p.reason)), extra));
     return decisionOf(answer);
   }
 

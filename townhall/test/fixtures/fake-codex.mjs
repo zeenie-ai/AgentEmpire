@@ -80,7 +80,8 @@ async function runStep(step, turn) {
     out({ method: "item/completed", params: { threadId, turnId: turn.id, item: { type: "agentMessage", id, text: step.text, phase: null, memoryCitation: null }, completedAtMs: Date.now() } });
   } else if (step.command !== undefined) {
     const id = `item_${++itemSeq}`;
-    const item = { type: "commandExecution", id, command: step.command, cwd: process.cwd(), processId: null, source: "agent", status: "inProgress", commandActions: [], aggregatedOutput: null, exitCode: null, durationMs: null };
+    const cwd = step.cwd ?? process.cwd();
+    const item = { type: "commandExecution", id, command: step.command, cwd, processId: null, source: "agent", status: "inProgress", commandActions: [], aggregatedOutput: null, exitCode: null, durationMs: null };
     out({ method: "item/started", params: { threadId, turnId: turn.id, item, startedAtMs: Date.now() } });
     const res = await serverRequest("item/commandExecution/requestApproval", {
       threadId,
@@ -89,8 +90,9 @@ async function runStep(step, turn) {
       startedAtMs: Date.now(),
       environmentId: null,
       // `command` and `cwd` are optional in the request; the item carries them too.
-      ...(step.omitCommand ? {} : { command: step.command, cwd: process.cwd() }),
+      ...(step.omitCommand ? {} : { command: step.command, cwd }),
       ...(step.network ? { networkApprovalContext: { host: step.network === true ? "example.org" : step.network, protocol: "https" } } : {}),
+      ...(step.additionalPermissions ? { additionalPermissions: step.additionalPermissions } : {}),
       ...(step.reason ? { reason: step.reason } : {}),
     });
     log({ kind: "approval", method: "item/commandExecution/requestApproval", response: res });
