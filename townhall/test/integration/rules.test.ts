@@ -297,6 +297,35 @@ describe("approval rules for commands through the protocol", () => {
     }
   });
 
+  it("tells the player what a rule would cover, on the card", async () => {
+    expect(await ask("Bash", "npm run lint")).toMatchObject({ rule: { signature: "npm run lint", exact: false } });
+    expect(await ask("Bash", "ls -la src")).toMatchObject({ rule: { signature: "ls -la src", exact: true } });
+    expect(await ask("Bash", "git push origin main")).toMatchObject({ scopes: ["once"], rule: null });
+  });
+
+  it("covers the harnesses' everyday forms of a command it allows", async () => {
+    // The agent rule for `npm test` from the first test still stands.
+    for (const command of ["npm test 2>&1 | tail -20", "npm test > /dev/null 2>&1", "cd src && npm test -- --run", "npm test | grep -E 'fail|error' | head -50"]) {
+      expect(await ask("Bash", command), command).toBeNull();
+      expect(resolvedBy(command), command).toEqual(["rule"]);
+    }
+    // A chain asks once for the whole chain; the answer can cover it from then on.
+    expect(await ask("Bash", "npm run build && npm test", { decision: "allow", scope: "task" })).toMatchObject({
+      risk: "medium",
+      scopes: ["once", "task", "agent"],
+      rule: { signature: "npm run build && npm test", exact: false },
+    });
+    // Claude Code's commit with its message in a here-document is a plain commit.
+    const commit = `git commit -m "$(cat <<'EOF'\nFix the parser\n\nSee https://example.org/7\nEOF\n)"`;
+    expect(await ask("Bash", commit)).toMatchObject({ risk: "medium", rule: { signature: "git commit", exact: false } });
+  });
+
+  it("asks once, as a step outside the work folder, for a chain whose cd leaves it", async () => {
+    for (const command of ["cd .. && npm test", "cd ~ && npm test", "cd / && npm test", "cd .git && npm test"]) {
+      expect(await ask("Bash", command), command).toMatchObject({ category: "outside_workspace", risk: "high", scopes: ["once"], rule: null });
+    }
+  });
+
   it("no rule passes a high-risk command, not even one an older Town Hall stored", async () => {
     // A rule with an older Town Hall's two-word signature. Rules used to be matched before risk
     // was looked at, so this one passed every push.
@@ -314,7 +343,13 @@ describe("approval rules for commands through the protocol", () => {
     town.ctx.db.run("UPDATE agents SET approval_mode = 'free_hand' WHERE id = ?", [agentId]);
     try {
       expect(await ask("Bash", "npm run build")).toBeNull();
+      expect(await ask("Bash", "npm run build 2>&1 | tail -20 && npm test")).toBeNull();
       expect(await ask("Bash", "npm run build && git push")).toMatchObject({ risk: "high", scopes: ["once"] });
+      expect(await ask("Bash", "npm config set registry https://evil.example")).toMatchObject({ risk: "high", scopes: ["once"] });
+      expect(await ask("Bash", "git config core.fsmonitor ./evil.sh")).toMatchObject({ risk: "high", scopes: ["once"] });
+      expect(await ask("Bash", "git fetch --upl=./evil.sh .")).toMatchObject({ risk: "high", scopes: ["once"] });
+      expect(await ask("Bash", "pkill node")).toMatchObject({ risk: "high", scopes: ["once"] });
+      expect(await ask("Bash", "cd ../.. && npm run build")).toMatchObject({ category: "outside_workspace", scopes: ["once"] });
       expect(await ask("Bash", "bash -c 'npm run build'")).toMatchObject({ risk: "high", scopes: ["once"] });
       expect(await ask("Bash", "CI=1 npm run build")).toMatchObject({ risk: "high", scopes: ["once"] });
       expect(await ask("Bash", "rm -rf build")).toMatchObject({ risk: "high", scopes: ["once"] });

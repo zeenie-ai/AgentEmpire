@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { commandShapeOf } from "../../src/core/command-shape.js";
 import { bundledPiCli } from "../../src/providers/common/exec.js";
 import { PiAdapter } from "../../src/providers/pi/adapter.js";
 import { piSessionId, splitPiModel, type PiCheckpoint } from "../../src/providers/pi/run.js";
@@ -99,7 +100,9 @@ describe.skipIf(!PI_CLI)("PiAdapter against the real pi with a faux provider", (
     host.decide = () => ({ decision: "deny", message: "no pushing" });
     const outcome = await within(start(adapter(), host, { tools: ["lectern", "forge"] }).done);
     expect(outcome.kind).toBe("completed");
-    expect(host.approvals[0]).toMatchObject({ tool: "bash", category: "command", risk: "high" });
+    // The adapter passes the command on; the Town Hall rates it from its words.
+    expect(host.approvals[0]).toMatchObject({ tool: "bash", category: "command" });
+    expect(commandShapeOf(host.approvals[0]!.tool, host.approvals[0]!.input).risk).toBe("high");
     expect(host.events).toContainEqual(expect.objectContaining({ kind: "tool_end", tool: "bash", ok: false }));
     expect(calls()[1]!.lastToolResult).toMatchObject({ tool: "bash", isError: true, text: expect.stringContaining("The player denied this: no pushing") });
   });

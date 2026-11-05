@@ -65,7 +65,17 @@ describe("path readings (pure)", () => {
 
   it("reads a Git Bash drive path only as the drive for the harnesses that convert it", () => {
     expect(pathReadings("/d/work/a.ts", winRules)).toEqual(["/d/work/a.ts", "D:\\work\\a.ts"]);
-    expect(pathReadings("/d/work/a.ts", winRules, { drivesOnly: true })).toEqual(["D:\\work\\a.ts"]);
+    expect(pathReadings("/d/work/a.ts", winRules, { drives: "letter" })).toEqual(["D:\\work\\a.ts"]);
+    expect(pathReadings("/d/work/a.ts", winRules, { drives: "pi" })).toEqual(["D:\\work\\a.ts"]);
+  });
+
+  it("keeps the plain reading of a drive path the harness does not convert", () => {
+    // Claude Code converts only /c/...; /mnt/c/... and /cygdrive/c/... stay paths on the current drive.
+    expect(pathReadings("/mnt/d/work/a.ts", winRules, { drives: "letter" })).toEqual(["/mnt/d/work/a.ts", "D:\\work\\a.ts"]);
+    expect(pathReadings("/cygdrive/d/a.ts", winRules, { drives: "letter" })).toContain("/cygdrive/d/a.ts");
+    expect(pathReadings("/mnt/d/work/a.ts", winRules, { drives: "pi" })).toEqual(["D:\\work\\a.ts"]);
+    // pi's expression stops at a line break, so it leaves such a path as it is.
+    expect(pathReadings("/d/work/a\u2028b", winRules, { drives: "pi" })).toContain("/d/work/a\u2028b");
   });
 });
 
@@ -84,7 +94,7 @@ describe("glob pattern folders (pure)", () => {
     expect(patternBases(pattern, platform as Platform)).toEqual(bases);
   });
 
-  it.each(["../*", "src/../../*", "{src,..}/*", "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}"])("%s cannot be judged", (pattern) => {
+  it.each(["../*", "src/../../*", "{src,..}/*", "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}", ".git/*", "sub/.GIT/hooks/*", "{src,.git}/config"])("%s cannot be judged", (pattern) => {
     expect(patternBases(pattern, "posix")).toBeNull();
   });
 });
@@ -140,6 +150,17 @@ const SPELLINGS: Record<Platform, { scope: TargetScope; inside: string[]; outsid
       "nul",
       "CON.txt",
       "src\\com1",
+      // The repository's .git, which every worktree shares, by any spelling Windows accepts.
+      ".git",
+      ".git\\config",
+      "sub\\.git\\hooks\\post-commit",
+      ".GIT\\config",
+      ".git.\\config",
+      ".git \\config",
+      ".git. .\\hooks",
+      "GIT~1\\config",
+      ".git::$INDEX_ALLOCATION\\config",
+      "C:\\aurelhaven-nowhere\\wt\\ab1k2cd3\\.git",
     ],
   },
   posix: {
@@ -150,8 +171,26 @@ const SPELLINGS: Record<Platform, { scope: TargetScope; inside: string[]; outsid
       home: "/home/player",
       env: { HOME: "/home/player", SECRET_DIR: "/srv/secret" },
     },
-    inside: ["src/a.ts", "./src/a.ts", "src/../a.ts", "..", "", "@a.ts", "routes/posts.$slug.tsx", "/aurelhaven-nowhere/wt/ab1k2cd3/app/a.ts"],
+    inside: [
+      "src/a.ts",
+      "./src/a.ts",
+      "src/../a.ts",
+      "..",
+      "",
+      "@a.ts",
+      "routes/posts.$slug.tsx",
+      "/aurelhaven-nowhere/wt/ab1k2cd3/app/a.ts",
+      ".gitignore",
+      ".github/workflows/ci.yml",
+      "src/git~1/a.ts",
+    ],
     outside: [
+      ".git",
+      ".git/config",
+      "sub/.git/HEAD",
+      ".GIT/hooks/pre-commit",
+      "src/../.git/config",
+      "/aurelhaven-nowhere/wt/ab1k2cd3/.git",
       "../../x",
       "/aurelhaven-nowhere/wt/ab1k2cd3-evil/x",
       "/aurelhaven-nowhere/wt/AB1K2CD3/x",
@@ -205,6 +244,10 @@ describe("verdicts on this machine's filesystem", () => {
   rmSync(path.join(base, "gone"), { recursive: true });
   // A link back to the working folder itself, for link loops.
   symlinkSync(cwd, path.join(cwd, "loop"), dirLink);
+  // A .git folder in the worktree, and a link to it under another name.
+  mkdirSync(path.join(root, ".git"));
+  writeFileSync(path.join(root, ".git", "config"), "[core]\n");
+  symlinkSync(path.join(root, ".git"), path.join(cwd, "gitlink"), dirLink);
   // A hard link to a file outside.
   linkSync(path.join(outside, "secret.txt"), path.join(cwd, "hard.txt"));
   // The data folder reached through a link.
@@ -235,8 +278,6 @@ describe("verdicts on this machine's filesystem", () => {
     "routes/posts.$slug.tsx",
     abs("notes.md"),
     posixSlashes(abs("src", "new.ts")),
-    // The same worktree through the linked data folder.
-    path.join(base, "data-link", "wt", "ab1k2cd3", "app", "notes.md"),
     "loop/notes.md",
     ...(win ? [abs("NOTES.md").toUpperCase(), `\\\\?\\${abs("notes.md")}`, "notes.md:Zone.Identifier"] : []),
   ];
@@ -270,6 +311,12 @@ describe("verdicts on this machine's filesystem", () => {
     "dangling/new.txt",
     path.join(base, "data-link", "x.txt"),
     `${"loop/".repeat(50)}notes.md`,
+    // The shared .git, named or reached through a link.
+    path.join(root, ".git"),
+    "../.git/config",
+    "gitlink/config",
+    "gitlink",
+    "loop/gitlink/hooks/post-commit",
     ...(win
       ? [
           `${root}.\\x.txt`,
@@ -290,6 +337,12 @@ describe("verdicts on this machine's filesystem", () => {
 
   it("applies .. after the links: on POSIX the kernel does, on Windows the path is collapsed first", () => {
     expect(targetInside("linked/../notes.md", scope)).toBe(win);
+  });
+
+  it("calls a path outside without reading the disk, even one that leads back in through a link", () => {
+    // The same worktree through another link to the data folder: the Town Hall does not look
+    // past the worktree's own names for it, so it asks.
+    expect(targetInside(path.join(base, "data-link", "wt", "ab1k2cd3", "app", "notes.md"), scope)).toBe(false);
   });
 
   it("counts a hard-linked file as outside for writes only", () => {
@@ -320,10 +373,26 @@ describe("verdicts on this machine's filesystem", () => {
   describe("every path field of each harness's tools", () => {
     const outsideGlob = `${posixSlashes(outside)}/*`;
     const msys = win ? `/${cwd[0]!.toLowerCase()}${posixSlashes(cwd.slice(2))}/notes.md` : null;
+    const inside70 = Array.from({ length: 70 }, (_, k) => abs("src", `f${k}.ts`));
     const calls: Array<[string, Record<string, unknown>, boolean]> = [
       // Claude Code
       ["Read", { file_path: abs("notes.md") }, false],
       ["Write", { file_path: "~/.bashrc", content: "x" }, true],
+      // Its file tools want absolute paths; a relative one would start from the shell's folder.
+      ["Read", { file_path: "notes.md" }, true],
+      ["Write", { file_path: "src/new.ts", content: "x" }, true],
+      ["Edit", { file_path: "./notes.md", old_string: "a", new_string: "b" }, true],
+      ["MultiEdit", { file_path: "notes.md", edits: [] }, true],
+      ["NotebookEdit", { notebook_path: "nb.ipynb", new_source: "x" }, true],
+      ["LS", { path: "src" }, true],
+      ["Read", { file_path: "" }, true],
+      ...(win ? ([["Read", { file_path: `${cwd.slice(0, 2)}notes.md` }, true]] as Array<[string, Record<string, unknown>, boolean]>) : []),
+      ["Grep", { pattern: "x", path: "src" }, false],
+      ["Write", { file_path: path.join(root, ".git"), content: "gitdir: evil" }, true],
+      ["Write", { file_path: abs("sub", ".git", "config"), content: "[core]" }, true],
+      ["Edit", { file_path: abs("gitlink", "config"), old_string: "a", new_string: "b" }, true],
+      ["Grep", { pattern: "url", path: path.join(root, ".git") }, true],
+      ["Glob", { pattern: "**/.git/config" }, true],
       ["Edit", { file_path: abs("linked", "secret.txt"), old_string: "a", new_string: "b" }, true],
       ["NotebookEdit", { notebook_path: path.join(outside, "nb.ipynb"), new_source: "x" }, true],
       ["Glob", { pattern: "**/*.ts" }, false],
@@ -350,18 +419,37 @@ describe("verdicts on this machine's filesystem", () => {
       ["grep", { pattern: "token", path: "@~" }, true],
       ["grep", { pattern: "x", glob: "**/*.ts" }, false],
       ...(msys ? ([["write", { path: msys, content: "x" }, false], ["mcp__files__write", { path: msys }, true]] as Array<[string, Record<string, unknown>, boolean]>) : []),
+      // pi resolves a relative path against its own folder, which never moves.
+      ["read", { path: "notes.md" }, false],
+      ["write", { path: ".git/config", content: "x" }, true],
       // Codex
       ["apply_patch", { path: abs("a.txt"), changes: [abs("a.txt")] }, false],
       ["apply_patch", { path: abs("a.txt"), changes: [abs("a.txt"), path.join(outside, "b.txt")] }, true],
       ["apply_patch", { path: abs("linked"), changes: [abs("a.txt")] }, true],
+      // A patch may touch any number of files inside; only one outside makes it reach out.
+      ["apply_patch", { path: inside70[0], changes: inside70 }, false],
+      ["apply_patch", { path: inside70[0], changes: [...inside70, path.join(outside, "b.txt")] }, true],
+      ["apply_patch", { path: abs("a.txt"), changes: [abs(".git", "config")] }, true],
+      ["apply_patch", { path: abs("a.txt"), changes: "a.txt" }, true],
       ["shell", { command: "npm test", cwd }, false],
       ["shell", { command: "npm test", cwd: outside }, true],
+      ["shell", { command: "git status", cwd: path.join(root, ".git") }, true],
       // MCP and anything else: the common path fields
       ["mcp__files__read", { paths: ["notes.md", path.join(outside, "secret.txt")] }, true],
       ["mcp__files__read", { path: 3 }, true],
       ["mcp__files__read", { paths: Array.from({ length: 1000 }, () => "notes.md") }, true],
       ["mcp__web__fetch", { url: "https://example.org/a/b" }, false],
       ["Bash", { command: "cat ~/.ssh/id_ed25519" }, false],
+      // MCP tools: any field whose name says it holds a path.
+      ["mcp__filesystem__move_file", { source: abs("notes.md"), destination: path.join(outside, "x.md") }, true],
+      ["mcp__filesystem__move_file", { source: path.join(outside, "secret.txt"), destination: abs("moved.md") }, true],
+      ["mcp__filesystem__move_file", { source: abs("notes.md"), destination: abs("moved.md") }, false],
+      ["mcp__git__git_status", { repo_path: outside }, true],
+      ["mcp__files__copy", { targetDir: outside }, true],
+      ["mcp__files__read", { fileUri: pathToFileURL(path.join(outside, "secret.txt")).href }, true],
+      ["mcp__files__read", { file_paths: [abs("notes.md"), path.join(outside, "secret.txt")] }, true],
+      ["mcp__notes__add", { content: path.join(outside, "secret.txt"), title: "x" }, false],
+      ["mcp__deploy__run", { target: 5, source: { kind: "git" } }, false],
     ];
     it.each(calls)("%s %j reaches outside: %s", (tool, input, expected) => {
       expect(reachesOutside(tool, input, scope)).toBe(expected);
@@ -377,6 +465,8 @@ describe("verdicts on this machine's filesystem", () => {
     expect(insideWorkspace("src/a.ts", cwd, root)).toBe(true);
     expect(insideWorkspace("linked/x.txt", cwd, root)).toBe(false);
     expect(insideWorkspace("dangling", cwd, root)).toBe(false);
+    expect(insideWorkspace(".git/hooks", cwd, root)).toBe(false);
+    expect(insideWorkspace("gitlink", cwd, root)).toBe(false);
     for (const raw of ["", "  ", "~/x", "$UNSET_THING/x", "%UNSET_THING%\\x", "a$b"]) expect(insideWorkspace(raw, cwd, root)).toBe(false);
   });
 });

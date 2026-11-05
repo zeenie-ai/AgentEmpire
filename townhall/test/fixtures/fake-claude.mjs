@@ -69,6 +69,7 @@ log({
   envNames: Object.keys(env).filter((k) => /^(AURELHAVEN|MCP_|CLAUDE|DISABLE_|ENABLE_)/.test(k)),
   toolSearch: env.ENABLE_TOOL_SEARCH ?? null,
   claudeMdsDisabled: env.CLAUDE_CODE_DISABLE_CLAUDE_MDS === "1",
+  keepsProjectFolder: env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR === "1",
   systemPrompt: promptFile && existsSync(promptFile) ? readFileSync(promptFile, "utf8") : null,
 });
 
@@ -230,7 +231,11 @@ async function runStep(step, state) {
     const id = `toolu_${++toolSeq}`;
     const input = step.input ?? {};
     assistant([{ type: "tool_use", id, name: step.tool, input }]);
-    const decision = await askPermission(step.tool, input, id);
+    // Claude Code 2.1.281 resolves these tools' paths against its shell's folder before it asks
+    // (backfillObservableInput); `raw` sends the input as the model wrote it.
+    const field = { Read: "file_path", Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" }[step.tool];
+    const asked = field && !step.raw && typeof input[field] === "string" ? { ...input, [field]: path.resolve(process.cwd(), input[field]) } : input;
+    const decision = await askPermission(step.tool, asked, id);
     if (decision.behavior === "allow") {
       const used = decision.updatedInput ?? input;
       if (step.tool === "Write" && used.file_path) {

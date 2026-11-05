@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { commandShapeOf } from "../../src/core/command-shape.js";
 import { CodexCliAdapter } from "../../src/providers/codex/adapter.js";
 import type { CodexCheckpoint } from "../../src/providers/codex/run.js";
 import type { RunRequest } from "../../src/providers/types.js";
@@ -107,7 +108,9 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     const host = new MockHost();
     host.decide = (r) => ({ decision: "deny", message: r.tool === "shell" ? "No deleting" : "No writing" });
     expect(await within(start(adapter(), host).done)).toEqual({ kind: "completed", summary: "Stopped." });
-    expect(host.approvals[0]).toMatchObject({ tool: "shell", risk: "high" });
+    // The adapter passes the command on; the Town Hall rates it from its words.
+    expect(host.approvals[0]).toMatchObject({ tool: "shell", category: "command" });
+    expect(commandShapeOf(host.approvals[0]!.tool, host.approvals[0]!.input).risk).toBe("high");
     expect(approvals().map((e) => e.response.result.decision)).toEqual(["decline", "decline"]);
     expect(existsSync(path.join(work, "no.txt"))).toBe(false);
     expect(host.events).toContainEqual(expect.objectContaining({ kind: "tool_end", tool: "apply_patch", ok: false }));
@@ -224,6 +227,25 @@ describe("CodexCliAdapter against a fake codex app-server", () => {
     expect(approvals().map((e) => e.response.result)).toEqual([{ decision: "decline" }, { permissions: {}, scope: "turn" }]);
     expect(existsSync(path.join(work, "no.txt"))).toBe(false);
     expect(host.texts("activity").filter((t) => t.includes("no Quillworks"))).toHaveLength(2);
+
+    // A command that asks for write access along with itself: no answer or rule may grant it.
+    const writeSrc = { network: null, fileSystem: { read: null, write: ["src"] } };
+    scenario([
+      {
+        steps: [
+          { command: "npm run build", additionalPermissions: writeSrc },
+          { command: "npm install", network: "registry.npmjs.org", additionalPermissions: writeSrc },
+          { command: "npm test", additionalPermissions: { network: null, fileSystem: { read: ["docs"], write: null } } },
+          { text: "Still read only." },
+        ],
+      },
+    ]);
+    const commands = new MockHost();
+    await within(start(adapter(), commands, { tools: ["lectern", "forge"] }).done);
+    // Only the read grant reaches the player.
+    expect(commands.approvals.map((r) => r.summary)).toEqual([expect.stringContaining("read access to docs")]);
+    expect(approvals().slice(-3).map((e) => e.response.result.decision)).toEqual(["decline", "decline", "accept"]);
+    expect(commands.texts("activity").filter((t) => t.includes("asks for write access (the agent has no Quillworks)"))).toHaveLength(2);
 
     scenario([{ steps: [{ patch: [{ path: "hidden.txt", content: "x" }], hidden: true }, { text: "Unseen." }] }]);
     const unseen = new MockHost();

@@ -288,6 +288,10 @@ export class ClaudeRun implements RunHandle {
       // Approvals wait for the player: no idle limit on MCP tool calls.
       CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT: "0",
       DISABLE_AUTOUPDATER: "1",
+      // Claude Code resolves a tool's relative path against its shell's folder, which a `cd`
+      // would move away from the one the Town Hall judges paths from. This puts the shell back
+      // in the work folder after every command.
+      CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1",
       ...(plan.charter ? {} : { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }),
       // A lead must see its town tools directly: with tool search on (the default), MCP tools are
       // deferred behind the ToolSearch tool, which --tools (the add-ons' built-ins) leaves out.

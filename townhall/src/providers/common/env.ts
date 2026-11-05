@@ -15,12 +15,18 @@ const INHERITED_SESSION_VARS: RegExp[] = [
   /^CODEX_(THREAD_ID|SANDBOX|SANDBOX_NETWORK_DISABLED|MANAGED_BY_NPM|MANAGED_BY_BUN|MANAGED_BY_PNPM|MANAGED_PACKAGE_ROOT)$/,
 ];
 
-/** The environment for a harness: the Town Hall's own, minus parent-session markers, plus `extra`. */
+/**
+ * Variables that make a shell read a command's words differently from the Town Hall: with
+ * CDPATH, `cd app` can go to a folder of that name somewhere else.
+ */
+const SHELL_VARS: RegExp[] = [/^CDPATH$/i];
+
+/** The environment for a harness: the Town Hall's own, minus parent-session markers and CDPATH, plus `extra`. */
 export function harnessEnv(base: Env, extra: Record<string, string> = {}): Env {
   const env: Env = {};
   for (const [key, value] of Object.entries(base)) {
     if (value === undefined) continue;
-    if (INHERITED_SESSION_VARS.some((re) => re.test(key))) continue;
+    if (INHERITED_SESSION_VARS.some((re) => re.test(key)) || SHELL_VARS.some((re) => re.test(key))) continue;
     env[key] = value;
   }
   return { ...env, ...extra };

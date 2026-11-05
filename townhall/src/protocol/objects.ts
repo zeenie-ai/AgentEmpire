@@ -252,6 +252,17 @@ export const Task = z.object({
 });
 export type Task = z.infer<typeof Task>;
 
+/**
+ * What a task or agent rule made from an approval matches (added in 1.4): a command's signature
+ * (its program and subcommand, covering further arguments inside the work folder, or with
+ * `exact` all its words), a network request's host, otherwise the tool.
+ */
+export const ApprovalRule = z.object({
+  signature: z.string(),
+  exact: z.boolean(),
+});
+export type ApprovalRule = z.infer<typeof ApprovalRule>;
+
 export const Approval = z.object({
   id,
   task_id: id,
@@ -264,6 +275,8 @@ export const Approval = z.object({
   reason: z.string().nullable(),
   status: ApprovalStatus,
   scopes: z.array(ApprovalScope),
+  /** Null when only "once" is offered. */
+  rule: ApprovalRule.nullable(),
   seal_exhausted: z.boolean(),
   created_at: isoTime,
 });

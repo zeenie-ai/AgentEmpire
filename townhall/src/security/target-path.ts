@@ -34,8 +34,12 @@ const MAX_PATTERN_LENGTH = 4096;
 
 /** Unicode spaces that pi turns into plain spaces. */
 const PI_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-/** Git Bash, MSYS, Cygwin and WSL drive paths, which pi and Claude Code read as X:\ on Windows. */
+/** Git Bash, MSYS, Cygwin and WSL drive paths, which pi or Claude Code may read as X:\ on Windows. */
 const SHELL_DRIVE = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/([\s\S]*))?$/i;
+/** The drive paths pi's normalizeWindowsShellPath converts: its own expression (`.` stops at a line break). */
+const PI_DRIVE = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i;
+/** The drive paths Claude Code's file tools and Git Bash convert: /c/... only. */
+const LETTER_DRIVE = /^\/[a-z]\//i;
 /** ~name (another user's home), ~+ and ~-: shell forms the Town Hall cannot resolve. */
 const TILDE_USER = /^~[A-Za-z0-9._+-]+(?:[\\/]|$)/;
 const VARIABLE = /\$\{([^}]*)\}|\$\(|\$(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([^%]+)%/gi;
@@ -53,6 +57,27 @@ function sepOf(platform: Platform): string {
 
 function isShellDrive(s: string, platform: Platform): boolean {
   return platform === "win32" && !s.startsWith("//") && !s.includes("\\") && SHELL_DRIVE.test(s);
+}
+
+/** Whether the harness surely reads a drive path as X:\..., so that its plain reading can be dropped. */
+function convertsDrive(s: string, platform: Platform, drives: DriveReading): boolean {
+  if (platform !== "win32" || s.startsWith("//") || s.includes("\\")) return false;
+  return drives === "pi" ? PI_DRIVE.test(s) : LETTER_DRIVE.test(s);
+}
+
+/** A name that is, or that Windows reads as, `.git`: the repository every worktree shares. */
+function namesGit(name: string, platform: Platform): boolean {
+  const upper = name.toUpperCase();
+  if (upper === ".GIT") return true;
+  // Windows drops trailing dots and spaces, and gives `.git` an 8.3 short name such as GIT~1.
+  return platform === "win32" && (/^\.GIT[. ]+$/.test(upper) || /^GIT~\d+$/.test(upper));
+}
+
+/** Whether a path, as written or found, has a `.git` file or folder in it. */
+function hasGitSegment(p: string, platform: Platform): boolean {
+  const names = p.split(platform === "win32" ? /[\\/]+/ : /\/+/);
+  // On Windows `a:b` names the stream b of a; the file is a.
+  return names.some((name) => namesGit(platform === "win32" ? name.split(":")[0]! : name, platform));
 }
 
 function rulesOf(scope: TargetScope): PathRules {
@@ -126,10 +151,16 @@ const REWRITES: Rewrite[] = [
   (s, r) => (/[$%]/.test(s) ? expandVariables(s, r) : s),
 ];
 
+/**
+ * Which drive paths a harness converts to X:\ on Windows: /c/... in Claude Code's file tools and
+ * Git Bash ("letter"), also /mnt/c/... and /cygdrive/c/... in pi's ("pi").
+ */
+export type DriveReading = "letter" | "pi";
+
 /** How a tool reads its paths, beyond the readings every path gets. */
 export interface ToolReading {
-  /** Reads /c/... only as C:\... on Windows (Claude Code's and pi's file tools), never as \c\... */
-  drivesOnly?: boolean;
+  /** The drive paths it surely reads as X:\..., never as \c\... on the current drive. */
+  drives?: DriveReading;
   /** Also reads lookalike spellings of a missing file (pi's read). */
   readFallback?: boolean;
 }
@@ -154,7 +185,8 @@ export function pathReadings(raw: string, rules: PathRules, how: ToolReading = {
     }
   }
   // The drive reading of each such path is in the set already.
-  return how.drivesOnly ? queue.filter((s) => !isShellDrive(s, rules.platform)) : queue;
+  const drives = how.drives;
+  return drives ? queue.filter((s) => !convertsDrive(s, rules.platform, drives)) : queue;
 }
 
 /**
@@ -233,9 +265,11 @@ interface Located {
  * Follows a path the way the filesystem will: component by component with lstat, through every
  * link (a dangling one included, since a write through it creates its target), applying `..` to
  * the real folder reached so far. A link into a network or device path is not followed (null).
- * The existing part then goes through realpath for its on-disk case and long names.
+ * The existing part then goes through realpath for its on-disk case and long names. A link that
+ * leads away from the places `near` accepts is not followed either: what it names is returned as
+ * the result, which lies outside them.
  */
-function locate(abs: string, platform: Platform, shares: Set<string>, hops = MAX_LINK_HOPS): Located | null {
+function locate(abs: string, platform: Platform, shares: Set<string>, near: (p: string) => boolean = () => true, hops = MAX_LINK_HOPS): Located | null {
   const lib = libFor(platform);
   const { root } = lib.parse(abs);
   const segments = abs.slice(root.length).split(platform === "win32" ? /[\\/]+/ : /\/+/).filter((s) => s !== "");
@@ -264,7 +298,9 @@ function locate(abs: string, platform: Platform, shares: Set<string>, hops = MAX
       if (!target || (target.share !== null && !shares.has(target.share))) return null;
       const next = linkTarget(lib.join(root, ...parts.slice(0, -1)), target.path, platform);
       const rest = segments.slice(i + 1);
-      return locate(rest.length > 0 ? `${next}${sepOf(platform)}${rest.join(sepOf(platform))}` : next, platform, shares, hops - 1);
+      const onward = rest.length > 0 ? `${next}${sepOf(platform)}${rest.join(sepOf(platform))}` : next;
+      if (!near(lib.resolve(onward))) return { real: lib.resolve(onward), exists: false, links: 1 };
+      return locate(onward, platform, shares, near, hops - 1);
     }
     known = parts.length;
     links = stat.isFile() ? stat.nlink : 1;
@@ -311,39 +347,48 @@ function readVariants(p: string): string[] {
 /**
  * True when `raw` (as a tool call wrote it, relative to `scope.cwd`) stays inside the worktree:
  * every reading of it that a harness, a shell or the OS could make lands inside the real location
- * of the worktree, with symbolic links and junctions followed. Anything that cannot be worked out
- * with confidence counts as outside, so the player is asked.
+ * of the worktree, with symbolic links and junctions followed, and none of them names a `.git`
+ * file or folder, since the repository's `.git` is shared by every worktree and can hold
+ * configuration that runs commands. Anything that cannot be worked out with confidence counts as
+ * outside, so the player is asked.
  */
 export function targetInside(raw: string, scope: TargetScope, how: ToolReading = {}): boolean {
   const rules = rulesOf(scope);
   const physical = rules.platform === currentPlatform();
+  const lib = libFor(rules.platform);
   try {
     const readings = pathReadings(raw, rules, how);
-    if (!readings) return false;
-    const root = physical ? realRootOf(scope.root, rules.platform) : canonicalDrive(libFor(rules.platform).resolve(scope.root), rules.platform);
+    if (!readings || readings.some((r) => hasGitSegment(r, rules.platform))) return false;
+    const root = physical ? realRootOf(scope.root, rules.platform) : canonicalDrive(lib.resolve(scope.root), rules.platform);
     if (root === null) return false;
     const shares = new Set<string>();
     for (const p of [scope.root, root]) {
       const share = shareOf(p, rules.platform);
       if (share) shares.add(share);
     }
+    // The disk is read only under the worktree (as written and as found) and the working folder:
+    // a place plainly elsewhere is outside without a look, so a dead network drive cannot stall.
+    const fold = (p: string) => (rules.platform === "win32" ? p.toLowerCase() : p);
+    const fences = [scope.root, root, scope.cwd].map((p) => fold(lib.resolve(p)));
+    const near = (p: string) => fences.some((f) => within(fold(p), f, rules.platform));
+    const inside = (real: string) => within(real, root, rules.platform) && !hasGitSegment(real.slice(root.length), rules.platform);
     for (const reading of readings) {
       const places = placesOf(reading, scope.cwd, rules, shares);
       if (!places) return false;
       for (const place of places) {
         if (!physical) {
           // Another platform's rules: spelling only, compared exactly like real paths.
-          const spelled = canonicalDrive(libFor(rules.platform).resolve(place), rules.platform);
-          if (!within(spelled, root, rules.platform)) return false;
+          if (!inside(canonicalDrive(lib.resolve(place), rules.platform))) return false;
           continue;
         }
-        const found = locate(place, rules.platform, shares);
-        if (!found || !within(found.real, root, rules.platform)) return false;
+        if (!near(place)) return false;
+        const found = locate(place, rules.platform, shares, near);
+        if (!found || !inside(found.real)) return false;
         if (scope.write && found.exists && found.links > 1) return false;
         if (how.readFallback && !found.exists) {
           for (const variant of readVariants(place)) {
             const other = locate(variant, rules.platform, shares);
-            if (!other || (other.exists && !within(other.real, root, rules.platform))) return false;
+            if (!other || (other.exists && !inside(other.real))) return false;
           }
         }
       }
@@ -386,7 +431,8 @@ function expandBraces(pattern: string): string[] | null {
 /**
  * The folders a glob pattern can reach: for the pattern and each of its {a,b} alternatives, the
  * part before the segment holding the first wildcard (a pattern without one names a file, so its
- * folder). Null for a pattern that climbs with `..`, which glob libraries may follow.
+ * folder). Null for a pattern that climbs with `..`, which glob libraries may follow, or that
+ * names a `.git` folder.
  */
 export function patternBases(pattern: string, platform: Platform): string[] | null {
   if (pattern.length > MAX_PATTERN_LENGTH) return null;
@@ -395,7 +441,7 @@ export function patternBases(pattern: string, platform: Platform): string[] | nu
   if (!alternatives) return null;
   const bases = new Set<string>();
   for (const alternative of [body, ...alternatives]) {
-    if (alternative.split(/[\\/]/).includes("..")) return null;
+    if (alternative.split(/[\\/]/).includes("..") || hasGitSegment(alternative, platform)) return null;
     const wild = alternative.search(/[*?[{]/);
     const fixed = wild < 0 ? alternative : alternative.slice(0, wild);
     const cut = Math.max(fixed.lastIndexOf("/"), platform === "win32" ? fixed.lastIndexOf("\\") : -1);
@@ -406,7 +452,15 @@ export function patternBases(pattern: string, platform: Platform): string[] | nu
 
 /** Fields that name a file or folder, in any tool (MCP tools included). */
 const PATH_FIELDS = ["file_path", "path", "notebook_path", "paths", "cwd"];
-/** Tool-specific lists of paths: a Codex patch's changed files. */
+/**
+ * The last word of an MCP tool's field name that says it holds a path: `source` and
+ * `destination` (the filesystem server's move_file), `repo_path`, `targetDir`, `fileUri`, ...
+ */
+const MCP_PATH_WORDS = new Set([
+  "path", "paths", "file", "files", "filename", "filepath", "dir", "directory", "folder", "root", "cwd", "source",
+  "destination", "src", "dest", "target", "uri",
+]);
+/** Tool-specific lists of paths: a Codex patch's changed files, each of which run.ts has judged already. */
 const LIST_FIELDS = new Map([["apply_patch", "changes"]]);
 /** Glob patterns: Claude Code's Glob pattern (an absolute one overrides `path`) and the filters of the search tools. */
 const PATTERN_FIELDS = new Map([
@@ -417,19 +471,45 @@ const PATTERN_FIELDS = new Map([
 ]);
 /** Search tools that search the working folder when `path` is left out. */
 const SEARCH_TOOLS = new Set(["Glob", "Grep", "LS", "find", "grep", "ls"]);
-/** Claude Code's and pi's file tools: both read /c/... as C:\ on Windows. */
-const DRIVES_ONLY_TOOLS = new Set([
-  ...["Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "NotebookRead", "Glob", "Grep", "LS"],
-  ...["read", "write", "edit", "grep", "find", "ls"],
+/** How Claude Code's and pi's file tools read drive paths on Windows. */
+const DRIVE_READINGS = new Map<string, DriveReading>([
+  ...["Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "NotebookRead", "Glob", "Grep", "LS"].map((t): [string, DriveReading] => [t, "letter"]),
+  ...["read", "write", "edit", "grep", "find", "ls"].map((t): [string, DriveReading] => [t, "pi"]),
+]);
+/**
+ * Claude Code's file tools whose schemas require absolute paths. Claude Code resolves a relative
+ * one against its shell's current folder, which a `cd` can move, so the Town Hall cannot tell
+ * where it lands.
+ */
+const ABSOLUTE_FIELDS = new Map([
+  ["Read", "file_path"],
+  ["Write", "file_path"],
+  ["Edit", "file_path"],
+  ["MultiEdit", "file_path"],
+  ["NotebookEdit", "notebook_path"],
+  ["NotebookRead", "notebook_path"],
+  ["LS", "path"],
 ]);
 
+/** The last word of a field name, in lower case: path, dir and uri for `repo_path`, `targetDir` and `file-uri`. */
+function lastWord(field: string): string {
+  return (field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(/[\s_-]+/).pop() ?? "").toLowerCase();
+}
+
+/** Whether Claude Code reads a file tool's path as absolute: `~`, a drive or a root, never relative. */
+function absoluteForClaude(raw: string, platform: Platform): boolean {
+  return raw === "~" || raw.startsWith("~/") || (platform === "win32" && raw.startsWith("~\\")) || libFor(platform).isAbsolute(raw);
+}
+
 /**
- * True when a tool call names any place outside the worktree: a path field, a search tool's
- * folder, or the fixed folder of a glob pattern. A field the Town Hall does not understand (not
- * a string or a list of strings) counts as outside.
+ * True when a tool call names any place outside the worktree: a path field (with MCP tools, any
+ * field whose name says it holds a path), a search tool's folder, or the fixed folder of a glob
+ * pattern. A path field the Town Hall does not understand (not a string or a list of strings)
+ * counts as outside, and so does a relative path where Claude Code requires an absolute one.
  */
 export function reachesOutside(tool: string, input: unknown, scope: TargetScope): boolean {
   const fields = input !== null && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const platform = scope.platform ?? currentPlatform();
   const targets: string[] = [];
   const add = (value: unknown): boolean => {
     if (value === undefined || value === null) return true;
@@ -439,17 +519,31 @@ export function reachesOutside(tool: string, input: unknown, scope: TargetScope)
     return true;
   };
   try {
-    const list = LIST_FIELDS.get(tool);
-    for (const field of list ? [...PATH_FIELDS, list] : PATH_FIELDS) {
+    const absolute = ABSOLUTE_FIELDS.get(tool);
+    const required = absolute ? fields[absolute] : undefined;
+    if (typeof required === "string" && !absoluteForClaude(required, platform)) return true;
+    for (const field of PATH_FIELDS) {
       if (!add(fields[field])) return true;
     }
+    if (tool.startsWith("mcp__")) {
+      for (const [field, value] of Object.entries(fields)) {
+        if (PATH_FIELDS.includes(field) || !MCP_PATH_WORDS.has(lastWord(field))) continue;
+        // Only text can be a path; a number or an object under such a name is something else.
+        const texts = Array.isArray(value) ? value.filter((v) => typeof v === "string") : typeof value === "string" ? [value] : [];
+        if (!add(texts)) return true;
+      }
+    }
+    // A patch may touch any number of files: each is judged, without the cap on other fields.
+    const list = LIST_FIELDS.get(tool);
+    const listed = list ? fields[list] : undefined;
+    if (listed !== undefined && listed !== null && (!Array.isArray(listed) || !listed.every((v) => typeof v === "string"))) return true;
     const searchPath = typeof fields.path === "string" ? fields.path : null;
     if (SEARCH_TOOLS.has(tool) && searchPath === null) targets.push(".");
     const patternField = PATTERN_FIELDS.get(tool);
     const pattern = patternField ? fields[patternField] : undefined;
     if (pattern !== undefined && pattern !== null) {
       if (typeof pattern !== "string") return true;
-      const bases = patternBases(pattern, scope.platform ?? currentPlatform());
+      const bases = patternBases(pattern, platform);
       if (!bases) return true;
       for (const base of bases) {
         targets.push(base);
@@ -458,8 +552,10 @@ export function reachesOutside(tool: string, input: unknown, scope: TargetScope)
     }
     if (targets.length > MAX_TARGETS) return true;
     // pi's read also tries lookalike spellings of a missing file.
-    const how: ToolReading = { drivesOnly: DRIVES_ONLY_TOOLS.has(tool), readFallback: tool === "read" };
-    return targets.some((t) => !targetInside(t, scope, how));
+    const drives = DRIVE_READINGS.get(tool);
+    const how: ToolReading = { ...(drives ? { drives } : {}), readFallback: tool === "read" };
+    const all = new Set([...targets, ...((listed as string[] | undefined) ?? [])]);
+    return [...all].some((t) => !targetInside(t, scope, how));
   } catch {
     return true;
   }

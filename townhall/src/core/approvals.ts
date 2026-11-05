@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { fromJson, toJson } from "../db/db.js";
 import { fail } from "../protocol/errors.js";
 import type {
@@ -13,7 +14,7 @@ import type {
 import { APPROVAL_PREVIEW_MAX_BYTES, PRE_APPROVAL_TTL_MS } from "../protocol/version.js";
 import type { ApprovalAnswer, ApprovalRequest } from "../providers/types.js";
 import { capBytes } from "../security/redact.js";
-import { reachesOutside } from "../security/target-path.js";
+import { reachesOutside, targetInside } from "../security/target-path.js";
 import { commandShapeOf } from "./command-shape.js";
 import type { Ctx } from "./context.js";
 import { incidentKey } from "./incidents.js";
@@ -30,6 +31,8 @@ interface ApprovalRow {
   input_preview: string;
   input_hash: string;
   signature: string;
+  /** 1 when a rule from this approval covers only its exact words; null for rows stored before. */
+  rule_exact: number | null;
   reason: string | null;
   status: "pending" | "orphaned" | "resolved";
   scopes_json: string;
@@ -84,7 +87,8 @@ export function inputHash(tool: string, input: unknown): string {
 
 /**
  * What an agent-scope or task-scope rule matches: the tool plus a description of the input. For a
- * command, its program and subcommand ("npm run build") or all its words (see command-shape.ts).
+ * command, its program and subcommand ("npm run build") or all its words, each command of a chain
+ * in turn (see command-shape.ts).
  */
 export function signatureOf(tool: string, category: ApprovalCategory, input: unknown): string {
   const obj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -150,6 +154,10 @@ export class ApprovalService {
   }
 
   toProtocol(r: ApprovalRow): Approval {
+    const scopes = fromJson<ApprovalScope[]>(r.scopes_json, ["once"]);
+    // What "Allow for this task" and "Always for" would store. An older row's reach is unknown:
+    // it is shown as the wider one, never as narrower than it is.
+    const rule = scopes.some((s) => s !== "once") ? { signature: this.ctx.redactor.redact(r.signature), exact: r.rule_exact === 1 } : null;
     return {
       id: r.id,
       task_id: r.task_id,
@@ -161,7 +169,8 @@ export class ApprovalService {
       input_preview: r.input_preview,
       reason: r.reason,
       status: r.status === "orphaned" ? "orphaned" : "pending",
-      scopes: fromJson<ApprovalScope[]>(r.scopes_json, ["once"]),
+      scopes,
+      rule,
       seal_exhausted: r.seal_exhausted === 1,
       created_at: r.created_at,
     };
@@ -189,21 +198,31 @@ export class ApprovalService {
 
   /**
    * Treats a call that names a place outside the worktree (any path field, search folder or glob
-   * pattern, read the way the harness reads it, links followed) as an outside-workspace action.
+   * pattern, read the way the harness reads it, links followed) as an outside-workspace action,
+   * and so a command chain whose leading `cd` leaves it.
    */
   private effectiveCategory(req: ApprovalRequest, run: ApprovalRunContext): ApprovalCategory {
     if (req.category === "outside_workspace") return req.category;
     const scope = { cwd: run.cwd, root: run.workspaceRoot, write: req.category === "write" };
-    return reachesOutside(req.tool, req.input, scope) ? "outside_workspace" : req.category;
+    if (reachesOutside(req.tool, req.input, scope)) return "outside_workspace";
+    const folder = req.category === "command" ? commandShapeOf(req.tool, req.input).folder : null;
+    if (folder !== null) {
+      // The shell starts where the command runs: Codex names that folder, the others run in the agent's.
+      const cwd = (req.input as Record<string, unknown>).cwd;
+      const from = typeof cwd === "string" ? path.resolve(run.cwd, cwd) : run.cwd;
+      // bash reads /c/... as C:\ in Git Bash.
+      if (!targetInside(folder, { cwd: from, root: run.workspaceRoot }, { drives: "letter" })) return "outside_workspace";
+    }
+    return req.category;
   }
 
-  private insertResolved(run: ApprovalRunContext, req: ApprovalRequest, category: ApprovalCategory, hash: string, signature: string, decision: ApprovalDecision, by: ApprovalResolvedBy, message: string | null): string {
+  private insertResolved(run: ApprovalRunContext, req: ApprovalRequest, category: ApprovalCategory, hash: string, signature: string, exact: boolean, decision: ApprovalDecision, by: ApprovalResolvedBy, message: string | null): string {
     const id = this.ctx.ids.next("apv");
     const now = this.ctx.clock.iso();
     this.ctx.db.run(
       `INSERT INTO approvals (id, task_id, agent_id, attempt, tool, category, risk, summary, input_preview, input_hash, signature,
-         reason, status, scopes_json, decision, scope, resolved_by, message, created_at, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'resolved', ?, ?, 'once', ?, ?, ?, ?)`,
+         rule_exact, reason, status, scopes_json, decision, scope, resolved_by, message, created_at, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'resolved', ?, ?, 'once', ?, ?, ?, ?)`,
       [
         id,
         run.taskId,
@@ -216,6 +235,7 @@ export class ApprovalService {
         this.preview(req.input),
         hash,
         signature,
+        exact ? 1 : 0,
         req.reason ?? null,
         toJson(["once"]),
         decision,
@@ -248,11 +268,13 @@ export class ApprovalService {
     const hash = inputHash(req.tool, req.input);
     const signature = signatureOf(req.tool, category, req.input);
     // High risk asks in every mode, and no rule passes it. A command counts as high risk unless it
-    // is one simple program call, and so do commands that can destroy work or reach far.
+    // is simple (see command-shape.ts), and so do commands that can destroy work or reach far.
     const shape = category === "command" ? commandShapeOf(req.tool, req.input) : null;
     const risk: Risk =
       req.risk === "high" || DEFAULT_RISK[category] === "high" || shape?.risk === "high" ? "high" : (req.risk ?? DEFAULT_RISK[category]);
     const rated = { ...req, risk };
+    // A command rule covers only these words, or further arguments too; other rules cover a host or a tool.
+    const exact = shape?.exact ?? false;
 
     const auto = this.ctx.db.tx((): ApprovalAnswer | null => {
       const now = this.ctx.clock.iso();
@@ -265,7 +287,7 @@ export class ApprovalService {
       if (pre) {
         // The player's own answer to this exact call, given after a restart.
         this.ctx.db.run("UPDATE approval_rules SET uses_left = 0, used_at = ? WHERE id = ?", [now, pre.id]);
-        this.insertResolved(run, rated, category, hash, signature, pre.decision, "pre_approval", pre.message);
+        this.insertResolved(run, rated, category, hash, signature, exact, pre.decision, "pre_approval", pre.message);
         return { decision: pre.decision, ...(pre.message ? { message: pre.message } : {}) };
       }
       if (risk === "high") return null;
@@ -278,7 +300,7 @@ export class ApprovalService {
         [req.tool, category, signature, run.taskId, run.agentId],
       );
       if (rule) {
-        this.insertResolved(run, rated, category, hash, signature, rule.decision, "rule", rule.message);
+        this.insertResolved(run, rated, category, hash, signature, exact, rule.decision, "rule", rule.message);
         return { decision: rule.decision, ...(rule.message ? { message: rule.message } : {}) };
       }
       return null;
@@ -292,8 +314,8 @@ export class ApprovalService {
       const summary = this.ctx.redactor.redact(req.summary ?? defaultSummary(req.tool, category, req.input));
       this.ctx.db.run(
         `INSERT INTO approvals (id, task_id, agent_id, attempt, tool, category, risk, summary, input_preview, input_hash, signature,
-           reason, status, scopes_json, seal_exhausted, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+           rule_exact, reason, status, scopes_json, seal_exhausted, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
         [
           id,
           run.taskId,
@@ -306,6 +328,7 @@ export class ApprovalService {
           this.preview(req.input),
           hash,
           signature,
+          exact ? 1 : 0,
           req.reason ? this.ctx.redactor.redact(req.reason) : null,
           toJson(scopes),
           task.spent_micros >= task.seal_micros ? 1 : 0,

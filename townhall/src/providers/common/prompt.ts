@@ -49,6 +49,7 @@ export function systemPromptFor(req: RunRequest, opts: FramingOptions): string {
     "## How you work",
     `- Your work folder is ${req.cwd}. Stay inside ${req.workspaceRoot}: do not read or change anything outside it.`,
     "- The Town Hall checks every action against the player's approval rules, and some actions wait for the player. When an action is denied, respect the reason: find another way within the rules, or stop and explain.",
+    "- Keep shell commands plain: one program with its arguments (in bash, a few joined with `&&`), its output filtered at most through head, tail, grep, sort or wc (Select-Object in PowerShell). Anything else (`;`, `$(...)`, writing output to a file, `bash -c`) waits for the player every time.",
     "- Do not push to remotes, and never throw work away or rewrite git history (no hard resets, forced checkouts, stashes, cleans or force pushes). The Town Hall records your changes when you finish.",
     "- When the task is done, end with a short summary of what you changed and anything the player should check.",
     ...(req.depth > 0

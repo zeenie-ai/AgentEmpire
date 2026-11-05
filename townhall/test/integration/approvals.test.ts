@@ -109,7 +109,7 @@ describe("tool paths that lead outside the worktree reach the player", () => {
   let outside = "";
   let home = "";
 
-  type Attack = { tool: string; category: "read" | "write"; input: Record<string, unknown> };
+  type Attack = { tool: string; category: "read" | "write" | "mcp"; input: Record<string, unknown> };
   // Each spelling a harness reads as a place outside the worktree. In trusted_edits they all
   // used to pass as reads and writes inside the work folder, without a card. The Town Hall reads
   // ~ as its own home folder, so the home paths name a folder that does not exist.
@@ -122,6 +122,15 @@ describe("tool paths that lead outside the worktree reach the player", () => {
     { tool: "Glob", category: "read", input: { pattern: `${out.replace(/\\/g, "/")}/*`, path: "src" } },
     { tool: "NotebookEdit", category: "write", input: { notebook_path: path.join(out, "nb.ipynb"), new_source: "x" } },
     { tool: "ls", category: "read", input: { path: `$HOME/${NOWHERE}` } },
+    // The repository's .git, which every worktree shares: its pointer file, a nested one, a hook.
+    { tool: "write", category: "write", input: { path: ".git", content: "gitdir: evil\n" } },
+    { tool: "write", category: "write", input: { path: "sub/.git/config", content: "[core]\n\tfsmonitor = ./evil.sh\n" } },
+    { tool: "edit", category: "write", input: { path: ".GIT/hooks/post-commit", edits: [] } },
+    // Claude Code's file tools take absolute paths; a relative one starts from a folder that can move.
+    { tool: "Read", category: "read", input: { file_path: "README.md" } },
+    { tool: "Write", category: "write", input: { file_path: "notes.md", content: "x" } },
+    // An MCP tool's other path fields.
+    { tool: "mcp__filesystem__move_file", category: "mcp", input: { source: "README.md", destination: path.join(out, "moved.md") } },
   ];
   const ask = (a: Attack): Step => ({ op: "approval", expect: { ...a }, onAllow: [], onDeny: [] });
 

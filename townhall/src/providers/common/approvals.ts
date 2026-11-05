@@ -1,5 +1,6 @@
 import path from "node:path";
-import type { ApprovalCategory, Risk } from "../../protocol/objects.js";
+import { commandShape } from "../../core/command-shape.js";
+import type { ApprovalCategory } from "../../protocol/objects.js";
 import type { ApprovalRequest } from "../types.js";
 
 type Input = Record<string, unknown>;
@@ -54,20 +55,6 @@ export function piCategory(tool: string): ApprovalCategory {
   }
 }
 
-/** Commands that can destroy work or reach far are high risk: they are only ever allowed once. */
-const HIGH_RISK_COMMAND = [
-  /\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r/i,
-  /\bremove-item\b[^|;&]*-recurse/i,
-  /\bgit\s+(push|reset\s+--hard|clean\b|checkout\s+--|stash\b)/i,
-  /\b(curl|wget|iwr|invoke-webrequest)\b[^|;&]*\|\s*(sh|bash|pwsh|powershell|iex)\b/i,
-  /\bformat\b\s+[a-z]:/i,
-  /\bsudo\b/i,
-];
-
-export function commandRisk(command: string): Risk | undefined {
-  return HIGH_RISK_COMMAND.some((re) => re.test(command)) ? "high" : undefined;
-}
-
 /** Shows paths inside the work folder relative to it, with forward slashes. */
 export function displayTarget(target: string, cwd: string): string {
   const abs = path.resolve(cwd, target);
@@ -110,10 +97,15 @@ export function describeToolCall(tool: string, rawInput: unknown, cwd: string): 
   return file ? `${verb}: ${displayTarget(file, cwd)}` : verb;
 }
 
-/** Builds the host approval request for one harness tool call. */
+/**
+ * Builds the host approval request for one harness tool call. The Town Hall rates a command from
+ * its parsed words (core/command-shape.ts); a call of another kind that carries a command (a
+ * Codex command's network access, an MCP tool that runs one) takes the command's risk, so that
+ * no host or tool rule passes a command that would ask on its own.
+ */
 export function approvalFor(tool: string, category: ApprovalCategory, input: unknown, cwd: string, reason?: string | null): ApprovalRequest {
   const command = str(asInput(input).command);
-  const risk = command ? commandRisk(command) : undefined;
+  const risk = command && category !== "command" ? commandShape(tool, command).risk : undefined;
   return {
     tool,
     category,

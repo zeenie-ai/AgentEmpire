@@ -627,6 +627,11 @@ export class CodexRun implements RunHandle {
       if (!extra) return this.refuse(`Declined a command that asks for sandbox permissions the Town Hall does not understand: ${command}`);
       if (!extra.network && extra.files.length === 0) extra = null;
     }
+    if (this.plan.sandbox === "read-only" && extra?.files.some((f) => f.access === "write")) {
+      // Capability, not approval: without a Quillworks the agent may not change files, so no
+      // answer or rule may grant a command write access either.
+      return this.refuse(`Refused a command that asks for write access (the agent has no Quillworks): ${command}`);
+    }
     const net = isPlainObject(p.networkApprovalContext) ? p.networkApprovalContext : null;
     if (net) {
       // A sandboxed command wants to reach a host. The host goes in as a URL, so an answer for

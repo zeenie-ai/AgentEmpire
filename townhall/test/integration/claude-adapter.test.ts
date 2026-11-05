@@ -108,6 +108,8 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
     expect(argv.join(" ")).not.toContain(config.env.AURELHAVEN_APPROVAL_TOKEN);
     expect(first!.envNames).not.toContain("AURELHAVEN_APPROVAL_TOKEN");
     expect(first!.claudeMdsDisabled).toBe(true);
+    // Its shell returns to the work folder after every command, where the Town Hall resolves paths.
+    expect(first!.keepsProjectFolder).toBe(true);
     // The session is checkpointed for resume.
     const cp = host.lastCheckpoint<ClaudeCheckpoint>();
     expect(cp).toMatchObject({ harness: "claude", costSeenUsd: 0.0125, costSavedUsd: 0.0125 });
@@ -130,7 +132,9 @@ describe("ClaudeCodeAdapter against a fake Claude Code CLI", () => {
     host.decide = () => ({ decision: "deny", message: "Never push" });
     const outcome = await within(start(adapter(), host, { tools: ["lectern", "forge"] }).done);
     expect(outcome).toEqual({ kind: "completed", summary: "I will not push." });
-    expect(host.approvals[0]).toMatchObject({ tool: "Bash", category: "command", risk: "high", summary: "Run: git push --force origin main" });
+    // The Town Hall rates the command from its words (core/command-shape.ts), not the adapter.
+    expect(host.approvals[0]).toMatchObject({ tool: "Bash", category: "command", summary: "Run: git push --force origin main" });
+    expect(host.approvals[0]!.risk).toBeUndefined();
     expect(host.events).toContainEqual(expect.objectContaining({ kind: "tool_end", tool: "Bash", ok: false }));
     const approval = readLog(logFile).find((e) => e.kind === "approval")!;
     expect(approval.decision).toEqual({ behavior: "deny", message: "The player denied this: Never push" });

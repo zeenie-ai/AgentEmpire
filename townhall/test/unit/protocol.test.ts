@@ -190,6 +190,7 @@ describe("protocol round trips", () => {
         reason: null,
         status: "pending",
         scopes: ["once", "task", "agent"],
+        rule: { signature: "npm install", exact: false },
         seal_exhausted: false,
         created_at: "2026-09-28T10:00:00.000Z",
       },
