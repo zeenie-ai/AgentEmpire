@@ -86,7 +86,8 @@ func set_text(agent_name: String, caption: String, name_color: Color, caption_co
 	reset_size()
 
 
-## The sigil's mood: idle, settling, working, waiting, review, blocked or retired (AgentSigil).
+## The sigil's mood, an AgentSigil state from AgentUi.agent_status(): idle, training, settling,
+## working, waiting, review, blocked or retired.
 func set_mood(mood: String) -> void:
 	_sigil.set_state(mood)
 

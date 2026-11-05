@@ -619,13 +619,27 @@ func _shot_agent_states() -> void:
 	var elowen: Dictionary = _demo.corvin().duplicate(true)
 	elowen.merge({"id": "agt_elowen", "name": "Elowen", "role": "scholar", "provider": "claude", "model": "claude-opus-5-5",
 		"xp": 2400, "level": 7, "rank": "C", "created_at": _demo.iso(20000.0)}, true)
-	agents.append_array([wren, brisa, osric, elowen])
+	# Mira's petitions go to Ysolde (they would come first in Mira's status): one agent at work,
+	# another waiting for the player.
+	var ysolde: Dictionary = _demo.corvin().duplicate(true)
+	ysolde.merge({"id": "agt_ysolde", "name": "Ysolde", "role": "warden", "provider": "claude", "model": "claude-sonnet-5",
+		"activity": "awaiting_approval", "current_task_id": "tsk_audit", "tool_ids": ["tl_y_lectern", "tl_y_forge"],
+		"starting_tools": ["lectern", "forge"], "xp": 640, "level": 4, "rank": "D", "created_at": _demo.iso(12000.0)}, true)
+	agents.append_array([wren, brisa, osric, elowen, ysolde])
+	var audit: Dictionary = _demo.task_login().duplicate(true)
+	audit.merge({"id": "tsk_audit", "agent_id": "agt_ysolde", "title": "Audit the deploy keys", "state": "awaiting_approval"}, true)
+	(s["tasks"] as Array).append(audit)
+	for ap in s["approvals"]:
+		ap["agent_id"] = "agt_ysolde"
+		ap["task_id"] = "tsk_audit"
 	var tools: Array = s["tools"]
 	tools.append({"id": "tl_b_lectern", "agent_id": "agt_brisa", "type": "lectern", "status": "building", "tile": {"x": 68, "y": 58}, "config_summary": null, "health": null})
 	for t in ["lectern", "quillworks"]:
 		tools.append({"id": "tl_o_" + t, "agent_id": "agt_osric", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
 	for t in ["lectern", "rookery", "archive"]:
 		tools.append({"id": "tl_e_" + t, "agent_id": "agt_elowen", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
+	for t in ["lectern", "forge"]:
+		tools.append({"id": "tl_y_" + t, "agent_id": "agt_ysolde", "type": t, "status": "active", "tile": {"x": 0, "y": 0}, "config_summary": null, "health": null})
 	_apply(s)
 	var progress: Dictionary = _realm().get("progress")
 	progress["tsk_login"] = {"task_id": "tsk_login", "phase": "tool", "current_tool": "Bash", "files_touched": 3, "spent_micros": 640000}
@@ -641,7 +655,7 @@ func _shot_agent_states() -> void:
 	grid.add_theme_constant_override("h_separation", 16)
 	grid.add_theme_constant_override("v_separation", 14)
 	bg.add_child(grid)
-	for id in ["agt_mira", "agt_corvin", "agt_wren", "agt_brisa", "agt_osric", "agt_elowen"]:
+	for id in ["agt_mira", "agt_ysolde", "agt_corvin", "agt_wren", "agt_brisa", "agt_osric", "agt_elowen"]:
 		var cell := PanelContainer.new()
 		cell.theme_type_variation = "InsetPanel"
 		cell.custom_minimum_size = Vector2(720, 190)

@@ -7,9 +7,11 @@ extends HBoxContainer
 ##   economy.json levels);
 ## - role, harness and model;
 ## - a status line led by the agent's sigil from the Rive state tracker (a RiveSprite of the
-##   "agent_sigil" set, one animated gem per mood): training at the Keep (seconds left), settling
-##   (building its home or add-ons), working (phase and tool from Realm.progress), waiting for
-##   your approval, result ready for review, blocked (why) or idle; plus how many petitions wait;
+##   "agent_sigil" set, one animated gem per mood), from AgentUi.agent_status() like its home's
+##   name plate, what needs the player first: training at the Keep (seconds left), settling
+##   (building its home or add-ons), waiting for your approval, result ready for review, a failed
+##   or paused task, blocked (why), working (phase and tool from Realm.progress) or idle; plus how
+##   many petitions wait;
 ## - the current task's title with a Mana bar (spent against the seal);
 ## - the home's queue, and the add-ons: built, being built, planned, or waiting for resources
 ##   (Game.link.waiting_tools).

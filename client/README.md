@@ -187,7 +187,8 @@ between `prev_pos` and `pos` at `Game.interp_alpha`; views never write to the wo
     set's blend time (200 ms), with a small pop. A state that was never drawn does not fade out:
     the first state after the sprite was made just appears. It animates only while visible.
   - `TaskTracker` uses the `task_seal` set; `AgentPanel` and `NamePlate` use the `agent_sigil`
-    set, and `HomeStatusView.plate_mood()` picks a plate's mood.
+    set. One function picks an agent's mood for both, `AgentUi.agent_status()`, what needs the
+    player first; `HomeStatusView.plate_look()` turns it into a plate's caption and colour.
 
 **Fonts.** Four OFL families in `ui/fonts/<family>/`, each with its `OFL.txt`: Cinzel for titles
 and buttons, Cormorant for display text, Spectral for body text (the default, 16 px) and
@@ -303,9 +304,10 @@ There is no settings window yet: the menus and the onboarding are still to come.
    `--only=task_seal:<state>` gives a quick look, but `--check` then still asks for a full bake.
 3. For a new state, add it in the client. A task state (a
    [protocol change](../docs/development.md#changing-the-protocol) first) goes into
-   `TaskTracker.ORDER` and `TaskTracker.state_color()`; a mood into `AgentUi.agent_status()`,
-   `HomeStatusView.plate_mood()` for the name plates and `MOODS` in
-   `tests/unit/test_rive_tracker.gd`. A state without a sheet shows the set's fallback.
+   `TaskTracker.ORDER` and `TaskTracker.state_color()`; a mood into `AgentUi.agent_status()`
+   (the panel and the name plates both follow it), `HomeStatusView.plate_look()` for a plate's
+   colour and `MOODS` in `tests/unit/test_rive_tracker.gd`. A state without a sheet shows the
+   set's fallback.
 4. Look at the `rive_states` and `task_tracker` shots of `tools/ui_preview.gd` at 1280x720 and at
    a large size. Commit the RML, the sheets with their `.import` files and `rive_sprites.json`
    together.
@@ -321,7 +323,7 @@ There is no settings window yet: the menus and the onboarding are still to come.
 
 ## Tests
 
-GUT 9.7.1 (`addons/gut/`) runs every `tests/unit/test_*.gd` (39 files, 413 tests today) with the
+GUT 9.7.1 (`addons/gut/`) runs every `tests/unit/test_*.gd` (39 files, 417 tests today) with the
 defaults in `.gutconfig.json`. The autoloads exist in tests, but no test starts a Town Hall.
 
 | Run | Command, from the repository root |

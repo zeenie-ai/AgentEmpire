@@ -2,8 +2,9 @@ class_name HomeStatusView
 extends Node3D
 ## What an agent's home shows the player, readable from across the town:
 ## - a name plate over the roof (NamePlate, in screen space on WorldView's plate layer): the
-##   agent's Rive sigil (plate_mood) and its name tinted by what the agent is doing, above its
-##   role and rank or what needs the player, sized to stay readable at every zoom;
+##   agent's Rive sigil and its name tinted by its status, above a caption (what needs the player,
+##   what the agent does, or its role and rank), sized to stay readable at every zoom. The status
+##   is AgentUi.agent_status(), the agent panel's, so the plate and the panel always agree;
 ## - a signal post beside the entrance: its hand bell swings and glows and a banner is raised
 ##   while an approval waits (blue once a Mana seal ran out), since approvals are what the
 ##   player must answer;
@@ -34,6 +35,8 @@ const COLOR_SEAL := Color("#8fc8ff")
 
 var agent_id: String = ""
 var building_id: int = 0
+## Stands in for Game.link (tests): it answers waiting_tools for the agent's status.
+var link: Object = null
 
 var _roof: float = 2.0
 var _door: Vector3 = Vector3.ZERO
@@ -274,7 +277,6 @@ func refresh() -> void:
 		return
 	visible = true
 	var role := J.gs(a, "role")
-	var status := ""
 	var approvals := Realm.approvals_for(agent_id)
 	var review := false
 	var failed := false
@@ -283,36 +285,24 @@ func refresh() -> void:
 		review = review or s == "awaiting_review" or s == "accepting"
 		failed = failed or s == "failed"
 	var activity := J.gs(a, "activity", "idle")
-	var lifecycle := J.gs(a, "lifecycle")
 	var seal_out := false
 	for ap in approvals:
 		seal_out = seal_out or J.b(ap.get("seal_exhausted"))
-	var color := COLOR_IDLE
-	if not approvals.is_empty():
-		status = "NEEDS YOUR APPROVAL"
-		color = COLOR_SEAL if seal_out else COLOR_WAITING
-	elif review:
-		status = "RESULT READY"
-		color = COLOR_WAITING
-	elif failed:
-		status = "TASK FAILED"
-		color = COLOR_BAD
-	elif activity == "blocked":
-		status = "BLOCKED"
-		color = COLOR_BAD
-	elif activity == "working":
-		status = "WORKING"
-		color = COLOR_WORKING
-	elif lifecycle == "settling":
-		status = "SETTLING IN"
+	var st := AgentUi.agent_status(a, link if link != null else Game.link)
+	var mood := J.gs(st, "mood", "idle")
 	if _plate != null:
+		var look := plate_look(st, seal_out)
+		var status := J.gs(look, "caption")
+		var color: Color = look["color"]
 		var caption := status if status != "" else "%s  ·  RANK %s" % [Economy.data.role_name(role).to_upper(), J.gs(a, "rank", "F")]
 		var caption_color := UiTokens.HUD_SUBTLE if status == "" or color == COLOR_IDLE else color
 		_plate.set_text(J.gs(a, "name", "Agent"), caption, color, caption_color)
-		_plate.set_mood(plate_mood(not approvals.is_empty(), review, failed or activity == "blocked",
-			activity == "working", lifecycle))
+		_plate.set_mood(mood)
+	# While its add-ons are being built, a settling agent is "blocked" at the Town Hall (they are
+	# missing); that is no trouble for the player, so it gets no red mark. Other blockers of a
+	# settling agent read "blocked" in agent_status() and keep the mark.
 	_flags = {"approval": not approvals.is_empty(), "seal": seal_out, "review": review, "failed": failed,
-		"blocked": activity == "blocked", "working": activity == "working"}
+		"blocked": activity == "blocked" and mood != "settling", "working": activity == "working"}
 	var ringing := bool(_flags["approval"])
 	_banner.visible = ringing
 	_banner_mat.albedo_color = BANNER_BLUE if seal_out else BANNER_YELLOW
@@ -333,22 +323,21 @@ func refresh() -> void:
 		_smoke = null
 
 
-## The name plate sigil's mood, in the order the plate's status line takes them.
-static func plate_mood(approval: bool, review: bool, trouble: bool, working: bool, lifecycle: String) -> String:
-	if approval:
-		return "waiting"
-	if review:
-		return "review"
-	if trouble:
-		return "blocked"
-	if working:
-		return "working"
-	match lifecycle:
-		"settling":
-			return "settling"
-		"retired":
-			return "retired"
-	return "idle"
+## A name plate's caption and name colour for an agent status from AgentUi.agent_status():
+## {"caption", "color"}. An empty caption leaves the plate its role and rank. `seal_out`: a petition
+## waits because the task spent its Mana seal (blue, like the banner).
+static func plate_look(st: Dictionary, seal_out: bool = false) -> Dictionary:
+	var color := COLOR_IDLE
+	match J.gs(st, "mood"):
+		"waiting":
+			color = COLOR_SEAL if seal_out else COLOR_WAITING
+		"review":
+			color = COLOR_WAITING
+		"blocked":
+			color = COLOR_BAD
+		"working":
+			color = COLOR_WORKING
+	return {"caption": J.gs(st, "caption"), "color": color}
 
 
 ## Where the agent's add-on in use stands (world position), or null.

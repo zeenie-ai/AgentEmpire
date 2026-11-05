@@ -218,61 +218,82 @@ static func zero_reward_text(reason: String) -> String:
 	return "No reward for this task."
 
 
-## What an agent is doing, for its status line: {"text", "mood", "task_id"?}. mood: "training",
-## "settling", "working", "waiting" (for the player's approval), "review", "blocked", "paused",
-## "idle" or "retired". `link` answers training_left_s() and waiting_tools (TownLink or a fake).
+## What an agent is doing, for its panel's status line, its home's name plate and its sigil on both:
+## {"text", "caption", "mood", "task_id"?}. What needs the player comes first, in the task
+## tracker's order: a petition, a result to review, a failed task, a paused one; then a blocker,
+## the work, the next task. `caption` is the name plate's line ("" leaves it the role and rank).
+## mood, one per sheet of the Rive "agent_sigil" set: "training", "settling", "working", "waiting"
+## (for the player's approval), "review", "blocked", "idle" or "retired". `link` answers
+## training_left_s() and waiting_tools (TownLink or a fake).
 static func agent_status(a: Dictionary, link: Object = null) -> Dictionary:
 	var id := J.gs(a, "id")
 	match J.gs(a, "lifecycle"):
 		Protocol.AgentLifecycle.RETIRED:
-			return {"text": "Retired", "mood": "retired"}
+			return {"text": "Retired", "caption": "RETIRED", "mood": "retired"}
 		Protocol.AgentLifecycle.TRAINING:
 			var left := 0.0
 			if link != null and link.has_method("training_left_s"):
 				left = float(link.call("training_left_s", id))
-			return {"text": ("Training at the Keep: %d s left" % ceili(left)) if left > 0.0 else "Training at the Keep", "mood": "training"}
+			return {"text": ("Training at the Keep: %d s left" % ceili(left)) if left > 0.0 else "Training at the Keep",
+				"caption": "IN TRAINING", "mood": "training"}
 		Protocol.AgentLifecycle.SETTLING:
 			var home: Variant = a.get("home")
 			var home_name := Economy.data.building_name(Economy.data.role_home(J.gs(a, "role")))
 			if typeof(home) != TYPE_DICTIONARY:
-				return {"text": "Waiting for a plot: choose where the %s goes" % home_name, "mood": "settling"}
+				return _settling("Waiting for a plot: choose where the %s goes" % home_name)
 			if not J.b((home as Dictionary).get("built"), false):
-				return {"text": "Building the %s" % home_name, "mood": "settling"}
+				return _settling("Building the %s" % home_name)
+			# Missing add-ons are part of settling in; any other blocker (a work folder the Town Hall
+			# could not set up) keeps the agent settling for good, so the player must see it.
+			var reason := J.gs(a, "blocked_reason")
+			if J.gs(a, "activity") == Protocol.AgentActivity.BLOCKED and reason != Protocol.BlockedReason.MISSING_TOOLS:
+				return {"text": blocked_text(reason, a), "caption": "BLOCKED", "mood": "blocked"}
 			var wait := waiting_tool(link, id)
 			if not wait.is_empty():
-				return {"text": "Needs %s to build the %s" % [cost_text(J.gd(wait, "missing")), addon_name(J.gs(wait, "tool"))], "mood": "blocked"}
+				return {"text": "Needs %s to build the %s" % [cost_text(J.gd(wait, "missing")), addon_name(J.gs(wait, "tool"))],
+					"caption": "NEEDS RESOURCES", "mood": "blocked"}
 			var building: PackedStringArray = []
 			for t in Realm.tools_of(id):
 				if J.gs(t, "status") == Protocol.ToolStatus.BUILDING:
 					building.append(addon_name(J.gs(t, "type")))
 			if not building.is_empty():
-				return {"text": "Setting up: building the %s" % ", ".join(building), "mood": "settling"}
-			return {"text": "Settling in", "mood": "settling"}
+				return _settling("Setting up: building the %s" % ", ".join(building))
+			return _settling("Settling in")
 	var cur := Realm.current_task(id)
-	match J.gs(a, "activity", "idle"):
-		Protocol.AgentActivity.AWAITING_APPROVAL:
-			return {"text": "Waiting for your approval", "mood": "waiting", "task_id": J.gs(cur, "id")}
+	var activity := J.gs(a, "activity", "idle")
+	if activity == Protocol.AgentActivity.AWAITING_APPROVAL or not Realm.approvals_for(id).is_empty():
+		return {"text": "Waiting for your approval", "caption": "NEEDS YOUR APPROVAL", "mood": "waiting", "task_id": J.gs(cur, "id")}
+	var tasks := Realm.tasks_of(id)
+	for t in tasks:
+		var s := J.gs(t, "state")
+		if s == Protocol.TaskState.AWAITING_REVIEW or s == Protocol.TaskState.ACCEPTING:
+			return {"text": "Result ready for review", "caption": "RESULT READY", "mood": "review", "task_id": J.gs(t, "id")}
+	for t in tasks:
+		if J.gs(t, "state") == Protocol.TaskState.FAILED:
+			return {"text": "A task failed: resume or dismiss it", "caption": "TASK FAILED", "mood": "blocked", "task_id": J.gs(t, "id")}
+	for t in tasks:
+		if J.gs(t, "state") == Protocol.TaskState.PAUSED:
+			return {"text": "Paused: %s" % pause_text(J.gs(t, "state_reason")), "caption": "PAUSED", "mood": "blocked",
+				"task_id": J.gs(t, "id")}
+	match activity:
 		Protocol.AgentActivity.WORKING:
 			var p: Dictionary = Realm.progress.get(J.gs(cur, "id"), {})
 			var what := phase_text(J.gs(p, "phase", Protocol.ProgressPhase.WORKING), J.gs(p, "current_tool"))
-			return {"text": "Working: " + what.left(1).to_lower() + what.substr(1), "mood": "working", "task_id": J.gs(cur, "id")}
+			return {"text": "Working: " + what.left(1).to_lower() + what.substr(1), "caption": "WORKING", "mood": "working",
+				"task_id": J.gs(cur, "id")}
 		Protocol.AgentActivity.BLOCKED:
-			return {"text": blocked_text(J.gs(a, "blocked_reason"), a), "mood": "blocked"}
-	for t in Realm.tasks_of(id):
-		var s := J.gs(t, "state")
-		if s == Protocol.TaskState.AWAITING_REVIEW or s == Protocol.TaskState.ACCEPTING:
-			return {"text": "Result ready for review", "mood": "review", "task_id": J.gs(t, "id")}
-	for t in Realm.tasks_of(id):
+			return {"text": blocked_text(J.gs(a, "blocked_reason"), a), "caption": "BLOCKED", "mood": "blocked"}
+	for t in tasks:
 		match J.gs(t, "state"):
-			Protocol.TaskState.PAUSED:
-				return {"text": "Paused: %s" % pause_text(J.gs(t, "state_reason")), "mood": "blocked", "task_id": J.gs(t, "id")}
-			Protocol.TaskState.FAILED:
-				return {"text": "A task failed: resume or dismiss it", "mood": "blocked", "task_id": J.gs(t, "id")}
 			Protocol.TaskState.IN_TRANSIT:
-				return {"text": "Idle: a scroll is on its way", "mood": "idle", "task_id": J.gs(t, "id")}
+				return {"text": "Idle: a scroll is on its way", "caption": "", "mood": "idle", "task_id": J.gs(t, "id")}
 			Protocol.TaskState.QUEUED, Protocol.TaskState.PREPARING:
-				return {"text": "Starting the next task", "mood": "working", "task_id": J.gs(t, "id")}
-	return {"text": "Idle: ready for a task", "mood": "idle"}
+				return {"text": "Starting the next task", "caption": "STARTING", "mood": "working", "task_id": J.gs(t, "id")}
+	return {"text": "Idle: ready for a task", "caption": "", "mood": "idle"}
+
+
+static func _settling(text: String) -> Dictionary:
+	return {"text": text, "caption": "SETTLING IN", "mood": "settling"}
 
 
 static func mood_color(mood: String, look: int) -> Color:
