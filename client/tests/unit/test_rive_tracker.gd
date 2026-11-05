@@ -2,11 +2,18 @@ extends GutTest
 ## The Rive state tracker in the client: the baked sheets (RiveSprites, from
 ## scripts/bake-rive.mjs), the RiveSprite that plays them, the task tracker in the HUD, and the
 ## agent sigils on the agent panel and the home name plates. Realm holds AgentUiDemo's state:
-## Mira works on "Fix the login redirect loop" with "Add tests" queued, and Corvin's
-## "Document the town save format" waits for review.
+## Mira works on "Fix the login redirect loop" with "Add tests" queued and two petitions waiting,
+## and Corvin's "Document the town save format" waits for review.
 
 const Protocol = preload("res://net/protocol.gd")
 const MOODS := ["idle", "training", "settling", "working", "waiting", "review", "blocked", "retired"]
+
+
+## Stands in for TownLink's waiting_tools: add-ons waiting for resources, by agent.
+class WaitLink:
+	extends RefCounted
+	var waiting_tools: Dictionary = {}
+
 
 var now: float = 100.0
 
@@ -36,6 +43,30 @@ func _new_task(id: String, state: String, created: String, extra: Dictionary = {
 	t["created_at"] = created
 	t.merge(extra, true)
 	Realm.apply_event({"type": Protocol.EVT_TASK_UPDATED, "payload": {"task": t}})
+
+
+func _agent_event(id: String, extra: Dictionary) -> void:
+	var a: Dictionary = Realm.agent(id).duplicate(true)
+	a.merge(extra, true)
+	Realm.apply_event({"type": Protocol.EVT_AGENT_UPDATED, "payload": {"agent": a}})
+
+
+func _status(agent_id: String, link: Object = null) -> Dictionary:
+	return AgentUi.agent_status(Realm.agent(agent_id), link)
+
+
+## Agent `agent_id`'s home, its name plate on `layer`.
+func _home(agent_id: String, layer: Control, link: Object = null) -> HomeStatusView:
+	var b := SimBuilding.new()
+	b.id = 900 + layer.get_child_count()
+	b.owner_agent_id = agent_id
+	b.cell = Vector2i(10, 10)
+	b.size = Vector2i(3, 3)
+	var home := HomeStatusView.new()
+	home.link = link
+	add_child_autofree(home)
+	home.setup(b, 2.0, Vector3.ZERO, layer)
+	return home
 
 
 func _tracker() -> TaskTracker:
@@ -342,22 +373,89 @@ func test_agent_panel_shows_the_mood_sigil() -> void:
 	var mira := AgentPanel.new()
 	host.add_child(mira)
 	mira.setup("agt_mira")
-	assert_eq(mira._status_sigil.state, "working")
+	assert_eq(mira._status_sigil.state, "waiting", "Mira's petitions come before her work")
 	var corvin := AgentPanel.new()
 	host.add_child(corvin)
 	corvin.setup("agt_corvin")
 	assert_eq(corvin._status_sigil.state, "review", "Corvin's result waits")
 
 
-func test_name_plate_mood() -> void:
-	assert_eq(HomeStatusView.plate_mood(true, true, true, true, "active"), "waiting", "a petition first")
-	assert_eq(HomeStatusView.plate_mood(false, true, false, true, "active"), "review")
-	assert_eq(HomeStatusView.plate_mood(false, false, true, true, "active"), "blocked")
-	assert_eq(HomeStatusView.plate_mood(false, false, false, true, "active"), "working")
-	assert_eq(HomeStatusView.plate_mood(false, false, false, false, "settling"), "settling")
-	assert_eq(HomeStatusView.plate_mood(false, false, false, false, "retired"), "retired")
-	assert_eq(HomeStatusView.plate_mood(false, false, false, false, "active"), "idle")
+func test_what_needs_you_comes_before_the_work() -> void:
+	assert_eq(_status("agt_mira")["mood"], "waiting", "two petitions before her work")
+	assert_eq(_status("agt_mira")["caption"], "NEEDS YOUR APPROVAL")
+	var s := AgentUiDemo.state()
+	s["approvals"] = []
+	Realm.apply_state(s)
+	assert_eq(_status("agt_mira")["mood"], "working", "answered, she is back at work")
+	assert_eq(_status("agt_mira")["caption"], "WORKING")
+	# Corvin starts a new task while his result still waits: the review stays first.
+	_new_task("tsk_next", Protocol.TaskState.RUNNING, "2026-02-01T00:00:00Z", {"agent_id": "agt_corvin"})
+	_agent_event("agt_corvin", {"activity": Protocol.AgentActivity.WORKING, "current_task_id": "tsk_next"})
+	assert_eq(_status("agt_corvin")["mood"], "review")
+	assert_eq(_status("agt_corvin")["task_id"], "tsk_docs", "a click opens the result that waits")
+	# Then a failed task and a paused one, before the work, as in the task tracker.
+	_task_event("tsk_tests", Protocol.TaskState.FAILED)
+	assert_eq(_status("agt_mira")["caption"], "TASK FAILED")
+	assert_eq(_status("agt_mira")["mood"], "blocked")
+	_task_event("tsk_tests", Protocol.TaskState.PAUSED)
+	assert_eq(_status("agt_mira")["caption"], "PAUSED")
+	assert_eq(_status("agt_mira")["mood"], "blocked")
+	# Her task done and the next one queued: she is about to start it.
+	_task_event("tsk_login", Protocol.TaskState.ACCEPTED)
+	_task_event("tsk_tests", Protocol.TaskState.QUEUED)
+	_agent_event("agt_mira", {"activity": Protocol.AgentActivity.IDLE, "current_task_id": null})
+	assert_eq(_status("agt_mira")["caption"], "STARTING")
+	assert_eq(_status("agt_mira")["mood"], "working")
+	_task_event("tsk_tests", Protocol.TaskState.CANCELLED)
+	assert_eq(_status("agt_mira")["mood"], "idle")
+	assert_eq(_status("agt_mira")["caption"], "", "idle, the plate shows the role and rank")
+
+
+func test_the_name_plate_and_the_panel_agree() -> void:
+	var host := Control.new()
+	add_child_autofree(host)
+	var homes := {}
+	for id: String in ["agt_mira", "agt_corvin"]:
+		var panel := AgentPanel.new()
+		host.add_child(panel)
+		panel.setup(id)
+		var home := _home(id, host)
+		assert_eq(home._plate.mood(), panel._status_sigil.state, "%s: one mood" % id)
+		homes[id] = home
+	var mira: HomeStatusView = homes["agt_mira"]
+	var corvin: HomeStatusView = homes["agt_corvin"]
+	assert_eq(mira._plate._caption.text, "NEEDS YOUR APPROVAL")
+	assert_eq(corvin._plate._caption.text, "RESULT READY")
+	# At work on the next task, Corvin's plate keeps the review first, as his panel does.
+	_new_task("tsk_next", Protocol.TaskState.RUNNING, "2026-02-01T00:00:00Z", {"agent_id": "agt_corvin"})
+	_agent_event("agt_corvin", {"activity": Protocol.AgentActivity.WORKING, "current_task_id": "tsk_next"})
+	corvin.refresh()
+	assert_eq(corvin._plate.mood(), "review")
+	assert_eq(corvin._plate._caption.text, "RESULT READY")
 	var plate := NamePlate.new()
 	add_child_autofree(plate)
 	plate.set_mood("waiting")
 	assert_eq(plate.mood(), "waiting")
+
+
+func test_a_settling_agent_is_settling_on_the_plate_too() -> void:
+	# Corvin's home stands and his add-ons go up: the Town Hall reports him blocked (they are
+	# missing), but the player has nothing to do yet.
+	_agent_event("agt_corvin", {"lifecycle": Protocol.AgentLifecycle.SETTLING,
+		"activity": Protocol.AgentActivity.BLOCKED, "blocked_reason": "missing_tools"})
+	assert_eq(_status("agt_corvin")["mood"], "settling")
+	var host := Control.new()
+	add_child_autofree(host)
+	var home := _home("agt_corvin", host)
+	assert_eq(home._plate.mood(), "settling")
+	assert_eq(home._plate._caption.text, "SETTLING IN")
+	assert_false(home._mark.visible, "no red mark while the add-ons go up")
+	# Short of resources for an add-on, he needs the player.
+	var link := WaitLink.new()
+	link.waiting_tools = {"agt_corvin": {"tool": "forge", "missing": {"wood": 40}}}
+	home.link = link
+	home.refresh()
+	assert_eq(home._plate.mood(), "blocked")
+	assert_eq(home._plate._caption.text, "NEEDS RESOURCES")
+	assert_true(home._mark.visible)
+	assert_eq(_status("agt_corvin", link)["mood"], "blocked", "the panel says the same")

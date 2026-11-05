@@ -179,9 +179,11 @@ into the new one with a small pop.
 The name plate over the roof carries the agent's sigil, a small animated gem whose colour and
 motion follow its mood: waiting for you, a result ready, trouble, working, settling in, retired or
 idle. Beside the sigil are its name and a caption: what needs you (NEEDS YOUR APPROVAL, RESULT
-READY, TASK FAILED, BLOCKED), WORKING, SETTLING IN, or the role and rank. The agent's panel has a
-status line led by its sigil ("Working: using Bash at the Forge"; click it for the review or the
-approvals), the task's Mana and the add-ons.
+READY, TASK FAILED, PAUSED, BLOCKED, NEEDS RESOURCES), WORKING or STARTING, SETTLING IN, or the
+role and rank. The agent's panel has a status line led by the same sigil ("Working: using Bash at
+the Forge"; click it for the review or the approvals), the task's Mana and the add-ons. The plate
+and the panel always show the same status, and what needs you comes first, in the task tracker's
+order: a petition, a result to review, a failed task, a paused one; then the work.
 
 - **Trouble.** An alarm bell rings when an agent goes quiet or repeats itself, and a task silent
   for 15 minutes pauses. A broken link to the harness is retried once; other errors fail the task.

@@ -491,7 +491,7 @@ func test_agent_panel_shows_status() -> void:
 	var corvin := AgentPanel.new().setup("agt_corvin", link)
 	host.add_child(corvin)
 	await wait_process_frames(1)
-	assert_string_contains(mira._status.text, "Working")
+	assert_string_contains(mira._status.text, "approval", "her petitions come before her work")
 	assert_true(mira._petitions.visible, "Mira has petitions waiting")
 	assert_string_contains(corvin._status.text, "review")
 	var got := [""]
@@ -501,6 +501,12 @@ func test_agent_panel_shows_status() -> void:
 	click.pressed = false
 	corvin._status_row.gui_input.emit(click)
 	assert_eq(String(got[0]), "tsk_docs")
+	var s := AgentUiDemo.state()
+	s["approvals"] = []
+	Realm.apply_state(s)
+	mira.refresh()
+	assert_string_contains(mira._status.text, "Working", "answered, she is back at work")
+	assert_false(mira._petitions.visible)
 	assert_eq(AgentUi.xp_for_level(3), 300)
 	assert_almost_eq(float(AgentUi.level_progress(420, 3)["ratio"]), 0.4, 0.001, "from level 3 (300 XP) to 4 (600 XP)")
 
