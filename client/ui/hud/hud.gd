@@ -17,7 +17,8 @@ extends CanvasLayer
 ## app comes back; on phones and tablets the layout follows its width. Without a Town Hall
 ## (Platform.has_town_hall()) the Town Hall chip, the Mana orb and the approval tray are hidden.
 ##
-## Agents: the approval tray (top right), and modal windows opened over a dimmed town
+## Agents: the task tracker (top left: every live task with its Rive seal, TaskTracker; not on
+## phones), the approval tray (top right), and modal windows opened over a dimmed town
 ## (open_window, stacked: the Summoning Font opens its folder browser on top of itself): the
 ## summoning dialog, the task composer, the review window and the Mana budget
 ## (res://ui/agents/).
@@ -47,6 +48,8 @@ var fps_label: Label
 ## Modal windows over a dimmed town, the newest on top.
 var modal_root: Control
 var approval_tray: ApprovalTray
+## The live tasks with their seals, top left under the top bar.
+var tracker: TaskTracker
 ## Phones and tablets: what Android's Back button does (BackChain).
 var back_chain: BackChain
 ## The layout in use; Platform picks it, use_layout() changes it.
@@ -124,6 +127,17 @@ func _ready() -> void:
 	approval_tray.offset_left = -16 - ApprovalTray.WIDTH
 	approval_tray.focus_requested.connect(_on_focus_requested)
 
+	tracker = TaskTracker.new()
+	tracker.name = "TaskTracker"
+	safe.add_child(tracker)
+	# Under the toasts: a long one draws over the tracker, not under it.
+	safe.move_child(tracker, toasts.get_index())
+	tracker.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	tracker.offset_left = 16
+	tracker.review_requested.connect(open_review)
+	tracker.approvals_requested.connect(_on_tracker_approvals)
+	tracker.focus_requested.connect(_on_focus_requested)
+
 	map_overlay = Control.new()
 	map_overlay.name = "MapOverlay"
 	map_overlay.visible = false
@@ -180,6 +194,7 @@ func _apply_layout() -> void:
 	var touch := layout != Layout.DESKTOP
 	top_bar.configure(phone, touch, town_hall)
 	approval_tray.visible = town_hall
+	tracker.enabled = town_hall and not phone
 	if phone:
 		_gather(column, [bottom.selection_panel, bottom.card_frame])
 		column.custom_minimum_size.x = bottom.card_frame.get_combined_minimum_size().x
@@ -253,6 +268,7 @@ func _place() -> void:
 	fps_label.offset_right = band_right - 16.0
 	fps_label.offset_top = below + 8.0
 	approval_tray.offset_top = below + 12.0
+	tracker.offset_top = below + 12.0
 	if layout == Layout.PHONE:
 		bottom.map_frame.offset_top = below + PHONE_GAP
 	# Bottom left: on phones in the corner, on tablets just above the bottom panel.
@@ -565,3 +581,9 @@ func focus_approvals(agent_id: String) -> void:
 func _on_focus_requested(agent_id: String) -> void:
 	if _input != null:
 		_input.focus_agent(agent_id)
+
+
+## A tracker row waiting on a petition: open it in the tray and find the agent.
+func _on_tracker_approvals(agent_id: String) -> void:
+	focus_approvals(agent_id)
+	_on_focus_requested(agent_id)

@@ -27,14 +27,21 @@ CC0 does not require attribution; we give it gladly. Thank you, Kay.
 
 ## In-house assets
 
-Everything else is made in-house, procedurally, by the Blender Python (bpy) scripts in
-`art_src/blender/`. These pieces are modelled in bpy, flat-shaded and low-poly, and coloured
-from the KayKit atlas so they match the kit: the berry bush and bare bush, the rolled scroll, the
-survey stake, the gold coins, the wheat rows, the anvil, the forge hearth, the lectern stand, the
-writing desk with inkpot and quill, the flag pole, and the battered stone plinth under the outer
-walls. The same scripts produce the character recolours (copies of the KayKit atlases with only
-the clothing swatches re-dyed), the trimmed farm plot and gate arch, the squat wall tower (a kit
-tower with one band of windows cut out), the town gate with its doors swung open, and every icon.
+Everything else is made in-house. The pieces, recolours and icons below are made procedurally by
+the Blender Python (bpy) scripts in `art_src/blender/`. These pieces are modelled in bpy,
+flat-shaded and low-poly, and coloured from the KayKit atlas so they match the kit: the berry bush
+and bare bush, the rolled scroll, the survey stake, the gold coins, the wheat rows, the anvil, the
+forge hearth, the lectern stand, the writing desk with inkpot and quill, the flag pole, and the
+battered stone plinth under the outer walls. The same scripts produce the character recolours
+(copies of the KayKit atlases with only the clothing swatches re-dyed), the trimmed farm plot and
+gate arch, the squat wall tower (a kit tower with one band of windows cut out), the town gate with
+its doors swung open, and every icon.
+
+The task seals and agent sigils, the animated emblems in the task tracker, on the agent panel and
+on the homes' name plates, are vector drawings and animations written in RML in
+`art_src/rive/state_tracker/`, with no outside images or fonts. `scripts/bake-rive.mjs` renders
+them into the sprite sheets in `client/art/rive/` with the free Rive CLI. The game ships those
+images only: no Rive runtime, library or `.riv` file. Animated with Rive (https://rive.app).
 
 ## Sound and music (CC0)
 

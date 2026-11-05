@@ -239,11 +239,19 @@ batches.
 ### World and UI
 
 - `client/world/`: views that interpolate the simulation (units, buildings, homes with their
-  status signs, wisps, resource fields), the terrain and sky, effects, and the RTS camera.
+  name plates, which carry the agent's Rive sigil, and their status signs, wisps, resource
+  fields), the terrain and sky, effects, and the RTS camera.
 - `client/ui/hud/`: the top bar (resources, population, Town Hall status, age, Mana orb), the
-  bottom panel (minimap, selection panel, 5 x 3 command card) and stacked windows.
+  task tracker (top left: the live tasks with their Rive seals, the ones that need the player
+  first; not on phones and tablets), the bottom panel (minimap, selection panel, 5 x 3 command
+  card) and stacked windows.
 - `client/ui/agents/`: the agent windows (Summoning Font, task composer, approval tray, review,
   budget, folder browser, agent panel).
+- The Rive state tracker: the task seals (one per task state) and agent sigils (one per agent
+  mood) are drawn in RML in `art_src/rive/state_tracker/` and baked by `scripts/bake-rive.mjs`
+  into sprite sheets in `client/art/rive/`, described by `rive_sprites.json`. The game has no
+  Rive runtime: `RiveSprites` and `RiveSprite` (`client/ui/widgets/`) load the sheets and play
+  each state's loop, crossfading into a new state over the state machine's 200 ms transition.
 - `client/input/`: selection, the right-click rules, the command card model and key bindings.
 - All UI is built in code; there are no UI scenes. `client/ui/theme/` builds the theme, and the
   HUD is laid out for 1600 x 900 and scaled to the window (`canvas_items` stretch).

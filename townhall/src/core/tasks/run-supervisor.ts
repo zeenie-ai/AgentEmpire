@@ -387,10 +387,11 @@ export class RunSupervisor {
     if (since >= TASK_PROGRESS_MIN_INTERVAL_MS) {
       this.emitProgress(run);
     } else if (!run.progressTimer) {
+      // At most one interval: if the wall clock stepped back, `since` is negative.
       run.progressTimer = this.ctx.clock.setTimeout(() => {
         run.progressTimer = null;
         this.emitProgress(run);
-      }, TASK_PROGRESS_MIN_INTERVAL_MS - since);
+      }, Math.min(TASK_PROGRESS_MIN_INTERVAL_MS, TASK_PROGRESS_MIN_INTERVAL_MS - since));
     }
   }
 

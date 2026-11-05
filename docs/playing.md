@@ -135,6 +135,37 @@ until there is enough. A home holds one waiting scroll in the first age, besides
 4. **Express** skips the walk: the scroll appears at the home at once. Either way the work starts
    when the agent is free and the Mana pool allows it.
 
+### The task tracker
+
+The task tracker at the top left, under the top bar, lists the town's tasks under way and hides
+while there are none, and while the Town Hall is closed. Each row shows the task's seal, an animated emblem for its state, then its
+title, then the agent and the state in the state's colour. When the state changes, the seal fades
+into the new one with a small pop.
+
+| Seal | Means |
+|---|---|
+| A scroll with speed lines | On its way |
+| A scroll with three dots | In the queue |
+| Cogs | Preparing |
+| A hammer on an anvil | At work |
+| A ringing bell | A petition waits for you |
+| A chest | A result waits for review |
+| A stamp on a wax seal | The work is being accepted |
+| Two bars | Paused; the row says why |
+| An exclamation mark | Failed |
+| A check, a cross or a struck ring | Accepted, set aside or cancelled |
+
+- **Order.** What needs you comes first: petitions, results to review, failures and pauses, then
+  work, the queue and scrolls on their way. Within each, the oldest comes first. At most five rows
+  show; a plate below counts the rest.
+- **Finished tasks** keep their row, at the top with the final seal, for six seconds. A party
+  member's sub-task has no row of its own: its lead's task stands for it.
+- **A click** on a row does what the task needs. A result opens the review. A petition opens in
+  the tray and the camera goes to the agent's home. Any other row selects the agent's home and
+  moves the camera to it.
+- **Folding.** A click on the header (TASKS and the count of tasks under way) folds the list
+  away; another click unfolds it. The game remembers the fold.
+
 ### While the agent works
 
 | At the home | Means |
@@ -143,11 +174,16 @@ until there is enough. A home holds one waiting scroll in the first age, besides
 | The bell swinging on the post by the door, a banner raised | An approval waits (a blue banner: the task has spent its seal) |
 | A glowing chest at the door | A result waits for review |
 | Smoke from the roof | A task failed |
-| A red "!" floating over the roof | Blocked: a required add-on is missing, there is not enough Mana to start, the harness is offline, or the work folder has a problem |
+| A red "!" floating over the roof | Blocked: a required add-on is missing (not while a new agent's add-ons are still going up), there is not enough Mana to start, the harness is offline, or the work folder has a problem |
 
-The name plate over the roof shows what needs you (NEEDS YOUR APPROVAL, RESULT READY, TASK FAILED,
-BLOCKED), WORKING, or the role and rank. The agent's panel has a status line ("Working: using Bash
-at the Forge"; click it for the review or the approvals), the task's Mana and the add-ons.
+The name plate over the roof carries the agent's sigil, a small animated gem whose colour and
+motion follow its mood: waiting for you, a result ready, trouble, working, settling in, retired or
+idle. Beside the sigil are its name and a caption: what needs you (NEEDS YOUR APPROVAL, RESULT
+READY, TASK FAILED, PAUSED, BLOCKED, NEEDS RESOURCES), WORKING or STARTING, SETTLING IN, or the
+role and rank. The agent's panel has a status line led by the same sigil ("Working: using Bash at
+the Forge"; click it for the review or the approvals), the task's Mana and the add-ons. The plate
+and the panel always show the same status, and what needs you comes first, in the task tracker's
+order: a petition, a result to review, a failed task, a paused one; then the work.
 
 - **Trouble.** An alarm bell rings when an agent goes quiet or repeats itself, and a task silent
   for 15 minutes pauses. A broken link to the harness is retried once; other errors fail the task.
@@ -158,10 +194,12 @@ at the Forge"; click it for the review or the approvals), the task's Mana and th
 ## Approvals
 
 When an agent asks for something its approval mode does not allow, the bell at its home rings, a
-toast names the request and a petition joins the tray at the top right, oldest first. **Space**
-jumps to the agent that has waited longest, then the next. A petition shows the kind of request
-(Read, Write, Command, Network, Outside workspace or MCP tool), the risk, the agent's reason and
-the request itself. The agent waits for your answer, however long it takes.
+toast names the request and a petition joins the tray at the top right, oldest first. The task's
+row in the task tracker shows a ringing bell and moves up to the petitions at the top; a click on
+it opens the petition and finds the agent. **Space** jumps to the agent that has waited longest,
+then the next. A petition shows the kind of request (Read, Write, Command, Network, Outside
+workspace or MCP tool), the risk, the agent's reason and the request itself. The agent waits for
+your answer, however long it takes.
 
 Answer with **Allow once**; **Allow for this task**, for requests like it until the task ends;
 **Always for** the agent, for requests like it on all its tasks from now on; or **Deny**, with a
@@ -187,9 +225,10 @@ word to the agent if you like.
 ## Review
 
 When a task is done, a toast says so and a chest glows at the home. Open the review with
-**Review** (W) on the agent's card or by clicking its status line. It shows the agent's summary,
-your acceptance criteria, the changed files and the patch, the Rite's result and output, the Mana
-used (marked "about" when estimated) and the **Chronicle**, everything the agent said and did.
+**Review** (W) on the agent's card, by clicking its status line, or by clicking the task's row in
+the task tracker. It shows the agent's summary, your acceptance criteria, the changed files and
+the patch, the Rite's result and output, the Mana used (marked "about" when estimated) and the
+**Chronicle**, everything the agent said and did.
 
 - **Accept** pays the reward and integrates the work in one of three ways:
   - **Merge**, the default for a git repository, makes a merge commit on your checkout's branch.
@@ -281,4 +320,5 @@ menu. **TOWN HALL OFFLINE** means no Town Hall runs (a click starts it again), a
 - **The Quartermaster's trades** (Food and Wood for Stone and Gold, and back): Town Hall only.
 - **Parties**, agents working under a Claude Code lead from the Market Age: Town Hall only.
 - **Menus and onboarding.** Esc only cancels or closes the top window; there is no menu or tutorial.
-- **A quest log.** Each agent's tasks show only in its panel and its review.
+- **A quest log.** The task tracker lists only the tasks under way, plus a finished one for six
+  seconds; there is no list of past tasks.

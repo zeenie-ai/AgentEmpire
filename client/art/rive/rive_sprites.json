@@ -1,0 +1,138 @@
+{
+  "generated_by": "scripts/bake-rive.mjs",
+  "source": "art_src/rive/state_tracker",
+  "source_hash": "e763d09e723cb9da705b6ececd4bea8af95a8c09c5dada4835b40627eac771e1",
+  "rive_cli": "rive 1.8.0",
+  "sets": {
+    "task_seal": {
+      "artboard": "TaskSeal",
+      "property": "state",
+      "fallback": "queued",
+      "size": [
+        144,
+        144
+      ],
+      "scale": 1.5,
+      "pad": 8,
+      "fps": 30,
+      "blend_ms": 200,
+      "states": {
+        "in_transit": {
+          "file": "task_seal/in_transit.png",
+          "frames": 30,
+          "columns": 6
+        },
+        "queued": {
+          "file": "task_seal/queued.png",
+          "frames": 45,
+          "columns": 7
+        },
+        "preparing": {
+          "file": "task_seal/preparing.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "running": {
+          "file": "task_seal/running.png",
+          "frames": 30,
+          "columns": 6
+        },
+        "awaiting_approval": {
+          "file": "task_seal/awaiting_approval.png",
+          "frames": 36,
+          "columns": 6
+        },
+        "awaiting_review": {
+          "file": "task_seal/awaiting_review.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "accepting": {
+          "file": "task_seal/accepting.png",
+          "frames": 30,
+          "columns": 6
+        },
+        "accepted": {
+          "file": "task_seal/accepted.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "rejected": {
+          "file": "task_seal/rejected.png",
+          "frames": 1,
+          "columns": 1
+        },
+        "paused": {
+          "file": "task_seal/paused.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "failed": {
+          "file": "task_seal/failed.png",
+          "frames": 45,
+          "columns": 7
+        },
+        "cancelled": {
+          "file": "task_seal/cancelled.png",
+          "frames": 1,
+          "columns": 1
+        }
+      }
+    },
+    "agent_sigil": {
+      "artboard": "AgentSigil",
+      "property": "mood",
+      "fallback": "idle",
+      "size": [
+        96,
+        96
+      ],
+      "scale": 1.5,
+      "pad": 8,
+      "fps": 30,
+      "blend_ms": 200,
+      "states": {
+        "idle": {
+          "file": "agent_sigil/idle.png",
+          "frames": 90,
+          "columns": 10
+        },
+        "training": {
+          "file": "agent_sigil/training.png",
+          "frames": 45,
+          "columns": 7
+        },
+        "settling": {
+          "file": "agent_sigil/settling.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "working": {
+          "file": "agent_sigil/working.png",
+          "frames": 45,
+          "columns": 7
+        },
+        "waiting": {
+          "file": "agent_sigil/waiting.png",
+          "frames": 36,
+          "columns": 6
+        },
+        "review": {
+          "file": "agent_sigil/review.png",
+          "frames": 60,
+          "columns": 8
+        },
+        "blocked": {
+          "file": "agent_sigil/blocked.png",
+          "frames": 45,
+          "columns": 7
+        },
+        "retired": {
+          "file": "agent_sigil/retired.png",
+          "frames": 1,
+          "columns": 1
+        }
+      }
+    }
+  }
+}

@@ -456,6 +456,8 @@ func jump_to_next_bell() -> void:
 ## Selects an agent's home (or its figure while it has none) and centres the camera on it.
 func focus_agent(agent_id: String) -> void:
 	var w := world()
+	if w == null:
+		return
 	var home := w.agent_home(agent_id)
 	if home != null:
 		selection.set_ids([home.id])

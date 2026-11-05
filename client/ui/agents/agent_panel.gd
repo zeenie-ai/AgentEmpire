@@ -6,9 +6,12 @@ extends HBoxContainer
 ## - the name, rank, level and an XP bar to the next level (level L needs 50*L*(L-1) XP, from
 ##   economy.json levels);
 ## - role, harness and model;
-## - a status line: training at the Keep (seconds left), settling (building its home or
-##   add-ons), working (phase and tool from Realm.progress), waiting for your approval, result
-##   ready for review, blocked (why) or idle; plus how many petitions wait;
+## - a status line led by the agent's sigil from the Rive state tracker (a RiveSprite of the
+##   "agent_sigil" set, one animated gem per mood), from AgentUi.agent_status() like its home's
+##   name plate, what needs the player first: training at the Keep (seconds left), settling
+##   (building its home or add-ons), waiting for your approval, result ready for review, a failed
+##   or paused task, blocked (why), working (phase and tool from Realm.progress) or idle; plus how
+##   many petitions wait;
 ## - the current task's title with a Mana bar (spent against the seal);
 ## - the home's queue, and the add-ons: built, being built, planned, or waiting for resources
 ##   (Game.link.waiting_tools).
@@ -22,6 +25,8 @@ const Protocol = preload("res://net/protocol.gd")
 const TICK_S := 0.5
 ## The widest the name may grow before it ends in an ellipsis.
 const NAME_MAX_PX := 250.0
+## The mood sigil at the head of the status line.
+const SIGIL_PX := 32.0
 
 var agent_id: String = ""
 var link: Object = null
@@ -33,7 +38,9 @@ var _level: Label
 var _xp: ManaBar
 var _role: Label
 var _status_row: HBoxContainer
-var _status_dot: Glyph
+var _status_sigil: RiveSprite
+## The agent the sigil last showed: a new agent's mood appears at once, the same agent's fades in.
+var _sigil_agent: String = ""
 var _status: Label
 var _petitions: PanelContainer
 var _task_row: HBoxContainer
@@ -81,11 +88,11 @@ func _init() -> void:
 	_role.clip_text = true
 	_role.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
-	_status_row = AgentUi.hbox(8, col)
+	_status_row = AgentUi.hbox(6, col)
 	_status_row.mouse_filter = Control.MOUSE_FILTER_STOP
 	_status_row.gui_input.connect(_on_status_input)
-	_status_dot = Glyph.new("dot", UiTokens.MINT, 10)
-	_status_row.add_child(_status_dot)
+	_status_sigil = RiveSprite.new("agent_sigil", "idle", SIGIL_PX)
+	_status_row.add_child(_status_sigil)
 	_status = AgentUi.label("", "BodyLabel", _status_row)
 	_status.add_theme_font_size_override("font_size", 15)
 	_status.clip_text = true
@@ -223,7 +230,8 @@ func _refresh_status() -> void:
 	var col := AgentUi.mood_color(mood, AgentTheme.HUD)
 	_status.text = String(_status_info.get("text", ""))
 	_status.add_theme_color_override("font_color", col if mood != "idle" else UiTokens.HUD_SUBTLE)
-	_status_dot.color = col
+	_status_sigil.set_state(mood, _sigil_agent == agent_id)
+	_sigil_agent = agent_id
 	var petitions := Realm.approvals_for(agent_id).size()
 	_petitions.visible = petitions > 0
 	AgentUi.set_pill(_petitions, "%d petition%s" % [petitions, "" if petitions == 1 else "s"], UiTokens.WARN, true)

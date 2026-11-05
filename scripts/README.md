@@ -1,8 +1,9 @@
 # scripts
 
-The scripts that set up the tools, build and package the game, run the checks, and rebuild the
-art sources and the sound. Run them from the repository root; the Node scripts need Node.js 22.12
-or newer (`setup.mjs` checks it). [docs/testing.md](../docs/testing.md) explains the checks, and
+The scripts that set up the tools, build and package the game, run the checks, rebuild the art
+sources and the sound, and bake the Rive task seals and agent sigils. Run them from the repository
+root; the Node scripts need Node.js 22.12 or newer (`setup.mjs` checks it).
+[docs/testing.md](../docs/testing.md) explains the checks, and
 [docs/development.md](../docs/development.md) the everyday commands.
 
 | File | What it does | Also needs |
@@ -17,6 +18,7 @@ or newer (`setup.mjs` checks it). [docs/testing.md](../docs/testing.md) explains
 | `sync-economy.mjs` | Copies the shared protocol files into the client | |
 | `fetch-assets.mjs` | Fetches the KayKit art kits | git, network |
 | `fetch-audio.mjs` | Builds the game's sound into `client/audio/` | ffmpeg, network |
+| `bake-rive.mjs` | Bakes the task seals and agent sigils from `art_src/rive/state_tracker` into sprite sheets in `client/art/rive/`; `--check` compares them with the RML | The Rive CLI (not for `--check`) |
 | `lib/godot.mjs`, `lib/download.mjs`, `lib/zip.mjs` | Code the scripts share | |
 
 ## Setting up and building
@@ -131,6 +133,60 @@ in the cache. It needs ffmpeg with libvorbis on PATH (or `FFMPEG` set to its pat
 kenney.nl, opengameart.org and freesound.org for sources not yet cached. Its header gives the
 loudness targets; `client/audio/cue_table.gd` holds each cue's mix.
 
+**`bake-rive.mjs`** `[--check] [--only=<set>[:<state>],...] [--jobs=<n>] [--rive=<path>]` bakes
+the task seals and agent sigils, drawn in RML in `art_src/rive/state_tracker/`, into sprite sheets
+for the client. It uses the free Rive CLI and needs no Rive account or login. It first runs
+`rive <project> --verify` and `rive inspect <project> --json`, and stops if the project does not
+compile or the inspection reports an error.
+
+Each set is one artboard:
+
+- `task_seal` (TaskSeal): one state per task state, falling back to `queued`;
+- `agent_sigil` (AgentSigil): one state per agent mood, falling back to `idle`.
+
+For each key of the view model's one enum property (`state`, `mood`), the CLI runs the artboard's
+state machine headless with that key. It runs whole loops of the state's animation first, at least
+60 frames at 60 fps, so the 200 ms transition has finished and the sheet starts where the loop
+starts. Then it captures one loop at 30 frames a second, each frame drawn at 1.5 times the
+artboard's size (`--viewport` and `--fit=contain`), so the emblems stay sharp when the HUD is
+scaled up at 4K. Each frame is captured over a black and over a white `matte`, and its alpha is
+solved from the pair. The bake works on a copy of the sources taken when it starts, and hashes that
+copy, so an edit made during a bake is neither captured nor marked as baked.
+
+A state's frames go into one PNG, `client/art/rive/<set>/<state>.png`: a grid of ceil(sqrt(frames))
+columns with 8 px of transparent padding around each frame, so the small mipmaps of a far-off
+sigil never mix in the next frame. A new sheet gets a `.png.import`
+(lossless, mipmaps, alpha border fixed). `client/art/rive/rive_sprites.json` describes the sheets
+and records the CLI's version and a hash of the sources:
+
+- per set: artboard, property, fallback, frame size in pixels, scale, padding, fps and blend time
+  (the longest AnyState transition);
+- per state: file, frames and columns.
+
+Sheets of states the RML no longer has are deleted.
+
+- **`--only=task_seal,agent_sigil:waiting`** bakes some sets or states, for a quick look while
+  drawing. It keeps the other states' sheets and manifest entries, and marks the manifest as
+  partial, so `--check` fails until a full bake. Before capturing anything it stops if `--only`
+  names an unknown set or state, or if a state it keeps was never baked or no longer fits (its loop
+  length or the set's frame size changed).
+- **`--jobs=<n>`** sets how many captures run at once. The default is half the cores, at most 4,
+  so a bake leaves the GPU to a game that is running. Each worker captures from its own copy of
+  the project in `ae-rive-bake-*` in the system temp folder, removed at the end. A failed capture
+  is tried three times; after that the bake starts no new capture, waits for the running ones and
+  reports the error. A full bake takes about five minutes with 4 workers.
+- **`--check`** needs no CLI. It exits with 1 when `rive_sprites.json` is missing, when the last
+  bake was partial, when its hash differs from a hash of the `.rml` files, `rive.yaml` and the
+  bake's settings (line endings normalised), or when a sheet it names is missing. Otherwise it
+  exits with 0.
+- **The CLI** is `--rive=<path>`, else `RIVE_CLI`, else `rive` on PATH, else `~/.rive/bin/rive`
+  (`rive.exe` on Windows); install it from
+  [rive.app](https://rive.app/docs/cli/getting-started). Without one, the script exits with 2.
+  Other failures, a bad `--only` among them, exit with 1.
+
+Import the client afterwards (`<godot> --headless --path client --import`) so Godot picks up new
+or changed sheets.
+
 ## Shared code
 
 | File | What it holds |
@@ -154,7 +210,8 @@ loudness targets; `client/audio/cue_table.gd` holds each cue's mix.
   checkout: the Blender pipeline finds the kits in the nearest parent folder that has them, and a
   `.tools/` made in a worktree stops `lib/godot.mjs` from falling back.
 - **`GODOT`** points every script that runs Godot at another executable. `check-exe.ps1`,
-  `smoke-package.mjs` and `sync-economy.mjs` need no `.tools/`.
+  `smoke-package.mjs`, `sync-economy.mjs` and `bake-rive.mjs` need no `.tools/`; `bake-rive.mjs`
+  writes the checkout's own `client/art/rive/` and finds the Rive CLI outside the checkout.
 
 `townhall/scripts/` holds two more: `gen-gd.ts`, run by `npm run gen:gd`, writes the generated
 GDScript constants from the zod schemas, and the game runs `launch.mjs` to start a Town Hall.
